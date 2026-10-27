@@ -300,6 +300,7 @@ your actual fee tier.
 - [docs/AUDIT_2026-10.md](docs/AUDIT_2026-10.md) — the second audit: ten findings, five money bugs
   fixed, the deployment gaps closed, and what a factor shop would add.
 - [docs/RUNBOOK.md](docs/RUNBOOK.md) — running it unattended on a Mac.
+- [docs/CHEATSHEET.md](docs/CHEATSHEET.md) — the two commands you need, and the drawers you don't.
 
 ## License
 

@@ -1,0 +1,76 @@
+# Cheatsheet
+
+Everything runs from the project folder:
+
+```bash
+cd "/Users/fredp/Espero Trading QuantBot/espero"
+```
+
+## The two commands you actually need
+
+```bash
+cat health.json          # did this morning's run work? last_success, per-step ok/error/equity
+open dashboard.html      # what the accounts hold, their equity curves, and what the trades cost
+```
+
+The bot itself needs nothing from you. launchd runs it every day at 07:30.
+
+## Pause / resume / is it alive
+
+```bash
+touch KILL                                                       # pause everything (marks too)
+rm KILL                                                          # resume
+launchctl print gui/$(id -u)/com.espero.daily | grep 'last exit'  # 0 = last run was fine
+tail -30 ~/Library/Logs/espero/daily.log                         # what happened, in order
+```
+
+## Drawer 1: the paper accounts (hand-driving)
+
+Always use a throwaway `--state` file for experiments. The real ones are `tsmom.db` and `xs.db`
+in this folder, and every row written to them is part of the track record.
+
+```bash
+.venv/bin/python -m espero tsmom --state /tmp/t.db --cash 1000 --force   # monthly cross-asset trend, rebalance now
+.venv/bin/python -m espero xs    --state /tmp/x.db --cash 1000 --force   # weekly top-10 crypto, rebalance now
+.venv/bin/python -m espero tsmom --deposit 500                           # add paper capital to the REAL account
+.venv/bin/python -m espero tsmom --report                                # history of the real account
+.venv/bin/python -m espero dashboard --open                              # rebuild the dashboard now
+.venv/bin/python -m espero daily --dry-run                               # preflight: no network, no changes
+```
+
+## Drawer 2: research
+
+```bash
+.venv/bin/python -m espero matrix                     # the audit table (timing x fees x sizing) on BTC
+.venv/bin/python -m espero backtest --fee-bps 60      # one configuration of the bar strategy
+.venv/bin/python -m espero factors                    # rank-IC table of the factor zoo, 42 coins
+python research/multifactor.py                        # hypothesis #8, exactly as pre-registered
+./scripts/check.sh                                    # tests + audit table + CLI smoke test
+```
+
+A new idea gets a `research/PREREGISTRATION_<name>.md` committed **before** its script runs, then a
+`RESULTS_<name>.md`. No exceptions; that discipline is the product.
+
+## Drawer 3: the single-coin bar strategy (original bot, loses after fees)
+
+```bash
+.venv/bin/python -m espero paper --state /tmp/p.db --loop --interval 60              # BTC-USD, $500, hourly
+.venv/bin/python -m espero paper --product ETH-USD --state /tmp/p-eth.db --loop      # another coin, own state
+```
+
+Kept because its journal loop is the template for the live path. Not scheduled, not a basket.
+
+## Drawer 4: live money. Off.
+
+`espero live` is experimental and needs `.env` keys, `ESPERO_ALLOW_LIVE=1` and `--confirm-live`
+before it sends anything. Leave this drawer shut; see the README section before opening it.
+
+## Where things are
+
+| what | where |
+|---|---|
+| account state, dashboard, health | this folder |
+| logs | `~/Library/Logs/espero/daily.log` |
+| the launchd job | `~/Library/LaunchAgents/com.espero.daily.plist` |
+| remove the job | `./scripts/install-launchd.sh --uninstall` |
+| full operating procedure | `docs/RUNBOOK.md` |
