@@ -118,6 +118,11 @@ The full write-up, including why a fixed z-threshold cannot be shared across ven
 std is 8× Hyperliquid's), is in [research/FINDINGS.md](research/FINDINGS.md). The short version: it
 was a regime, not a law, and it is not traded by anything in this repo.
 
+A second hypothesis — cross-sectional momentum, [pre-registered](research/PREREGISTRATION.md) before
+the data was touched — did the same thing from the other direction: +115% CAGR in the design period,
+then **−29.75% CAGR on the holdout** against +23.3% for buying BTC. Two hypotheses, two honest
+failures, both written down: [research/RESULTS.md](research/RESULTS.md).
+
 ## The numbers
 
 BTC-USD, 2022-10-28 → 2026-10-27, 1,461 daily bars, $10,000, one long position.

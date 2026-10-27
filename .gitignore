@@ -18,3 +18,6 @@ results/
 
 # OS
 .DS_Store
+
+# research data (fetched on demand by research/*.py)
+research/data/
