@@ -43,6 +43,17 @@ top, an arrow-key menu below (status, dashboard, a no-write preview of what each
 history, run the daily job, deposit, pause, log, the single-coin loop, the factor table, tests). Needs
 the `tui` extra: `pip install -e ".[chart,tui,dev]"`. Everything on the menu is also a plain command.
 
+## The fast screen
+
+Hypothesis #9b measured hourly reversal in crypto at t = 14 and 4 bps per three hours: a real effect
+the size of the bid-ask bounce, which is the market-maker's income, not a forecaster's. So the fast
+work in this repo is execution, not prediction. `espero fast` reads Coinbase's public book every
+second, simulates resting post-only orders pessimistically (queue position, fills only from prints,
+no price improvement), and proposes orders a human confirms with Enter, with the measured edge, the
+venue's cost and the signal's recent IC on the same line. Paper only. The book can be recorded and
+replayed at any speed, which is how it is tested and practised. Details: `espero/book.py`,
+`execution.py`, `fast.py`, and [research/RESULTS_LEADLAG2.md](research/RESULTS_LEADLAG2.md).
+
 ## Running unattended
 
 The product is the two paper accounts. `espero daily` marks both, rebalances when each one's calendar
@@ -211,7 +222,12 @@ drawdown, the extra return comes from the low-vol factor, and momentum contribut
 criterion was met by a composite whose mean quantile spread is *negative*, a flaw in the criterion as
 written that the results file records: [research/RESULTS_MF.md](research/RESULTS_MF.md).
 
-Scoreboard: eight hypotheses, two passes, both risk-construction results. No alpha has been found;
+The ninth, BTC lead-lag into altcoins on hourly bars, failed twice: once by construction (the
+unscaled gap has the same ranks as plain reversal, caught before any data was fetched) and once on
+the data (the beta-scaled version does not beat reversal, and the 4 bps spread is the bid-ask bounce):
+[research/RESULTS_LEADLAG2.md](research/RESULTS_LEADLAG2.md).
+
+Scoreboard: ten tests, two passes, both risk-construction results. No alpha has been found;
 holding less when volatility rises is the only thing that has reliably helped.
 
 ## The numbers

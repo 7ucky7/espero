@@ -450,6 +450,14 @@ def act_paper(console, state):
                    "--loop", "--interval", "60"], state)
 
 
+def act_fast(console, state):
+    product = questionary.text("Product:", default="ETH-USD", style=STYLE).ask() or "ETH-USD"
+    venue = questionary.select("Charge whose maker fee?", choices=["binanceus", "kraken", "coinbase"],
+                               default="coinbase", style=STYLE, pointer="❯").ask() or "coinbase"
+    console.print(Text("paper only · Enter places, n declines, k kills, q returns here", style=MUTED))
+    _run(console, ["fast", "--product", product, "--venue", venue, "--state-dir", str(state)], state)
+
+
 def act_factors(console, state):
     console.print(Text("builds or reuses data/panel, then evaluates the zoo (a minute or two)", style=MUTED))
     _run(console, ["factors"], state)
@@ -481,6 +489,7 @@ MENU: List[Tuple[str, Callable]] = [
     ("Deposit paper capital", act_deposit),
     ("Pause / resume", act_pause),
     ("Show the log", act_logs),
+    ("Fast screen: resting orders on the live book (semi-auto, paper)", act_fast),
     ("Watch the single-coin paper loop", act_paper),
     ("Factor IC table (research)", act_factors),
     ("Run the tests", act_tests),

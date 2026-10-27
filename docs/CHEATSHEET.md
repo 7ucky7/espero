@@ -57,7 +57,20 @@ python research/multifactor.py                        # hypothesis #8, exactly a
 A new idea gets a `research/PREREGISTRATION_<name>.md` committed **before** its script runs, then a
 `RESULTS_<name>.md`. No exceptions; that discipline is the product.
 
-## Drawer 3: the single-coin bar strategy (original bot, loses after fees)
+## Drawer 3: the fast screen (resting orders, semi-automatic, paper)
+
+```bash
+.venv/bin/python -m espero fast --product ETH-USD                 # live Coinbase book, paper fills
+.venv/bin/python -m espero fast --product ETH-USD --venue binanceus --record   # charge Binance.US maker, record the book
+.venv/bin/python -m espero fast --replay data/book/ETH-USD_2026-10-27T1200.jsonl --speed 20
+```
+
+The machine proposes a post-only order with the evidence beside it (signal inputs, measured edge vs
+cost, regime, whether the signal is working lately). Nothing is placed until **Enter**. `n` declines,
+`r` reprices to the touch, `c` cancels, `j` writes a journal note, `k` kills, `q` quits. Fills and
+notes go to `fast.db` with the "why" as it stood at decision time.
+
+## Drawer 4: the single-coin bar strategy (original bot, loses after fees)
 
 ```bash
 .venv/bin/python -m espero paper --state /tmp/p.db --loop --interval 60              # BTC-USD, $500, hourly
@@ -66,7 +79,7 @@ A new idea gets a `research/PREREGISTRATION_<name>.md` committed **before** its 
 
 Kept because its journal loop is the template for the live path. Not scheduled, not a basket.
 
-## Drawer 4: live money. Off.
+## Drawer 5: live money. Off.
 
 `espero live` is experimental and needs `.env` keys, `ESPERO_ALLOW_LIVE=1` and `--confirm-live`
 before it sends anything. Leave this drawer shut; see the README section before opening it.

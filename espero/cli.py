@@ -215,6 +215,14 @@ def _cmd_tsmom(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_fast(args: argparse.Namespace) -> int:
+    from .fast import run as fast_run
+    return fast_run(args.product, cash=args.cash, venue=args.venue, record=args.record,
+                    replay_path=Path(args.replay) if args.replay else None, speed=args.speed,
+                    interval=args.interval, state_dir=Path(args.state_dir),
+                    threshold=args.threshold / 1e4, order_notional=args.order_notional)
+
+
 def _cmd_ui(args: argparse.Namespace) -> int:
     from .ui import main as ui_main
     return ui_main(Path(args.state_dir))
@@ -370,6 +378,20 @@ def build_parser() -> argparse.ArgumentParser:
     fc.add_argument("--names", default="", help="comma-separated subset of the zoo")
     fc.add_argument("-o", "--out", default="", help="write the table as CSV")
     fc.set_defaults(func=_cmd_factors)
+
+    fs = sub.add_parser("fast", help="semi-automatic resting-order screen on the live book (paper)")
+    fs.add_argument("--product", default="ETH-USD")
+    fs.add_argument("--cash", type=float, default=500.0)
+    fs.add_argument("--venue", choices=["binanceus", "kraken", "coinbase"], default="coinbase",
+                    help="whose maker fee to charge; the book is always Coinbase's")
+    fs.add_argument("--order-notional", type=float, default=50.0)
+    fs.add_argument("--threshold", type=float, default=30.0, help="signal gap in bps that triggers a proposal")
+    fs.add_argument("--record", action="store_true", help="record the book to data/book/ for replay")
+    fs.add_argument("--replay", default="", help="replay a recorded book file instead of the live one")
+    fs.add_argument("--speed", type=float, default=10.0, help="replay speed multiplier")
+    fs.add_argument("--interval", type=float, default=1.0)
+    fs.add_argument("--state-dir", default=".")
+    fs.set_defaults(func=_cmd_fast)
 
     dy = sub.add_parser("daily", help="the scheduled run: tsmom -> xs -> dashboard -> health.json")
     dy.add_argument("--state-dir", default=".", help="where the .db files, dashboard and health live")
