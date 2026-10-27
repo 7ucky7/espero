@@ -86,6 +86,25 @@ class TestAccount(unittest.TestCase):
         row = reopened.last()
         self.assertEqual(json.loads(row["signals"])["SPY"], 0.139)
 
+    def test_deposit_and_mark_can_share_a_day(self):
+        acc = T.Account(self.path)
+        acc.cash = 100.0
+        acc.rebalance(pd.Series({"SPY": 10.0}), {"SPY": 1 / 6})
+        acc.save(1_700_000_000, 100.0, {"SPY": 1 / 6}, "init", deposit=100.0)
+        acc.cash += 500.0
+        acc.save(1_700_000_000, 600.0, {"SPY": 1 / 6}, "deposit", deposit=500.0)
+        acc.save(1_700_000_000, 599.0, {"SPY": 1 / 6}, "mark")
+        rows = acc.history()
+        self.assertEqual(len(rows), 3)
+        self.assertAlmostEqual(sum(float(r["deposit"] or 0) for r in rows), 600.0)
+
+    def test_mark_replaces_itself_not_duplicates(self):
+        acc = T.Account(self.path)
+        acc.cash = 100.0
+        acc.save(1_700_000_000, 100.0, {}, "mark")
+        acc.save(1_700_000_000, 101.0, {}, "mark")
+        self.assertEqual(len(acc.history()), 1)
+
     def test_no_leverage(self):
         acc = T.Account(self.path)
         acc.cash = 100.0

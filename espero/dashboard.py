@@ -26,7 +26,7 @@ def _read_account(path: Path) -> list[dict]:
     db = sqlite3.connect(path)
     db.row_factory = sqlite3.Row
     try:
-        rows = db.execute("SELECT * FROM account ORDER BY ts").fetchall()
+        rows = db.execute("SELECT * FROM account ORDER BY ts, id").fetchall()
     except sqlite3.OperationalError:
         return []
     finally:
@@ -77,6 +77,9 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
         positions = {k: float(v) for k, v in stored.items()} or _positions(latest)
         equity = cash + sum(positions.values())
         total += equity
+        deposited = sum(float(r.get("deposit") or 0) for r in rows)
+        pnl = equity - deposited
+        pnl_pct = 100 * pnl / deposited if deposited else 0.0
         weights = json.loads(latest.get("weights") or "{}")
         # prefer the snapshot taken at decision time; live signals are a fallback
         sig = {k: float(v) for k, v in json.loads(latest.get("signals") or "{}").items()}
@@ -98,7 +101,11 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
         pos_rows = "".join(_row(a, v) for a, v in sorted(positions.items()) if v > 0) \
             or "<tr><td colspan='4' class='muted'>all cash</td></tr>"
 
-        curve = [float(r["equity"]) for r in rows]
+        # performance curve: equity net of money put in, so a deposit is not a gain
+        cum, curve = 0.0, []
+        for r in rows:
+            cum += float(r.get("deposit") or 0)
+            curve.append(float(r["equity"]) - cum)
         as_of = datetime.fromtimestamp(int(latest["ts"]), timezone.utc).date()
 
         cards.append(f"""
@@ -107,6 +114,8 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
           <div class="big">${equity:,.2f}</div>
           <div class="sub">as of {as_of} · cash ${cash:,.2f} · {sum(1 for v in positions.values() if v > 0)} positions
             · {sig_note}</div>
+          <div class="sub">deposited ${deposited:,.2f} · P&amp;L
+            <span class="{'pos' if pnl >= 0 else 'neg'}">{pnl:+,.2f} ({pnl_pct:+.2f}%)</span></div>
           {_sparkline(curve)}
           <table>
             <thead><tr><th>asset</th><th class="num">target</th><th class="num">value</th>

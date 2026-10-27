@@ -35,8 +35,10 @@ COST = 0.001
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS account (
-    ts INTEGER PRIMARY KEY, cash REAL, units TEXT, equity REAL, weights TEXT, note TEXT,
-    positions TEXT, signals TEXT
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts INTEGER NOT NULL, cash REAL, units TEXT, equity REAL, weights TEXT, note TEXT,
+    positions TEXT, signals TEXT, deposit REAL,
+    UNIQUE(ts, note)   -- one mark per day, but a deposit and a mark can share a day
 );
 """
 
@@ -97,17 +99,17 @@ class Account:
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
         cols = {r["name"] for r in self.db.execute("PRAGMA table_info(account)")}
-        for col in ("positions", "signals"):  # old databases
+        for col in ("positions", "signals", "deposit"):  # old databases
             if col not in cols:
                 self.db.execute(f"ALTER TABLE account ADD COLUMN {col} TEXT")
                 self.db.commit()
-        row = self.db.execute("SELECT * FROM account ORDER BY ts DESC LIMIT 1").fetchone()
+        row = self.db.execute("SELECT * FROM account ORDER BY ts DESC, id DESC LIMIT 1").fetchone()
         if row:
             self.cash = row["cash"]
             self.units = json.loads(row["units"])
 
     def last(self) -> Optional[dict]:
-        row = self.db.execute("SELECT * FROM account ORDER BY ts DESC LIMIT 1").fetchone()
+        row = self.db.execute("SELECT * FROM account ORDER BY ts DESC, id DESC LIMIT 1").fetchone()
         return dict(row) if row else None
 
     def equity(self, prices: pd.Series) -> float:
@@ -129,19 +131,20 @@ class Account:
 
     def save(self, ts: int, equity: float, weights: Dict[str, float], note: str,
              positions: Optional[Dict[str, float]] = None,
-             signals: Optional[Dict[str, float]] = None) -> None:
+             signals: Optional[Dict[str, float]] = None,
+             deposit: float = 0.0) -> None:
         """`signals` is what the bot SAW when it decided, kept separately from the
         weights so a later viewer can audit the decision instead of re-deriving it."""
         self.db.execute(
             "INSERT OR REPLACE INTO account(ts, cash, units, equity, weights, note, positions,"
-            " signals) VALUES (?,?,?,?,?,?,?,?)",
+            " signals, deposit) VALUES (?,?,?,?,?,?,?,?,?)",
             (ts, self.cash, json.dumps(self.units), equity, json.dumps(weights), note,
-             json.dumps(positions or {}), json.dumps(signals or {})),
+             json.dumps(positions or {}), json.dumps(signals or {}), deposit),
         )
         self.db.commit()
 
     def history(self, limit: int = 400) -> list[sqlite3.Row]:
-        return self.db.execute("SELECT * FROM account ORDER BY ts DESC LIMIT ?", (limit,)).fetchall()
+        return self.db.execute("SELECT * FROM account ORDER BY ts DESC, id DESC LIMIT ?", (limit,)).fetchall()
 
 
 def first_trading_day(now: Optional[datetime] = None) -> bool:
@@ -149,7 +152,8 @@ def first_trading_day(now: Optional[datetime] = None) -> bool:
     return now.weekday() < 5 and now.day <= 3
 
 
-def run(state: str, cash: float, force: bool = False, span: str = "2y") -> dict:
+def run(state: str, cash: float, force: bool = False, span: str = "2y",
+        deposit: float = 0.0) -> dict:
     series = load_series(span)
     px = closes(series)
     latest = px.iloc[-1]
@@ -158,16 +162,19 @@ def run(state: str, cash: float, force: bool = False, span: str = "2y") -> dict:
     fresh = acc.cash == 0.0 and not acc.units
     if fresh:
         acc.cash = cash
+        deposit += cash          # opening capital counts as contributed, not as profit
+    elif deposit:
+        acc.cash += deposit
 
     sig = signals(series)
     weights, cash_w = target_weights(sig)
 
-    due = fresh or force or first_trading_day()
+    due = fresh or force or first_trading_day() or deposit > 0
     traded = 0.0
     note = "mark"
     if due:
         traded = acc.rebalance(latest, weights)
-        note = "init" if fresh and not force else "rebalance"
+        note = "init" if fresh else ("deposit" if deposit else "rebalance")
     else:
         # a mark must not rewrite the decision it is marking: keep the snapshot
         prev = acc.last()
@@ -179,7 +186,7 @@ def run(state: str, cash: float, force: bool = False, span: str = "2y") -> dict:
 
     equity = acc.equity(latest)
     marked = {a: u * float(latest[a]) for a, u in acc.units.items()}
-    acc.save(ts, equity, weights, note, positions=marked, signals=sig)
+    acc.save(ts, equity, weights, note, positions=marked, signals=sig, deposit=deposit)
     return {
         "ts": px.index[-1], "signals": sig, "weights": weights, "cash_weight": cash_w,
         "equity": equity, "traded": traded, "note": note,

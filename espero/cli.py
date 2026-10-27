@@ -190,7 +190,8 @@ def _cmd_features(args: argparse.Namespace) -> int:
 
 
 def _cmd_tsmom(args: argparse.Namespace) -> int:
-    res = tsm.run(args.state, args.cash, force=args.force, span=args.span)
+    res = tsm.run(args.state, args.cash, force=args.force, span=args.span,
+                  deposit=args.deposit)
     if args.report:
         for row in reversed(res["account"].history(args.limit)):
             print(f"{row['ts']:>12d}  equity {row['equity']:8.2f}  {row['note']}")
@@ -270,6 +271,7 @@ def build_parser() -> argparse.ArgumentParser:
     tm.add_argument("--cash", type=float, default=100.0)
     tm.add_argument("--span", default="2y", help="yahoo history window")
     tm.add_argument("--force", action="store_true", help="rebalance now regardless of the calendar")
+    tm.add_argument("--deposit", type=float, default=0.0, help="add cash, then deploy it")
     tm.add_argument("--report", action="store_true", help="print account history")
     tm.add_argument("--limit", type=int, default=30)
     tm.set_defaults(func=_cmd_tsmom)
