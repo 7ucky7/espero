@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import pathlib
 import sys
 import time
 from pathlib import Path
@@ -14,6 +15,7 @@ from .journal import Journal
 from .live import LiveConfig, LiveTrader
 from .paper import PaperConfig, PaperTrader
 from . import tsmom as tsm
+from . import dashboard as dash
 from .report import buy_and_hold, equity_png, format_matrix, matrix
 
 
@@ -197,6 +199,17 @@ def _cmd_tsmom(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_dashboard(args: argparse.Namespace) -> int:
+    out = dash.write(args.out, tsmom_db=pathlib.Path(args.tsmom_db),
+                     paper_db=pathlib.Path(args.paper_db),
+                     live_db=pathlib.Path(args.live_db))
+    print(f"wrote {out}")
+    if args.open:
+        import subprocess
+        subprocess.run(["open", str(out)], check=False)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="espero", description="small honest crypto research harness")
     p.add_argument("--version", action="version", version="espero 0.1.0")
@@ -260,6 +273,14 @@ def build_parser() -> argparse.ArgumentParser:
     tm.add_argument("--report", action="store_true", help="print account history")
     tm.add_argument("--limit", type=int, default=30)
     tm.set_defaults(func=_cmd_tsmom)
+
+    d = sub.add_parser("dashboard", help="static HTML dashboard for the paper accounts")
+    d.add_argument("-o", "--out", default="dashboard.html")
+    d.add_argument("--tsmom-db", default="tsmom.db")
+    d.add_argument("--paper-db", default="paper.db")
+    d.add_argument("--live-db", default="live.db")
+    d.add_argument("--open", action="store_true")
+    d.set_defaults(func=_cmd_dashboard)
 
     c = sub.add_parser("chart", help="write the equity curve PNG")
     c.add_argument("data", nargs="?", default="data/BTCUSD_86400s.csv")

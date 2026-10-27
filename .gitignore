@@ -25,3 +25,6 @@ research/data/
 # paper account state
 tsmom.db
 *_paper.db
+
+# generated dashboard
+dashboard.html

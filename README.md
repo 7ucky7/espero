@@ -83,6 +83,8 @@ espero backtest --fee-bps 60       # one configuration, honest fills
 espero chart                       # docs/equity.png
 espero paper                       # one step of paper trading on live candles
 espero paper --loop --interval 60  # keep it running (ctrl-c to stop)
+espero tsmom --cash 100            # cross-asset trend paper account
+espero dashboard --open            # one self-contained HTML page with the accounts
 
 espero fetch ETH-USD --days 1460   # fresh data, no API key needed
 espero matrix data/ETHUSD_86400s.csv

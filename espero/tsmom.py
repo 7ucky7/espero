@@ -35,7 +35,8 @@ COST = 0.001
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS account (
-    ts INTEGER PRIMARY KEY, cash REAL, units TEXT, equity REAL, weights TEXT, note TEXT
+    ts INTEGER PRIMARY KEY, cash REAL, units TEXT, equity REAL, weights TEXT, note TEXT,
+    positions TEXT
 );
 """
 
@@ -81,6 +82,10 @@ class Account:
         self.db = sqlite3.connect(self.path)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        cols = {r["name"] for r in self.db.execute("PRAGMA table_info(account)")}
+        if "positions" not in cols:  # old databases
+            self.db.execute("ALTER TABLE account ADD COLUMN positions TEXT")
+            self.db.commit()
         row = self.db.execute("SELECT * FROM account ORDER BY ts DESC LIMIT 1").fetchone()
         if row:
             self.cash = row["cash"]
@@ -103,11 +108,13 @@ class Account:
         self.cash = total - invested - traded * COST
         return traded
 
-    def save(self, ts: int, equity: float, weights: Dict[str, float], note: str) -> None:
+    def save(self, ts: int, equity: float, weights: Dict[str, float], note: str,
+             positions: Optional[Dict[str, float]] = None) -> None:
         self.db.execute(
-            "INSERT OR REPLACE INTO account(ts, cash, units, equity, weights, note) "
-            "VALUES (?,?,?,?,?,?)",
-            (ts, self.cash, json.dumps(self.units), equity, json.dumps(weights), note),
+            "INSERT OR REPLACE INTO account(ts, cash, units, equity, weights, note, positions) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (ts, self.cash, json.dumps(self.units), equity, json.dumps(weights), note,
+             json.dumps(positions or {})),
         )
         self.db.commit()
 
@@ -141,7 +148,8 @@ def run(state: str, cash: float, force: bool = False, span: str = "2y") -> dict:
         note = "init" if fresh and not force else "rebalance"
 
     equity = acc.equity(latest)
-    acc.save(ts, equity, weights, note)
+    marked = {a: u * float(latest[a]) for a, u in acc.units.items()}
+    acc.save(ts, equity, weights, note, positions=marked)
     return {
         "ts": px.index[-1], "signals": sig, "weights": weights, "cash_weight": cash_w,
         "equity": equity, "traded": traded, "note": note,
