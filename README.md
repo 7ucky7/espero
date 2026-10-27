@@ -26,12 +26,17 @@ loop, four strategies, and a test suite whose job is to make the same mistakes i
   at the open, not at the stop.
 - **Numbers pinned in CI** — `tests/test_reference.py` asserts the audit's published figures against
   the committed dataset. Change the engine, and the claims break loudly.
+- **Paper trading with a spine** — `espero paper` runs the same signal code against live Coinbase
+  candles, fills on the next bar's open (never the bar that produced the signal), writes every
+  signal/order/fill/equity mark to SQLite, and resumes the open position after a restart. A risk
+  gate sits under the strategy: max 25% of equity per position, 1% risk per trade, daily loss cap.
 
 ## What it does not do (yet)
 
-No live trading. No broker connection. No order management, no reconciliation, no persistence.
-That is deliberate: those belong *below* the strategy layer, and the roadmap adds them with tests
-instead of adding them as decoration. See [Roadmap](#roadmap).
+No broker connection yet — fills are simulated against real candles, no exchange account is touched.
+No reconciliation against a venue (there is no venue), no funding, no partial fills. That is
+deliberate: those belong *below* the strategy layer, and the roadmap adds them with tests instead of
+adding them as decoration. See [Roadmap](#roadmap).
 
 ## Quickstart
 
@@ -42,6 +47,8 @@ pip install -e ".[chart]"          # numpy + pandas (+ Pillow for charts)
 espero matrix                      # the audit table on the committed BTC-USD data
 espero backtest --fee-bps 60       # one configuration, honest fills
 espero chart                       # docs/equity.png
+espero paper                       # one step of paper trading on live candles
+espero paper --loop --interval 60  # keep it running (ctrl-c to stop)
 
 espero fetch ETH-USD --days 1460   # fresh data, no API key needed
 espero matrix data/ETHUSD_86400s.csv
@@ -99,9 +106,12 @@ espero/
     indicators.py   # causal SMAs, RSI, Bollinger, MACD
     signals.py      # four strategies + weighted combiner (pure functions)
     backtest.py     # one position, one bar at a time, two fill models
+    journal.py      # SQLite: bars, signals, orders, positions, equity
+    risk.py         # pre-trade gate: size, exposure, daily loss cap
+    paper.py        # live loop: closed bar -> signal -> next-bar fill -> journal
     report.py       # the matrix table and the equity chart
-    cli.py          # fetch | backtest | matrix | chart
-  tests/            # 17 tests: timing, gaps, fees, causality, reference numbers
+    cli.py          # fetch | backtest | matrix | chart | paper
+  tests/            # 32 tests: timing, gaps, fees, causality, restart, risk gate, numbers
   data/             # committed BTC/ETH daily candles so the numbers reproduce offline
   docs/AUDIT.md     # the audit that started this
 ```
@@ -111,9 +121,10 @@ espero/
 - [x] Causal indicators + honest backtester + reference tests
 - [ ] Walk-forward split with a purge gap; report out-of-sample only
 - [ ] Position sizing as risk (stop distance × account), not notional
-- [ ] Broker interface: `PaperBroker` and `CoinbaseBroker` behind one protocol
-- [ ] SQLite journal: intents → acks → fills, with `client_order_id` idempotency
-- [ ] Restart-safe paper trader, reconciles against the exchange on boot
+- [x] SQLite journal: bars, signals, orders, fills, positions, equity
+- [x] Restart-safe paper trader on live candles, with a pre-trade risk gate
+- [ ] Broker interface behind one protocol, with `client_order_id` idempotency
+- [ ] Reconciliation against a real venue on boot
 - [ ] Kill switch: daily loss cap, max open risk, max orders/minute
 - [ ] TCA report: fill vs mid at signal time
 - [ ] Docker + health endpoint

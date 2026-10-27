@@ -76,3 +76,26 @@ def load(path: Path) -> pd.DataFrame:
     df = pd.read_csv(path)
     df["dt"] = pd.to_datetime(df["time"], utc=True)
     return df.sort_values("dt").reset_index(drop=True)
+
+
+def recent_closed_bars(product: str, granularity: int = 3600,
+                       limit: int = 300) -> pd.DataFrame:
+    """The most recent *completed* candles, oldest first.
+
+    Coinbase returns the in-progress candle too; it is dropped here because a
+    bar that can still change must never be treated as closed.
+    """
+    q = urllib.parse.urlencode({"granularity": granularity})
+    req = urllib.request.Request(BASE.format(product=product) + "?" + q,
+                                 headers={"User-Agent": "espero/0.1"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        rows = json.load(r)
+    now = int(time.time())
+    done = [r for r in rows if int(r[0]) + granularity <= now]
+    done.sort(key=lambda r: r[0])
+    done = done[-limit:]
+    return pd.DataFrame([
+        {"dt": dt.datetime.fromtimestamp(t, dt.timezone.utc), "ts": t,
+         "open": op, "high": hi, "low": lo, "close": cl, "volume": vol}
+        for t, lo, hi, op, cl, vol in done
+    ])
