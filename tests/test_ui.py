@@ -75,6 +75,41 @@ class TestRender(unittest.TestCase):
         after = (self.state / "tsmom.db").read_bytes(), (self.state / "xs.db").read_bytes()
         self.assertEqual(before, after)
 
+    def test_sparkline_and_pnl_curve(self):
+        self.assertEqual(ui.sparkline([]), "")
+        self.assertEqual(ui.sparkline([5, 5, 5]), "▄▄▄")
+        bars = ui.sparkline([0, 1, 2, 3])
+        self.assertEqual(len(bars), 4)
+        self.assertLess(bars[0], bars[-1])
+        rows = [{"ts": 1, "id": 1, "equity": 100.0, "deposit": 100.0},
+                {"ts": 2, "id": 2, "equity": 101.0, "deposit": 0.0},
+                {"ts": 3, "id": 3, "equity": 601.0, "deposit": 500.0}]
+        self.assertEqual(ui.pnl_curve(rows), [0.0, 1.0, 1.0])   # a deposit is not profit
+
+    def test_next_rebalance_follows_each_calendar(self):
+        from datetime import datetime, timezone
+        now = datetime(2026, 10, 27, 12, tzinfo=timezone.utc)          # Tuesday
+        nxt = ui.next_rebalance(self.state, now)
+        self.assertIn("Nov 2", nxt["xs"])                               # next Monday
+        self.assertIn("in 6 d", nxt["xs"])
+        self.assertIn("Nov 2", nxt["tsmom"])                            # first weekday of November
+        # once November's rebalance is done, the next one is December
+        from espero import tsmom
+        acc = tsmom.Account(self.state / "tsmom.db")
+        acc.save(int(datetime(2026, 11, 2, 12, tzinfo=timezone.utc).timestamp()), 100.0, {}, "rebalance")
+        nxt = ui.next_rebalance(self.state, datetime(2026, 11, 3, 12, tzinfo=timezone.utc))
+        self.assertIn("Dec 1", nxt["tsmom"])
+
+    def test_decision_table_reads_the_stored_row(self):
+        out = self.render(ui.decision_table(self.state, "tsmom"))
+        self.assertIn("SPY", out)
+        self.assertIn("hold", out)
+        self.assertIn("costs", out)
+        out = self.render(ui.decision_table(self.state, "xs"))
+        self.assertIn("A", out)
+        with tempfile.TemporaryDirectory() as d:
+            self.assertIn("no decision stored", self.render(ui.decision_table(Path(d), "xs")))
+
     def test_empty_state_renders(self):
         with tempfile.TemporaryDirectory() as d:
             out = self.render(ui.header(Path(d)), ui.accounts_table(Path(d)))

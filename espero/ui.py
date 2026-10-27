@@ -14,7 +14,7 @@ import os
 import sqlite3
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -111,6 +111,76 @@ def _ago(iso: Optional[str]) -> str:
     return f"{hours / 24:.0f} d ago"
 
 
+BARS = "▁▂▃▄▅▆▇█"
+
+
+def sparkline(values: List[float], width: int = 32) -> str:
+    """Unicode bars for the last `width` values. Flat series renders as a line."""
+    vals = [float(v) for v in values][-width:]
+    if not vals:
+        return ""
+    lo, hi = min(vals), max(vals)
+    if hi - lo < 1e-9:
+        return BARS[3] * len(vals)
+    return "".join(BARS[min(7, int((v - lo) / (hi - lo) * 7.999))] for v in vals)
+
+
+def pnl_curve(rows: List[dict]) -> List[float]:
+    """Equity minus cumulative contributions, oldest first: the curve the
+    rules earned, not the one deposits drew."""
+    out, cum = [], 0.0
+    for r in sorted(rows, key=lambda r: (int(r["ts"]), int(r.get("id") or 0))):
+        cum += float(r.get("deposit") or 0.0)
+        out.append(float(r["equity"]) - cum)
+    return out
+
+
+def next_rebalance(state: Path, now: Optional[datetime] = None) -> Dict[str, str]:
+    """Human text for when each rule next trades, from its own calendar."""
+    from . import tsmom as tsm
+    from . import xs as xsm
+    now = now or datetime.now(timezone.utc)
+    out = {}
+    d = now
+    for _ in range(8):
+        if d.date() > now.date() and xsm.is_rebalance_day(d):
+            break
+        d = d + timedelta(days=1)
+    days = (d.date() - now.date()).days
+    out["xs"] = f"Monday {d.strftime('%b %-d')}" + (" (tomorrow)" if days == 1 else f" (in {days} d)")
+
+    tdb = state / "tsmom.db"
+    done = False
+    if tdb.exists():
+        try:
+            done = tsm.Account(tdb).rebalanced_in_month(now.year, now.month)
+        except Exception:  # noqa: BLE001 - a broken db must not break the header
+            done = False
+    d = now
+    for _ in range(40):
+        if d.date() > now.date() and tsm.first_trading_day(d) and not (
+                done and (d.year, d.month) == (now.year, now.month)):
+            break
+        d = d + timedelta(days=1)
+    days = (d.date() - now.date()).days
+    out["tsmom"] = f"{d.strftime('%b %-d')}" + (" (tomorrow)" if days == 1 else f" (in {days} d)")
+    return out
+
+
+def costs_line(state: Path, which: str) -> str:
+    from . import tca
+    from . import tsmom as tsm
+    from . import xs as xsm
+    if which == "tsmom":
+        t = tca.account_tca(state / "tsmom.db", "account", tsm.COST)
+    else:
+        t = tca.account_tca(state / "xs.db", "xs_account", xsm.COST)
+    if not t.n:
+        return "no trades yet"
+    return (f"{t.n} trades · ${t.total_cost:,.2f} in costs · turnover {t.turnover_per_year:.1f}x/yr · "
+            f"drag {100 * t.drag_per_year:.1f}%/yr")
+
+
 # ----------------------------------------------------------------- rendering
 def header(state: Path) -> Panel:
     h = _health(state)
@@ -140,43 +210,108 @@ def header(state: Path) -> Panel:
             line2.append(f"  ·  failing: {', '.join(bad)}", style="red")
     else:
         line2.append("no run recorded yet  ·  launchd runs daily at 07:30", style=MUTED)
-    line2.append("  ·  next 07:30 local", style=MUTED)
+    line2.append("  ·  next run 07:30 local", style=MUTED)
+
+    try:
+        nxt = next_rebalance(state)
+        line3 = Text()
+        line3.append("rebalances  ", style=MUTED)
+        line3.append(f"XS {nxt['xs']}")
+        line3.append("  ·  ", style=MUTED)
+        line3.append(f"TSMOM {nxt['tsmom']}")
+    except Exception as exc:  # noqa: BLE001
+        line3 = Text(f"rebalance calendar unavailable: {exc}", style=MUTED)
 
     art = Text("\n".join(MASCOT), style=f"bold {ACCENT}")
-    body = Text.assemble(line1, "\n", line2)
+    body = Text.assemble(line1, "\n", line2, "\n", line3)
     grid = Table.grid(padding=(0, 2))
     grid.add_column(no_wrap=True)
     grid.add_column()
-    grid.add_row(art, Text.assemble("\n", body))
+    grid.add_row(art, body)
     return Panel(grid, border_style=MUTED, padding=(0, 1))
+
+
+def _account_row(rows: List[dict]) -> Tuple[str, Text, Text, str]:
+    """equity, delta since the previous mark, P&L vs contributions, sparkline."""
+    latest = rows[-1]
+    eq = float(latest["equity"])
+    curve = pnl_curve(rows)
+    delta = Text("")
+    if len(rows) >= 2:
+        d = eq - float(rows[-2]["equity"]) - float(latest.get("deposit") or 0.0)
+        delta = Text(f"{d:+,.2f}", style="green" if d > 0 else ("red" if d < 0 else MUTED))
+    deposited = sum(float(r.get("deposit") or 0.0) for r in rows)
+    pnl = eq - deposited
+    pnl_t = Text(f"{pnl:+,.2f} ({100 * pnl / deposited:+.2f}%)" if deposited else f"{pnl:+,.2f}",
+                 style="green" if pnl > 0 else ("red" if pnl < 0 else MUTED))
+    return f"${eq:,.2f}", delta, pnl_t, sparkline(curve)
 
 
 def accounts_table(state: Path) -> Table:
     tbl = Table(show_header=True, header_style=MUTED, box=None, padding=(0, 2), expand=False)
-    tbl.add_column("account")
-    tbl.add_column("equity", justify="right")
-    tbl.add_column("as of")
-    tbl.add_column("last action")
-    tbl.add_column("holds")
+    for col, just in (("account", "left"), ("equity", "right"), ("day", "right"), ("P&L", "right"),
+                      ("curve", "left"), ("holds", "left")):
+        tbl.add_column(col, justify=just)
 
-    t = _latest(state / "tsmom.db", "account")
-    if t:
+    rows = _history(state / "tsmom.db", "account", limit=400)
+    if rows:
+        rows = list(reversed(rows))
+        t = rows[-1]
         pos = {k: v for k, v in json.loads(t.get("positions") or "{}").items() if v > 0}
         holds = ", ".join(sorted(pos)) or "all cash"
         cash_w = 1 - sum(pos.values()) / max(float(t["equity"]), 1e-9)
-        tbl.add_row("TSMOM  monthly trend", f"${float(t['equity']):,.2f}", _date(t["ts"]),
-                    t.get("note") or "", f"{holds}  · cash {100 * cash_w:.0f}% in {t.get('vehicle') or 'USD'}")
+        eq, delta, pnl, spark = _account_row(rows)
+        tbl.add_row("TSMOM  monthly trend", eq, delta, pnl, Text(spark, style=ACCENT),
+                    f"{holds}  · cash {100 * cash_w:.0f}% in {t.get('vehicle') or 'USD'}")
     else:
-        tbl.add_row("TSMOM  monthly trend", "-", "-", "not started", "")
+        tbl.add_row("TSMOM  monthly trend", "-", "", "", "", "not started")
 
-    x = _latest(state / "xs.db", "xs_account")
-    if x:
+    rows = _history(state / "xs.db", "xs_account", limit=400)
+    if rows:
+        rows = list(reversed(rows))
+        x = rows[-1]
         pos = {k: v for k, v in json.loads(x.get("positions") or "{}").items() if v > 0}
         holds = ", ".join(sorted(pos)) or "all cash"
-        tbl.add_row("XS     weekly top-10", f"${float(x['equity']):,.2f}", _date(x["ts"]),
-                    x.get("note") or "", holds)
+        eq, delta, pnl, spark = _account_row(rows)
+        tbl.add_row("XS     weekly top-10", eq, delta, pnl, Text(spark, style=ACCENT), holds)
     else:
-        tbl.add_row("XS     weekly top-10", "-", "-", "not started", "")
+        tbl.add_row("XS     weekly top-10", "-", "", "", "", "not started")
+    return tbl
+
+
+def decision_table(state: Path, which: str) -> Table:
+    """The last decision, as the bot saw it: signal, target, current, action.
+    Read from the stored row, never recomputed."""
+    db, table = (("tsmom.db", "account") if which == "tsmom" else ("xs.db", "xs_account"))
+    row = _latest(state / db, table)
+    title = f"{which} · last decision"
+    tbl = Table(title=title, box=None, header_style=MUTED, padding=(0, 2))
+    for col, just in (("asset", "left"), ("signal", "right"), ("target", "right"), ("current $", "right"),
+                      ("target $", "right"), ("action", "left")):
+        tbl.add_column(col, justify=just)
+    if not row:
+        tbl.add_row("-", "", "", "", "", "no decision stored yet")
+        return tbl
+    sig = {k: float(v) for k, v in json.loads(row.get("signals") or "{}").items()}
+    w = {k: float(v) for k, v in json.loads(row.get("weights") or "{}").items()}
+    pos = {k: float(v) for k, v in json.loads(row.get("positions") or "{}").items()}
+    equity = float(row["equity"])
+    label = "52w" if which == "tsmom" else "7d"
+    tbl.columns[1].header = label
+    names = sorted(set(sig) | set(w) | set(pos), key=lambda a: (-(w.get(a, 0.0)), -sig.get(a, 0.0)))
+    if which == "xs":
+        names = [a for a in names if w.get(a, 0.0) > 0 or pos.get(a, 0.0) > 0][:15] or names[:15]
+    for a in names:
+        cur, tgt = pos.get(a, 0.0), w.get(a, 0.0) * equity
+        delta = tgt - cur
+        act = "hold" if abs(delta) < max(0.01 * equity, 0.5) else ("buy" if delta > 0 else "sell")
+        style = "green" if act == "buy" else ("red" if act == "sell" else MUTED)
+        tbl.add_row(a, f"{100 * sig[a]:+.1f}%" if a in sig else "",
+                    f"{100 * w.get(a, 0.0):.0f}%", f"{cur:,.2f}", f"{tgt:,.2f}",
+                    Text(f"{act} {abs(delta):,.2f}" if act != "hold" else "hold", style=style))
+    cash = equity - sum(pos.values())
+    tbl.add_row("cash", "", f"{100 * cash / max(equity, 1e-9):.0f}%", f"{cash:,.2f}", "", "")
+    tbl.caption = (f"as of {_date(row['ts'])} · {row.get('note') or ''} · {costs_line(state, which)}")
     return tbl
 
 
@@ -208,6 +343,8 @@ def _run(console: "Console", args: List[str], cwd: Path) -> int:
 
 def act_status(console, state):
     console.print(accounts_table(state))
+    for which in ("tsmom", "xs"):
+        console.print(Text(f"{which:6s} costs: {costs_line(state, which)}", style=MUTED))
     h = _health(state)
     if h.get("steps"):
         tbl = Table(title="last run", box=None, header_style=MUTED, padding=(0, 2))
@@ -229,6 +366,13 @@ def act_daily(console, state):
                                default=False, style=STYLE).ask():
         return
     _run(console, ["daily", "--state-dir", str(state)], state)
+
+
+def act_why(console, state):
+    which = questionary.select("Which account?", choices=["tsmom", "xs"], style=STYLE,
+                               pointer="❯").ask()
+    if which:
+        console.print(decision_table(state, which))
 
 
 def act_history(console, state):
@@ -330,6 +474,7 @@ def act_logs(console, state):
 MENU: List[Tuple[str, Callable]] = [
     ("Status & health", act_status),
     ("Open the dashboard", act_dashboard),
+    ("Why: the last decision, as the bot saw it", act_why),
     ("Preview what each rule would do now (no writes)", act_preview),
     ("Account history", act_history),
     ("Run the daily job now", act_daily),
