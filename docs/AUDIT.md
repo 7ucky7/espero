@@ -424,7 +424,7 @@ pip install -e ".[chart]"
 espero fetch BTC-USD --days 1460             # public Coinbase candles, no key needed
 espero matrix                                # the table in §3
 espero chart                                 # -> docs/equity.png
-python -m unittest discover -s tests -v      # 17 tests: timing, gaps, fees, causality, numbers
+python -m unittest discover -s tests -t . -v      # 17 tests: timing, gaps, fees, causality, numbers
 ```
 
 `espero/backtest.py` is a ~260-line reference backtester: causal indicators, next-bar fills,

@@ -301,7 +301,7 @@ def act_factors(console, state):
 
 
 def act_tests(console, state):
-    console.print(Text("$ python -m unittest discover -s tests", style=MUTED))
+    console.print(Text("$ python -m unittest discover -s tests -t .", style=MUTED))
     subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", "tests"], cwd=state)
 
 

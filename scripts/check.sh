@@ -32,7 +32,7 @@ if [ "${1:-}" = "--install" ]; then
 fi
 
 echo "== tests =="
-"$PY" -m unittest discover -s tests -v
+"$PY" -m unittest discover -s tests -t . -v
 
 echo
 echo "== audit table =="

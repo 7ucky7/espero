@@ -147,7 +147,7 @@ espero matrix data/ETHUSD_86400s.csv
 Run the tests:
 
 ```bash
-python -m unittest discover -s tests -v
+python -m unittest discover -s tests -t . -v
 ```
 
 Or run the whole CI job locally — the same steps as `.github/workflows/ci.yml`, no hosted runner

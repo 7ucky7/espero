@@ -32,7 +32,7 @@ jobs:
         run: ruff check espero tests research
 
       - name: Tests
-        run: python -m unittest discover -s tests -v
+        run: python -m unittest discover -s tests -t . -v
 
       - name: Reproduce the audit table
         run: espero matrix
