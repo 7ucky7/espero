@@ -30,6 +30,16 @@ def _cmd_fetch(args: argparse.Namespace) -> int:
     return 0
 
 
+def _waiting(granularity: int) -> str:
+    """'no new closed bar' with the time until the next one closes, so a quiet
+    loop reads as waiting rather than broken."""
+    now = int(time.time())
+    next_close = (now // granularity + 1) * granularity
+    mins = max(0, (next_close - now) // 60)
+    stamp = time.strftime("%H:%M", time.gmtime(next_close))
+    return f"no new closed bar  ·  next {granularity // 60}-min bar closes at {stamp} UTC, in {mins} min"
+
+
 def _load(path: str):
     p = Path(path)
     if not p.exists():
@@ -84,7 +94,7 @@ def _cmd_paper(args: argparse.Namespace) -> int:
         known = journal.last_bar_ts(args.product) or 0
         fresh = [r for r in df.to_dict("records") if int(r["ts"]) > known]
         if not fresh:
-            print("no new closed bar")
+            print(_waiting(args.granularity))
             return
         # seed history silently, trade only the most recent closed bar
         for bar in fresh[:-1]:
@@ -146,7 +156,7 @@ def _cmd_live(args: argparse.Namespace) -> int:
         known = journal.last_bar_ts(args.product) or 0
         fresh = [r for r in df.to_dict("records") if int(r["ts"]) > known]
         if not fresh:
-            print("no new closed bar")
+            print(_waiting(args.granularity))
             return
         for bar in fresh[:-1]:
             journal.add_bar(args.product, bar)
