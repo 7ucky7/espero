@@ -62,6 +62,17 @@ class TestAccount(unittest.TestCase):
         self.assertAlmostEqual(reopened.cash, acc.cash)
         self.assertAlmostEqual(reopened.units["SPY"], units["SPY"])
 
+    def test_decision_snapshot_survives_restart(self):
+        acc = T.Account(self.path)
+        acc.cash = 100.0
+        acc.rebalance(pd.Series({"SPY": 10.0}), {"SPY": 1 / 6})
+        acc.save(1_700_000_000, acc.equity(pd.Series({"SPY": 10.0})), {"SPY": 1 / 6},
+                 "init", positions={"SPY": 10.0}, signals={"SPY": 0.139, "TLT": -0.1})
+        reopened = T.Account(self.path)
+        import json
+        row = reopened.last()
+        self.assertEqual(json.loads(row["signals"])["SPY"], 0.139)
+
     def test_no_leverage(self):
         acc = T.Account(self.path)
         acc.cash = 100.0

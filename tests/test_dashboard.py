@@ -30,12 +30,15 @@ class TestDashboard(unittest.TestCase):
         acc.rebalance(pd.Series({"SPY": 100.0}), {"SPY": 1 / 6})
         eq = acc.equity(pd.Series({"SPY": 100.0}))
         acc.save(1_793_059_200, eq, {"SPY": 1 / 6}, "init",
-                 positions={"SPY": acc.units["SPY"] * 100.0})
+                 positions={"SPY": acc.units["SPY"] * 100.0},
+                 signals={"SPY": 0.139})
 
         html = dashboard.render(path, self.dir / "p.db", self.dir / "l.db")
         self.assertIn("Cross-asset trend", html)
         self.assertIn(f"${eq:,.2f}", html)   # net of the 10 bps cost
         self.assertIn("SPY", html)
+        self.assertIn("+13.9%", html)        # the snapshot the bot decided on
+        self.assertIn("as of the last decision", html)
 
     def test_equity_equals_cash_plus_positions(self):
         path = self.dir / "tsmom.db"

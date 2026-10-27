@@ -36,7 +36,7 @@ COST = 0.001
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS account (
     ts INTEGER PRIMARY KEY, cash REAL, units TEXT, equity REAL, weights TEXT, note TEXT,
-    positions TEXT
+    positions TEXT, signals TEXT
 );
 """
 
@@ -83,13 +83,18 @@ class Account:
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
         cols = {r["name"] for r in self.db.execute("PRAGMA table_info(account)")}
-        if "positions" not in cols:  # old databases
-            self.db.execute("ALTER TABLE account ADD COLUMN positions TEXT")
-            self.db.commit()
+        for col in ("positions", "signals"):  # old databases
+            if col not in cols:
+                self.db.execute(f"ALTER TABLE account ADD COLUMN {col} TEXT")
+                self.db.commit()
         row = self.db.execute("SELECT * FROM account ORDER BY ts DESC LIMIT 1").fetchone()
         if row:
             self.cash = row["cash"]
             self.units = json.loads(row["units"])
+
+    def last(self) -> Optional[dict]:
+        row = self.db.execute("SELECT * FROM account ORDER BY ts DESC LIMIT 1").fetchone()
+        return dict(row) if row else None
 
     def equity(self, prices: pd.Series) -> float:
         return self.cash + sum(u * float(prices[a]) for a, u in self.units.items())
@@ -109,12 +114,15 @@ class Account:
         return traded
 
     def save(self, ts: int, equity: float, weights: Dict[str, float], note: str,
-             positions: Optional[Dict[str, float]] = None) -> None:
+             positions: Optional[Dict[str, float]] = None,
+             signals: Optional[Dict[str, float]] = None) -> None:
+        """`signals` is what the bot SAW when it decided, kept separately from the
+        weights so a later viewer can audit the decision instead of re-deriving it."""
         self.db.execute(
-            "INSERT OR REPLACE INTO account(ts, cash, units, equity, weights, note, positions) "
-            "VALUES (?,?,?,?,?,?,?)",
+            "INSERT OR REPLACE INTO account(ts, cash, units, equity, weights, note, positions,"
+            " signals) VALUES (?,?,?,?,?,?,?,?)",
             (ts, self.cash, json.dumps(self.units), equity, json.dumps(weights), note,
-             json.dumps(positions or {})),
+             json.dumps(positions or {}), json.dumps(signals or {})),
         )
         self.db.commit()
 
@@ -146,10 +154,18 @@ def run(state: str, cash: float, force: bool = False, span: str = "2y") -> dict:
     if due:
         traded = acc.rebalance(latest, weights)
         note = "init" if fresh and not force else "rebalance"
+    else:
+        # a mark must not rewrite the decision it is marking: keep the snapshot
+        prev = acc.last()
+        if prev:
+            weights = json.loads(prev.get("weights") or "{}") or weights
+        prev_sig = json.loads((prev or {}).get("signals") or "{}") if prev else {}
+        if prev_sig:
+            sig = prev_sig
 
     equity = acc.equity(latest)
     marked = {a: u * float(latest[a]) for a, u in acc.units.items()}
-    acc.save(ts, equity, weights, note, positions=marked)
+    acc.save(ts, equity, weights, note, positions=marked, signals=sig)
     return {
         "ts": px.index[-1], "signals": sig, "weights": weights, "cash_weight": cash_w,
         "equity": equity, "traded": traded, "note": note,

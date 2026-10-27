@@ -78,11 +78,15 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
         equity = cash + sum(positions.values())
         total += equity
         weights = json.loads(latest.get("weights") or "{}")
-        sig = {}
-        try:
-            sig = tsm.signals(tsm.load_series("2y"))
-        except Exception:  # noqa: BLE001
-            pass
+        # prefer the snapshot taken at decision time; live signals are a fallback
+        sig = {k: float(v) for k, v in json.loads(latest.get("signals") or "{}").items()}
+        sig_note = "as of the last decision"
+        if not sig:
+            try:
+                sig = tsm.signals(tsm.load_series("2y"))
+                sig_note = "live (no decision snapshot stored)"
+            except Exception:  # noqa: BLE001
+                sig_note = ""
 
         def _row(a: str, v: float) -> str:
             r = sig.get(a)
@@ -101,7 +105,8 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
         <section class="card">
           <h2>Cross-asset trend <span class="pill">paper</span></h2>
           <div class="big">${equity:,.2f}</div>
-          <div class="sub">as of {as_of} · cash ${cash:,.2f} · {sum(1 for v in positions.values() if v > 0)} positions</div>
+          <div class="sub">as of {as_of} · cash ${cash:,.2f} · {sum(1 for v in positions.values() if v > 0)} positions
+            · {sig_note}</div>
           {_sparkline(curve)}
           <table>
             <thead><tr><th>asset</th><th class="num">target</th><th class="num">value</th>
