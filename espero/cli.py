@@ -8,7 +8,9 @@ from pathlib import Path
 
 from . import data
 from .backtest import Config, run
+from .broker import BrokerError, broker_from_env
 from .journal import Journal
+from .live import LiveConfig, LiveTrader
 from .paper import PaperConfig, PaperTrader
 from .report import buy_and_hold, equity_png, format_matrix, matrix
 
@@ -105,6 +107,64 @@ def _cmd_paper(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_live(args: argparse.Namespace) -> int:
+    from .data import recent_closed_bars
+
+    try:
+        broker = broker_from_env(dry_run=not args.confirm_live)
+    except BrokerError as exc:
+        print(f"cannot start: {exc}", file=sys.stderr)
+        return 2
+
+    journal = Journal(args.state)
+    cfg = LiveConfig(product=args.product, granularity=args.granularity,
+                     max_notional=args.max_notional, max_daily_loss=args.max_daily_loss)
+    trader = LiveTrader(journal, broker, cfg, kill_file=args.kill_file)
+
+    print(f"broker   {broker.name}   live={broker.live}")
+    print(f"product  {args.product} {args.granularity}s")
+    try:
+        print(f"price    {broker.price(args.product):.2f}")
+        print(f"balance  {broker.balance(cfg.quote_currency):.2f} {cfg.quote_currency}")
+    except Exception as exc:  # noqa: BLE001 - surface credential problems plainly
+        print(f"credential check failed: {exc}", file=sys.stderr)
+        journal.close()
+        return 2
+    if not broker.live:
+        print("mode     DRY RUN - orders are logged, never sent")
+
+    def step() -> None:
+        df = recent_closed_bars(args.product, args.granularity, args.seed)
+        if df.empty:
+            print("no candles returned")
+            return
+        known = journal.last_bar_ts(args.product) or 0
+        fresh = [r for r in df.to_dict("records") if int(r["ts"]) > known]
+        if not fresh:
+            print("no new closed bar")
+            return
+        for bar in fresh[:-1]:
+            journal.add_bar(args.product, bar)
+        print(f"bar {fresh[-1]['dt']} close={fresh[-1]['close']:.2f}")
+        for event in trader.on_bar(fresh[-1]):
+            print("  ", event)
+
+    if args.loop:
+        try:
+            while True:
+                step()
+                time.sleep(args.interval)
+        except KeyboardInterrupt:
+            print("stopped")
+        finally:
+            journal.close()
+        return 0
+
+    step()
+    journal.close()
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="espero", description="small honest crypto research harness")
     p.add_argument("--version", action="version", version="espero 0.1.0")
@@ -138,6 +198,20 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("--loop", action="store_true")
     pp.add_argument("--interval", type=float, default=60.0)
     pp.set_defaults(func=_cmd_paper)
+
+    lv = sub.add_parser("live", help="trade a real account (dry-run unless confirmed)")
+    lv.add_argument("--product", default="BTC-USD")
+    lv.add_argument("--granularity", type=int, default=3600)
+    lv.add_argument("--state", default="live.db")
+    lv.add_argument("--seed", type=int, default=300)
+    lv.add_argument("--max-notional", type=float, default=25.0)
+    lv.add_argument("--max-daily-loss", type=float, default=15.0)
+    lv.add_argument("--kill-file", default="KILL")
+    lv.add_argument("--loop", action="store_true")
+    lv.add_argument("--interval", type=float, default=60.0)
+    lv.add_argument("--confirm-live", action="store_true",
+                    help="actually send orders (also needs ESPERO_ALLOW_LIVE=1)")
+    lv.set_defaults(func=_cmd_live)
 
     c = sub.add_parser("chart", help="write the equity curve PNG")
     c.add_argument("data", nargs="?", default="data/BTCUSD_86400s.csv")

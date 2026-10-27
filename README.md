@@ -31,12 +31,41 @@ loop, four strategies, and a test suite whose job is to make the same mistakes i
   signal/order/fill/equity mark to SQLite, and resumes the open position after a restart. A risk
   gate sits under the strategy: max 25% of equity per position, 1% risk per trade, daily loss cap.
 
+## Live trading — off by default, and paranoid when on
+
+`espero live` connects to a real Coinbase Advanced account and can place real orders. Four things
+must all be true before a single order leaves the process:
+
+1. `.env` contains a CDP key pair (never commit it — `.env` is gitignored)
+2. `ESPERO_ALLOW_LIVE=1` is set
+3. `--confirm-live` is passed
+4. no `KILL` file exists in the working directory
+
+Without `--confirm-live` the bot runs as a **dry run**: it reads your real balance and price, decides
+what it *would* do, and logs it. Orders are also hard-capped by `--max-notional` (default $25) and the
+process halts itself for the day at `--max-daily-loss` (default $15). Every order carries a
+`client_order_id` generated before the call, so a retry is deduplicated instead of doubling.
+
+```bash
+cp .env.example .env      # fill in COINBASE_API_KEY and COINBASE_API_SECRET (or _SECRET_FILE)
+espero live               # dry run: reads the account, sends nothing
+espero live --loop --interval 60
+
+# only after the dry run looks right, and only if you can afford to lose it:
+ESPERO_ALLOW_LIVE=1 espero live --confirm-live --max-notional 25 --max-daily-loss 15
+touch KILL                # stops the loop on its next pass
+```
+
+Honest limits of this version: stops are **software** stops checked once per bar, not exchange-side
+orders — if the process dies, the stop dies with it. There is no reconciliation against the venue
+yet, no partial-fill handling, and no funding. Fills are market orders at bar close, not the next
+bar's open the backtest assumes; the journal records both so the difference is measurable.
+
 ## What it does not do (yet)
 
-No broker connection yet — fills are simulated against real candles, no exchange account is touched.
-No reconciliation against a venue (there is no venue), no funding, no partial fills. That is
-deliberate: those belong *below* the strategy layer, and the roadmap adds them with tests instead of
-adding them as decoration. See [Roadmap](#roadmap).
+No reconciliation against a venue on boot, no exchange-side stop orders, no funding, no partial
+fills. That is deliberate: those belong *below* the strategy layer, and the roadmap adds them with
+tests instead of adding them as decoration. See [Roadmap](#roadmap).
 
 ## Quickstart
 
@@ -108,10 +137,12 @@ espero/
     backtest.py     # one position, one bar at a time, two fill models
     journal.py      # SQLite: bars, signals, orders, positions, equity
     risk.py         # pre-trade gate: size, exposure, daily loss cap
-    paper.py        # live loop: closed bar -> signal -> next-bar fill -> journal
+    paper.py        # simulated loop: closed bar -> signal -> next-bar fill -> journal
+    broker.py       # Broker protocol, Coinbase Advanced adapter, DryRun wrapper
+    live.py         # real orders, capped and gated, same signals
     report.py       # the matrix table and the equity chart
     cli.py          # fetch | backtest | matrix | chart | paper
-  tests/            # 32 tests: timing, gaps, fees, causality, restart, risk gate, numbers
+  tests/            # 38 tests: timing, gaps, fees, causality, restart, risk gate, live caps
   data/             # committed BTC/ETH daily candles so the numbers reproduce offline
   docs/AUDIT.md     # the audit that started this
 ```
@@ -123,8 +154,10 @@ espero/
 - [ ] Position sizing as risk (stop distance × account), not notional
 - [x] SQLite journal: bars, signals, orders, fills, positions, equity
 - [x] Restart-safe paper trader on live candles, with a pre-trade risk gate
-- [ ] Broker interface behind one protocol, with `client_order_id` idempotency
+- [x] Broker interface behind one protocol, with `client_order_id` idempotency
+- [x] Live path with dry-run, kill switch, notional cap and daily loss limit
 - [ ] Reconciliation against a real venue on boot
+- [ ] Exchange-side stop orders (so the stop survives a crash)
 - [ ] Kill switch: daily loss cap, max open risk, max orders/minute
 - [ ] TCA report: fill vs mid at signal time
 - [ ] Docker + health endpoint
