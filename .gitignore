@@ -21,3 +21,7 @@ results/
 
 # research data (fetched on demand by research/*.py)
 research/data/
+
+# paper account state
+tsmom.db
+*_paper.db

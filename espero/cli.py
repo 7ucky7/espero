@@ -13,6 +13,7 @@ from . import features as fx
 from .journal import Journal
 from .live import LiveConfig, LiveTrader
 from .paper import PaperConfig, PaperTrader
+from . import tsmom as tsm
 from .report import buy_and_hold, equity_png, format_matrix, matrix
 
 
@@ -186,6 +187,16 @@ def _cmd_features(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_tsmom(args: argparse.Namespace) -> int:
+    res = tsm.run(args.state, args.cash, force=args.force, span=args.span)
+    if args.report:
+        for row in reversed(res["account"].history(args.limit)):
+            print(f"{row['ts']:>12d}  equity {row['equity']:8.2f}  {row['note']}")
+        return 0
+    print(tsm.format_report(res))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="espero", description="small honest crypto research harness")
     p.add_argument("--version", action="version", version="espero 0.1.0")
@@ -240,6 +251,15 @@ def build_parser() -> argparse.ArgumentParser:
     lv.add_argument("--confirm-live", action="store_true",
                     help="actually send orders (also needs ESPERO_ALLOW_LIVE=1)")
     lv.set_defaults(func=_cmd_live)
+
+    tm = sub.add_parser("tsmom", help="cross-asset trend paper account")
+    tm.add_argument("--state", default="tsmom.db")
+    tm.add_argument("--cash", type=float, default=100.0)
+    tm.add_argument("--span", default="2y", help="yahoo history window")
+    tm.add_argument("--force", action="store_true", help="rebalance now regardless of the calendar")
+    tm.add_argument("--report", action="store_true", help="print account history")
+    tm.add_argument("--limit", type=int, default=30)
+    tm.set_defaults(func=_cmd_tsmom)
 
     c = sub.add_parser("chart", help="write the equity curve PNG")
     c.add_argument("data", nargs="?", default="data/BTCUSD_86400s.csv")
