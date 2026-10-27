@@ -101,6 +101,38 @@ def build(coins: Optional[List[str]] = None, span: str = "5y",
     return MarketPanel(**frames, errors=errors)
 
 
+def build_coinbase(coins: Optional[List[str]] = None, days: int = 365, granularity: int = 3600,
+                   fetch: Callable[[str, int, int], pd.DataFrame] = None,
+                   quote: str = "USD") -> MarketPanel:
+    """Intraday panel from Coinbase Exchange public candles, one calendar of
+    `granularity`-second bars. Coins Coinbase does not list are recorded in
+    `errors`, never substituted. A missing bar stays NaN."""
+    coins = coins or UNIVERSE
+    fetch = fetch or data.fetch
+    per_field: Dict[str, Dict[str, pd.Series]] = {f: {} for f in FIELDS}
+    errors: Dict[str, str] = {}
+    for c in coins:
+        try:
+            df = fetch(f"{c}-{quote}", days, granularity)
+        except Exception as exc:  # noqa: BLE001 - recorded, the panel is still built
+            errors[c] = f"{type(exc).__name__}: {exc}"
+            continue
+        if df.empty:
+            errors[c] = "empty"
+            continue
+        stamp = df["dt"] if "dt" in df else df["time"]
+        dt = pd.to_datetime(stamp, utc=True).dt.tz_localize(None)
+        for f in FIELDS:
+            s = pd.Series(df[f].to_numpy(dtype=float), index=dt)
+            per_field[f][c] = s[~s.index.duplicated(keep="last")].sort_index()
+    if not per_field["close"]:
+        raise RuntimeError(f"panel: nothing loaded ({len(errors)} errors)")
+    frames = {f: pd.DataFrame(per_field[f]).sort_index() for f in FIELDS}
+    for c, why in errors.items():
+        log.warning("panel: %s not loaded: %s", c, why)
+    return MarketPanel(**frames, errors=errors)
+
+
 def eligible(p: MarketPanel, min_history: int = 365, min_dollar_volume: float = 1e6,
              volume_window: int = 30) -> pd.DataFrame:
     """True where a coin may be ranked on that date, using only that date's past.

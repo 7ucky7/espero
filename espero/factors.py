@@ -96,6 +96,59 @@ def alpha101_101(p: MarketPanel) -> pd.DataFrame:
     return (p.close - p.open) / ((p.high - p.low) + 0.001)
 
 
+# --------------------------------------------------------------- lead-lag
+def leadlag(p: MarketPanel, n: int = 1, leader: str = "BTC") -> pd.DataFrame:
+    """The gap between the leader's last-n-bar return and each coin's own:
+    r_leader(t-n, t) - r_i(t-n, t). Sign positive: a coin that has not yet
+    moved with the leader is expected to catch up. The leader itself is NaN
+    (it cannot lag itself)."""
+    if leader not in p.close.columns:
+        raise KeyError(f"leader {leader} not in panel")
+    r = ops.returns(p.close, n)
+    out = (-r).add(r[leader], axis=0)
+    out[leader] = np.nan
+    return out
+
+
+def rolling_beta(p: MarketPanel, window: int = 168, leader: str = "BTC") -> pd.DataFrame:
+    """Each coin's trailing beta to the leader from one-bar returns: cov / var
+    over `window` bars, causal. The leader's own beta is 1 by construction."""
+    r = ops.returns(p.close, 1)
+    lead = r[leader]
+    cov = r.rolling(window, min_periods=window).cov(lead)
+    var = lead.rolling(window, min_periods=window).var()
+    return cov.div(var.replace(0, np.nan), axis=0)
+
+
+def leadlag_beta(p: MarketPanel, n: int = 1, window: int = 168, leader: str = "BTC") -> pd.DataFrame:
+    """beta_i * r_leader(t-n, t) - r_i(t-n, t): how far coin i fell short of
+    the move its own beta says it should have made. Unlike the unscaled gap,
+    this varies across coins within an hour, so it can be ranked."""
+    if leader not in p.close.columns:
+        raise KeyError(f"leader {leader} not in panel")
+    r = ops.returns(p.close, n)
+    beta = rolling_beta(p, window, leader)
+    out = beta.mul(r[leader], axis=0) - r
+    out[leader] = np.nan
+    return out
+
+
+def leadlag_beta_1h(p):
+    return leadlag_beta(p, 1)
+
+
+def leadlag_beta_3h(p):
+    return leadlag_beta(p, 3)
+
+
+def leadlag_1h(p):
+    return leadlag(p, 1)
+
+
+def leadlag_3h(p):
+    return leadlag(p, 3)
+
+
 # ----------------------------------------------------------------- carry
 def carry(p: MarketPanel, funding: pd.DataFrame, n: int = 7) -> pd.DataFrame:
     """Negative mean funding over n days: when longs pay shorts the long is
@@ -118,6 +171,10 @@ ZOO: Dict[str, Factor] = {
     "alpha101_6": alpha101_6,
     "alpha101_12": alpha101_12,
     "alpha101_101": alpha101_101,
+    "leadlag_1h": leadlag_1h,
+    "leadlag_3h": leadlag_3h,
+    "leadlag_beta_1h": leadlag_beta_1h,
+    "leadlag_beta_3h": leadlag_beta_3h,
 }
 
 UNSIGNED = {"amihud_30", "volume_z_20"}

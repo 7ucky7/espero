@@ -85,7 +85,9 @@ class TestFactorSigns(unittest.TestCase):
         self.assertEqual(factors.lowvol_30(q).iloc[-1].idxmax(), "C01")
 
     def test_every_zoo_factor_is_causal(self):
-        p = make_panel()
+        base = make_panel()
+        ren = {"C00": "BTC"}
+        p = panel.MarketPanel(*(getattr(base, f).rename(columns=ren) for f in panel.FIELDS))
         cut = 400
         head = p.slice(end=p.index[cut - 1])
         for name, fn in factors.ZOO.items():
@@ -93,6 +95,49 @@ class TestFactorSigns(unittest.TestCase):
                 a = fn(p).iloc[cut - 1].to_numpy(dtype=float)
                 b = fn(head).iloc[-1].to_numpy(dtype=float)
                 np.testing.assert_allclose(a, b, rtol=1e-10, atol=1e-12, equal_nan=True)
+
+    def test_leadlag_is_leader_minus_own_and_leader_is_nan(self):
+        p = make_panel()
+        close = p.close.rename(columns={"C00": "BTC"})
+        q = panel.MarketPanel(p.open.rename(columns={"C00": "BTC"}), p.high.rename(columns={"C00": "BTC"}),
+                              p.low.rename(columns={"C00": "BTC"}), close, p.volume.rename(columns={"C00": "BTC"}))
+        f = factors.leadlag_1h(q)
+        r = ops.returns(close, 1)
+        self.assertTrue(np.isnan(f.iloc[-1]["BTC"]))
+        self.assertAlmostEqual(float(f.iloc[-1]["C01"]), float(r.iloc[-1]["BTC"] - r.iloc[-1]["C01"]), places=12)
+
+    def test_leadlag_beta_scales_the_leader_move_per_coin(self):
+        base = make_panel()
+        ren = {"C00": "BTC"}
+        p = panel.MarketPanel(*(getattr(base, f).rename(columns=ren) for f in panel.FIELDS))
+        f = factors.leadlag_beta_1h(p)
+        self.assertTrue(np.isnan(f.iloc[-1]["BTC"]))
+        beta = factors.rolling_beta(p, 168)
+        r = ops.returns(p.close, 1)
+        want = float(beta.iloc[-1]["C01"] * r.iloc[-1]["BTC"] - r.iloc[-1]["C01"])
+        self.assertAlmostEqual(float(f.iloc[-1]["C01"]), want, places=12)
+        # a coin that is literally BTC scaled has beta 1 and no gap
+        close = p.close.copy()
+        close["C02"] = close["BTC"] * 0.5
+        q = panel.MarketPanel(p.open, p.high, p.low, close, p.volume)
+        self.assertAlmostEqual(float(factors.leadlag_beta_1h(q).iloc[-1]["C02"]), 0.0, places=8)
+
+    def test_leadlag_needs_the_leader(self):
+        with self.assertRaises(KeyError):
+            factors.leadlag_1h(make_panel())
+
+    def test_build_coinbase_uses_the_time_column_and_records_misses(self):
+        def fetch(product, days, granularity):
+            c = product.replace("-USD", "")
+            if c == "NOPE":
+                raise panel.data.FetchError("HTTP 404")
+            idx = pd.date_range("2026-01-01", periods=48, freq="h", tz="UTC")
+            return pd.DataFrame({"time": [d.isoformat() for d in idx], "open": 1.0, "high": 1.0,
+                                 "low": 1.0, "close": 1.0, "volume": 1.0})
+        q = panel.build_coinbase(["BTC", "ETH", "NOPE"], days=2, granularity=3600, fetch=fetch)
+        self.assertEqual(q.coins, ["BTC", "ETH"])
+        self.assertIn("NOPE", q.errors)
+        self.assertEqual(len(q.index), 48)
 
     def test_composite_is_a_rank_average(self):
         p = make_panel()
