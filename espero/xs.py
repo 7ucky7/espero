@@ -52,7 +52,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS xs_account (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts INTEGER NOT NULL, cash REAL, units TEXT, equity REAL, weights TEXT,
-    signals TEXT, positions TEXT, deposit REAL, note TEXT, last_px TEXT,
+    signals TEXT, positions TEXT, deposit REAL, note TEXT, last_px TEXT, traded REAL,
     UNIQUE(ts, note)
 );
 """
@@ -133,9 +133,10 @@ class XSAccount:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.executescript(SCHEMA)
         cols = {r["name"] for r in self.db.execute("PRAGMA table_info(xs_account)")}
-        if "last_px" not in cols:  # databases written before the column existed
-            self.db.execute("ALTER TABLE xs_account ADD COLUMN last_px TEXT")
-            self.db.commit()
+        for col, typ in (("last_px", "TEXT"), ("traded", "REAL")):  # pre-column databases
+            if col not in cols:
+                self.db.execute(f"ALTER TABLE xs_account ADD COLUMN {col} {typ}")
+                self.db.commit()
         row = self.db.execute("SELECT * FROM xs_account ORDER BY ts DESC, id DESC LIMIT 1").fetchone()
         if row:
             self.cash = row["cash"]
@@ -179,14 +180,14 @@ class XSAccount:
         return traded
 
     def save(self, ts: int, equity: float, weights, sig, positions, deposit, note,
-             last_px: Optional[Dict[str, float]] = None) -> None:
+             last_px: Optional[Dict[str, float]] = None, traded: float = 0.0) -> None:
         if last_px is not None:
             self.last_px = {c: float(v) for c, v in last_px.items()}
         self.db.execute(
             "INSERT OR REPLACE INTO xs_account(ts, cash, units, equity, weights, signals,"
-            " positions, deposit, note, last_px) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            " positions, deposit, note, last_px, traded) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (ts, self.cash, json.dumps(self.units), equity, json.dumps(weights),
-             json.dumps(sig), json.dumps(positions), deposit, note, json.dumps(self.last_px)),
+             json.dumps(sig), json.dumps(positions), deposit, note, json.dumps(self.last_px), traded),
         )
         self.db.commit()
 
@@ -236,7 +237,7 @@ def run(state: str, cash: float, force: bool = False, deposit: float = 0.0,
     mark_px = acc.mark_prices(latest)
     equity = acc.equity(latest)
     marked = {c: u * float(mark_px[c]) for c, u in acc.units.items()}
-    acc.save(ts, equity, w, sig, marked, deposit, note, last_px=mark_px.to_dict())
+    acc.save(ts, equity, w, sig, marked, deposit, note, last_px=mark_px.to_dict(), traded=traded)
     return {"ts": ts, "sig": sig, "weights": w, "equity": equity, "traded": traded,
             "note": note, "account": acc, "positions": marked,
             "errors": errors, "stale": sorted(stale_px), "degraded": degraded}

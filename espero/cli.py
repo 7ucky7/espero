@@ -232,6 +232,32 @@ def _cmd_daily(args: argparse.Namespace) -> int:
     return res.exit_code
 
 
+def _cmd_factors(args: argparse.Namespace) -> int:
+    from . import factor_eval as fe
+    from . import panel as pnl
+
+    if args.panel and Path(args.panel).exists() and not args.refresh:
+        p = pnl.MarketPanel.load(args.panel)
+        print(f"panel from {args.panel}: {len(p.coins)} coins, {len(p.index)} days")
+    else:
+        print(f"building panel ({len(xsm.UNIVERSE)} coins, {args.span}) ...")
+        p = pnl.build(span=args.span)
+        if args.panel:
+            p.save(args.panel)
+            print(f"saved to {args.panel}")
+        if p.errors:
+            print(f"{len(p.errors)} coins failed: {', '.join(sorted(p.errors))}")
+    mask = pnl.eligible(p, min_history=args.min_history, min_dollar_volume=args.min_dollar_volume)
+    names = args.names.split(",") if args.names else None
+    t = fe.evaluate(p, names=names, horizon=args.horizon, mask=mask, n_splits=args.splits)
+    print(f"\n{len(p.index)} days · horizon {args.horizon}d · eligible today: {int(mask.iloc[-1].sum())}\n")
+    print(fe.format_table(t))
+    if args.out:
+        t.to_csv(args.out)
+        print(f"\nwrote {args.out}")
+    return 0
+
+
 def _cmd_xs(args: argparse.Namespace) -> int:
     res = xsm.run(args.state, args.cash, force=args.force, deposit=args.deposit)
     print(xsm.format_report(res))
@@ -309,6 +335,18 @@ def build_parser() -> argparse.ArgumentParser:
     xs_p.add_argument("--deposit", type=float, default=0.0)
     xs_p.add_argument("--force", action="store_true")
     xs_p.set_defaults(func=_cmd_xs)
+
+    fc = sub.add_parser("factors", help="rank-IC evaluation of the factor zoo on the crypto panel")
+    fc.add_argument("--panel", default="data/panel", help="CSV panel directory (built if missing)")
+    fc.add_argument("--refresh", action="store_true", help="re-download even if the panel exists")
+    fc.add_argument("--span", default="5y")
+    fc.add_argument("--horizon", type=int, default=5, help="forward-return horizon in days")
+    fc.add_argument("--splits", type=int, default=4, help="purged walk-forward test blocks")
+    fc.add_argument("--min-history", type=int, default=365)
+    fc.add_argument("--min-dollar-volume", type=float, default=1e6)
+    fc.add_argument("--names", default="", help="comma-separated subset of the zoo")
+    fc.add_argument("-o", "--out", default="", help="write the table as CSV")
+    fc.set_defaults(func=_cmd_factors)
 
     dy = sub.add_parser("daily", help="the scheduled run: tsmom -> xs -> dashboard -> health.json")
     dy.add_argument("--state-dir", default=".", help="where the .db files, dashboard and health live")

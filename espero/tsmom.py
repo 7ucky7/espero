@@ -38,7 +38,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS account (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts INTEGER NOT NULL, cash REAL, units TEXT, equity REAL, weights TEXT, note TEXT,
-    positions TEXT, signals TEXT, deposit REAL, vehicle TEXT, carry REAL,
+    positions TEXT, signals TEXT, deposit REAL, vehicle TEXT, carry REAL, traded REAL,
     UNIQUE(ts, note)   -- one mark per day, but a deposit and a mark can share a day
 );
 """
@@ -103,7 +103,7 @@ class Account:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.executescript(SCHEMA)
         cols = {r["name"] for r in self.db.execute("PRAGMA table_info(account)")}
-        for col in ("positions", "signals", "deposit", "vehicle", "carry"):  # old databases
+        for col in ("positions", "signals", "deposit", "vehicle", "carry", "traded"):  # old databases
             if col not in cols:
                 self.db.execute(f"ALTER TABLE account ADD COLUMN {col} TEXT")
                 self.db.commit()
@@ -153,15 +153,15 @@ class Account:
     def save(self, ts: int, equity: float, weights: Dict[str, float], note: str,
              positions: Optional[Dict[str, float]] = None,
              signals: Optional[Dict[str, float]] = None,
-             deposit: float = 0.0, carry_this: float = 0.0) -> None:
+             deposit: float = 0.0, carry_this: float = 0.0, traded: float = 0.0) -> None:
         """`signals` is what the bot SAW when it decided, kept separately from the
         weights so a later viewer can audit the decision instead of re-deriving it."""
         self.db.execute(
             "INSERT OR REPLACE INTO account(ts, cash, units, equity, weights, note, positions,"
-            " signals, deposit, vehicle, carry) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            " signals, deposit, vehicle, carry, traded) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (ts, self.cash, json.dumps(self.units), equity, json.dumps(weights), note,
              json.dumps(positions or {}), json.dumps(signals or {}), deposit,
-             self.vehicle, carry_this),
+             self.vehicle, carry_this, traded),
         )
         self.db.commit()
 
@@ -231,7 +231,7 @@ def run(state: str, cash: float, force: bool = False, span: str = "2y",
     equity = acc.equity(latest)
     marked = {a: u * float(latest[a]) for a, u in acc.units.items()}
     acc.save(ts, equity, weights, note, positions=marked, signals=sig, deposit=deposit,
-             carry_this=carry_this)
+             carry_this=carry_this, traded=traded)
     return {
         "ts": px.index[-1], "signals": sig, "weights": weights, "cash_weight": cash_w,
         "equity": equity, "traded": traded, "note": note,

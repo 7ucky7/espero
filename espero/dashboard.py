@@ -14,7 +14,9 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import tca
 from . import tsmom as tsm
+from . import xs as xsm
 
 CLASSES = [
     ("Equities", ["SPY"]),
@@ -239,6 +241,7 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
           <div class="sub">as of {as_of} · {sum(1 for v in pos.values() if v > 0)} positions
             · cash ${float(latest['cash']):,.2f}
             · last action: {latest.get('note', '')}</div>
+          <div class="sub">costs: {tca.format_line(tca.account_tca(xs_db, "xs_account", xsm.COST))}</div>
           <div class="sub">deposited ${deposited:,.2f} · P&amp;L
             <span class="{'pos' if pnl >= 0 else 'neg'}">{pnl:+,.2f}</span></div>
           {_sparkline(curve)}
