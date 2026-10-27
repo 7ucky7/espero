@@ -48,6 +48,12 @@ class TestSignal(unittest.TestCase):
         self.assertIn("need", st.error)
 
 
+class TestCountdown(unittest.TestCase):
+    def test_minutes_to_the_next_hourly_close(self):
+        self.assertEqual(fast.next_signal_minutes(3600 * 10 + 5 * 60), 56)   # 10:05 -> 11:00, +1 refresh
+        self.assertEqual(fast.next_signal_minutes(3600 * 10 + 59 * 60 + 30), 1)
+
+
 class TestProposals(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

@@ -377,6 +377,13 @@ class Keys:
             tty.setcbreak(self.fd)
 
 
+def next_signal_minutes(now: Optional[float] = None) -> int:
+    """Minutes until the next hourly bar closes, plus the one-minute refresh lag
+    of the candle signal. This is the next moment a proposal can appear."""
+    now = time.time() if now is None else now
+    return int((3600 - now % 3600) // 60) + 1
+
+
 def _kv(pairs, muted="grey58"):
     """A two-column key/value grid, keys muted, values aligned."""
     from rich.table import Table
@@ -445,6 +452,9 @@ def render(fb: FastBook, mode: str):
                    else ("bold red" if s.value <= -fb.threshold else "bold"))
         gap.append(f"  = beta {s.beta:.2f} × BTC {1e4 * s.r_leader:+.0f} − own {1e4 * s.r_coin:+.0f}"
                    f"   (acts at ±{1e4 * fb.threshold:.0f})", style=MUTED)
+        mins = next_signal_minutes()
+        gap.append(f"\nnext update in {mins}m", style="bold" if mins <= 2 else MUTED)
+        gap.append(" (the signal moves only when an hourly bar closes)", style=MUTED)
         ic = "n/a" if s.rolling_ic is None else f"{s.rolling_ic:+.3f}"
         working = Text(f"2-week IC {ic}", style="red" if s.cold else "green")
         if s.cold:
