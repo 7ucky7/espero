@@ -23,6 +23,7 @@ from typing import Dict, Optional
 
 import pandas as pd
 
+from . import cash as treasury
 from . import data
 
 UNIVERSE = {
@@ -37,7 +38,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS account (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts INTEGER NOT NULL, cash REAL, units TEXT, equity REAL, weights TEXT, note TEXT,
-    positions TEXT, signals TEXT, deposit REAL,
+    positions TEXT, signals TEXT, deposit REAL, vehicle TEXT, carry REAL,
     UNIQUE(ts, note)   -- one mark per day, but a deposit and a mark can share a day
 );
 """
@@ -93,13 +94,15 @@ class Account:
     path: Path
     cash: float = 0.0
     units: Dict[str, float] = field(default_factory=dict)
+    vehicle: str = "USD"
+    carry_total: float = 0.0
 
     def __post_init__(self):
         self.db = sqlite3.connect(self.path)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
         cols = {r["name"] for r in self.db.execute("PRAGMA table_info(account)")}
-        for col in ("positions", "signals", "deposit"):  # old databases
+        for col in ("positions", "signals", "deposit", "vehicle", "carry"):  # old databases
             if col not in cols:
                 self.db.execute(f"ALTER TABLE account ADD COLUMN {col} TEXT")
                 self.db.commit()
@@ -107,6 +110,8 @@ class Account:
         if row:
             self.cash = row["cash"]
             self.units = json.loads(row["units"])
+            self.vehicle = row["vehicle"] or "USD"
+            self.carry_total = float(row["carry"] or 0.0)
 
     def last(self) -> Optional[dict]:
         row = self.db.execute("SELECT * FROM account ORDER BY ts DESC, id DESC LIMIT 1").fetchone()
@@ -132,14 +137,15 @@ class Account:
     def save(self, ts: int, equity: float, weights: Dict[str, float], note: str,
              positions: Optional[Dict[str, float]] = None,
              signals: Optional[Dict[str, float]] = None,
-             deposit: float = 0.0) -> None:
+             deposit: float = 0.0, carry_this: float = 0.0) -> None:
         """`signals` is what the bot SAW when it decided, kept separately from the
         weights so a later viewer can audit the decision instead of re-deriving it."""
         self.db.execute(
             "INSERT OR REPLACE INTO account(ts, cash, units, equity, weights, note, positions,"
-            " signals, deposit) VALUES (?,?,?,?,?,?,?,?,?)",
+            " signals, deposit, vehicle, carry) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (ts, self.cash, json.dumps(self.units), equity, json.dumps(weights), note,
-             json.dumps(positions or {}), json.dumps(signals or {}), deposit),
+             json.dumps(positions or {}), json.dumps(signals or {}), deposit,
+             self.vehicle, carry_this),
         )
         self.db.commit()
 
@@ -184,14 +190,29 @@ def run(state: str, cash: float, force: bool = False, span: str = "2y",
         if prev_sig:
             sig = prev_sig
 
+    # accrue interest on idle cash for the time since the last run
+    prev_row = acc.last()
+    carry_this = 0.0
+    if prev_row and prev_row.get("vehicle"):
+        days = max(0.0, (ts - int(prev_row["ts"])) / 86400.0)
+        apy = next((v.apy for v in treasury.DEFAULT_VEHICLES if v.name == prev_row["vehicle"]), 0.0)
+        carry_this = treasury.carry(acc.cash, apy, days)
+        acc.cash += carry_this
+        acc.carry_total += carry_this
+
+    # decide where the uninvested cash lives
+    decision = treasury.choose(acc.cash)
+    acc.vehicle = decision.vehicle
+
     equity = acc.equity(latest)
     marked = {a: u * float(latest[a]) for a, u in acc.units.items()}
-    acc.save(ts, equity, weights, note, positions=marked, signals=sig, deposit=deposit)
+    acc.save(ts, equity, weights, note, positions=marked, signals=sig, deposit=deposit,
+             carry_this=carry_this)
     return {
         "ts": px.index[-1], "signals": sig, "weights": weights, "cash_weight": cash_w,
         "equity": equity, "traded": traded, "note": note,
         "positions": {a: u * float(latest[a]) for a, u in acc.units.items()},
-        "account": acc,
+        "account": acc, "cash_decision": decision, "carry_total": acc.carry_total,
     }
 
 
@@ -202,6 +223,12 @@ def format_report(res: dict) -> str:
         pos = res["positions"].get(a, 0.0)
         lines.append(f"{a:6s} {100*res['signals'][a]:+10.1f}% {100*res['weights'][a]:7.0f}% {pos:10.2f}")
     lines.append(f"{'cash':6s} {'':11s} {100*res['cash_weight']:7.0f}% {res['equity'] - sum(res['positions'].values()):10.2f}")
+    d = res.get("cash_decision")
+    if d:
+        lines.append(f"\ncash ${d.amount + d.reserve:,.2f}: keep ${d.reserve:,.2f} liquid, "
+                     f"sweep ${d.amount:,.2f} -> {d.vehicle}  ({d.reason})")
+    if res.get("carry_total"):
+        lines.append(f"carry accrued to date: ${res['carry_total']:+.2f}")
     if res["traded"]:
-        lines.append(f"\ntraded ${res['traded']:.2f} at {COST*1e4:.0f} bps a side")
+        lines.append(f"traded ${res['traded']:.2f} at {COST*1e4:.0f} bps a side")
     return "\n".join(lines)

@@ -78,6 +78,10 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
         equity = cash + sum(positions.values())
         total += equity
         deposited = sum(float(r.get("deposit") or 0) for r in rows)
+        carry_total = sum(float(r.get("carry") or 0) for r in rows)
+        vehicle = latest.get("vehicle") or "USD"
+        apy = next((v.apy for v in __import__("espero.cash", fromlist=["x"]).DEFAULT_VEHICLES
+                    if v.name == vehicle), 0.0)
         pnl = equity - deposited
         pnl_pct = 100 * pnl / deposited if deposited else 0.0
         weights = json.loads(latest.get("weights") or "{}")
@@ -115,7 +119,8 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
           <div class="sub">as of {as_of} · cash ${cash:,.2f} · {sum(1 for v in positions.values() if v > 0)} positions
             · {sig_note}</div>
           <div class="sub">deposited ${deposited:,.2f} · P&amp;L
-            <span class="{'pos' if pnl >= 0 else 'neg'}">{pnl:+,.2f} ({pnl_pct:+.2f}%)</span></div>
+            <span class="{'pos' if pnl >= 0 else 'neg'}">{pnl:+,.2f} ({pnl_pct:+.2f}%)</span>
+            · cash in <b>{vehicle}</b> {100 * apy:.2f}% · carry ${carry_total:,.2f}</div>
           {_sparkline(curve)}
           <table>
             <thead><tr><th>asset</th><th class="num">target</th><th class="num">value</th>
