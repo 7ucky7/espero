@@ -52,6 +52,27 @@ The first execution took the first five signals of the day by ticker order; the 
 is disclosed because it changed the number, even though it was a fidelity correction rather than a
 tuning change.
 
+## Pilot — small caps (exploratory, not pre-registered)
+
+60 random current S&P 600 names, same rule, 50 bps costs (small-cap spreads, not 10):
+
+| period | trades | CAGR | Sharpe | max DD |
+|---|---|---|---|---|
+| design 2010–2020 | 211 | −3.66% | −0.07 | −58.93% |
+| holdout 2021–2026 | 112 | +3.61% | 0.28 | −31.07% |
+
+This is **not evidence about PEAD** and should not be read as a second test:
+
+- **Survivorship bias runs the wrong way.** The universe is 2026 index members, so every small cap
+  that failed is excluded — the bias inflates returns, and the rule still lost in the design period.
+- It is a 60-name sample of a 600-name universe.
+- Costs are assumed at 50 bps; real small-cap spreads can be worse.
+
+What it does suggest is that the weak link is the **signal**, not the pond. A one-day price reaction
+is not an earnings surprise: it fires on guidance, sector moves and buybacks as often as on a beat.
+A real small-cap PEAD test needs consensus-EPS surprise (paid) and a delisting-inclusive universe
+(paid). That is a different project with a different budget, not a retune.
+
 ## What this retires
 
 - **Large-cap PEAD as a retail strategy.** Not without a cleaner surprise measure (consensus EPS) and

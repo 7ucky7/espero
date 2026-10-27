@@ -197,9 +197,19 @@ def metrics(eq: pd.Series) -> dict:
 
 
 def main() -> int:
+    global COST, DESIGN, HOLDOUT, UNIVERSE
     ap = argparse.ArgumentParser()
     ap.add_argument("--refetch", action="store_true")
+    ap.add_argument("--tickers", default="", help="comma-separated override of the universe")
+    ap.add_argument("--cost-bps", type=float, default=10.0)
+    ap.add_argument("--design", default="2010-01-01,2020-12-31")
+    ap.add_argument("--holdout", default="2021-01-01,2026-10-27")
     args = ap.parse_args()
+    COST = args.cost_bps / 1e4
+    DESIGN = tuple(args.design.split(","))
+    HOLDOUT = tuple(args.holdout.split(","))
+    if args.tickers:
+        UNIVERSE = [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
     CACHE.mkdir(parents=True, exist_ok=True)
 
     print(f"{len(UNIVERSE)} tickers; fetching CIKs ...")
