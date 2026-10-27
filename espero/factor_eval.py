@@ -179,7 +179,10 @@ def evaluate(p: MarketPanel, names: Iterable[str] = None, horizon: int = 5, q: i
     factors = factors or ZOO
     names = list(names) if names is not None else list(factors)
     fwd = forward_returns(p.close, horizon)
-    splits = purged_walk_forward(p.index, n_splits=n_splits, horizon=horizon, embargo=embargo)
+    # dates before anything is eligible carry no information; splitting them
+    # would make the first training block empty
+    dates = p.index if mask is None else p.index[mask.reindex(p.index).fillna(False).any(axis=1)]
+    splits = purged_walk_forward(dates, n_splits=n_splits, horizon=horizon, embargo=embargo)
     test_dates = pd.DatetimeIndex(sorted(set().union(*[set(t) for _, t in splits])))
     train_dates = splits[0][0]
     rows = []

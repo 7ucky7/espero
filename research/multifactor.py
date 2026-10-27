@@ -94,10 +94,13 @@ def fmt(name: str, m: dict, extra: str = "") -> str:
             f"{m['total']:+.2f}% | {extra} |")
 
 
+def ew_score(mask: pd.DataFrame) -> pd.DataFrame:
+    return mask.astype(float).where(mask)             # every eligible coin scores 1
+
+
 def benchmarks(p: panel.MarketPanel, mask: pd.DataFrame, start: str, end: str) -> dict:
     btc = p.close["BTC"].loc[start:end].dropna()
-    ew_score = mask.astype(float).where(mask)         # every eligible coin scores 1
-    ew, n, t = simulate(p, ew_score, mask, start, end, vol_target=False, buffer=0.0, top=10_000)
+    ew, n, t = simulate(p, ew_score(mask), mask, start, end, vol_target=False, buffer=0.0, top=10_000)
     return {"BTC": metrics(btc / btc.iloc[0]), "EW": (metrics(ew), n, t)}
 
 
@@ -135,6 +138,20 @@ def main() -> int:
         print(fmt("BTC buy & hold", b["BTC"]))
         ewm, ewn, ewt = b["EW"]
         print(fmt("Equal-weight eligible, weekly", ewm, f"{ewt / yrs:.1f}x · {ewn}"))
+        # information only: which ingredient does the work?
+        print("| *decomposition (information only)* | | | | | |")
+        for name in FACTORS:
+            single = ops.cs_rank(ops.winsorize_mad(ops.where_valid(factors.ZOO[name](p), mask)))
+            eqs, ns, ts = simulate(p, single, mask, start, end)
+            print(fmt(f"{name} alone, same construction", metrics(eqs), f"{ts / yrs:.1f}x · {ns}"))
+        # same construction with no ranking at all: the first 10 eligible names alphabetically,
+        # then vol-targeted and buffered. If this matches MF the composite adds nothing.
+        flat = pd.DataFrame(0.0, index=p.index, columns=p.coins)
+        flat = flat.sub(pd.Series(range(len(p.coins)), index=p.coins) * 1e-6, axis=1)
+        eqf, nf, tf = simulate(p, flat, mask, start, end)
+        print(fmt("no ranking (alphabetical 10), same construction", metrics(eqf), f"{tf / yrs:.1f}x · {nf}"))
+        eqv, nv, tv = simulate(p, ew_score(mask), mask, start, end, vol_target=True, buffer=0.0, top=10_000)
+        print(fmt("all eligible, vol-targeted, no buffer", metrics(eqv), f"{tv / yrs:.1f}x · {nv}"))
         if label == "holdout":
             m, bm = metrics(eq), b["BTC"]
             print("\n| criterion | required | actual | met |")

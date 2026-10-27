@@ -36,9 +36,31 @@ loop, four strategies, and a test suite whose job is to make the same mistakes i
   signal/order/fill/equity mark to SQLite, and resumes the open position after a restart. A risk
   gate sits under the strategy: max 25% of equity per position, 1% risk per trade, daily loss cap.
 
-## Live trading — off by default, and paranoid when on
+## Running unattended
 
-`espero live` connects to a real Coinbase Advanced account and can place real orders. Four things
+The product is the two paper accounts. `espero daily` marks both, rebalances when each one's calendar
+says so, rewrites the dashboard and a `health.json`, and a launchd agent runs it every morning:
+
+```bash
+./scripts/install-launchd.sh         # 07:30 local, state in the repo root, logs in ~/Library/Logs/espero
+cat health.json                      # last_run, last_success, per-step ok / error / equity
+touch KILL                           # pause everything; rm KILL to resume
+```
+
+Each step is isolated (a Yahoo failure in one account does not stop the other or the dashboard), a
+pid lock prevents overlapping runs, the exit code is non-zero on any failure, and macOS notifications
+(plus an optional webhook, `ESPERO_WEBHOOK_URL`) fire on failures and rebalances. The XS account
+refuses to rebalance when fewer than 30 of its 42 coins have a fresh close, because a shrunken
+universe would silently change the top-10. The whole operating procedure is in
+[docs/RUNBOOK.md](docs/RUNBOOK.md).
+
+## Live trading — EXPERIMENTAL, off by default, and paranoid when on
+
+`espero live` connects to a real Coinbase Advanced account and can place real orders. It is a dry-run
+tool with a trapdoor, not a product: it has never been reconciled against a venue, and it is not part
+of the scheduled run. The October 2026 audit fixed four bugs in it (the daily loss limit never reset,
+the risk gate was fed constants instead of the day's P&L, SELL signals were ignored so live ran a
+different rule from the one that was tested, and the exit fee was not charged). Four things
 must all be true before a single order leaves the process:
 
 1. `.env` contains a CDP key pair (never commit it — `.env` is gitignored)
@@ -71,6 +93,31 @@ bar's open the backtest assumes; the journal records both so the difference is m
 No reconciliation against a venue on boot, no exchange-side stop orders, no funding, no partial
 fills. That is deliberate: those belong *below* the strategy layer, and the roadmap adds them with
 tests instead of adding them as decoration. See [Roadmap](#roadmap).
+
+## Factor research
+
+`RESULTS_XS20.md` diagnosed why the cross-sectional tests kept failing: one factor, no risk control,
+no turnover control, no breadth. The toolkit the cross-sectional shops actually run on is now in the
+package, written to this repo's rules (every operator causal and tested, the forward return computed
+in one named place, nothing wired into a live account without a pre-registration):
+
+```bash
+espero factors                        # rank-IC table of the zoo on the 42-coin panel
+espero factors --horizon 10 --names mom_30,rev_3,lowvol_30
+python research/multifactor.py        # hypothesis #8, as pre-registered
+```
+
+| module | what it is |
+|---|---|
+| `ops.py` | Alpha101/191 operator dialect: `ts_rank`, `ts_corr`, `decay_linear`, `cs_rank`, `cs_neutralize`, MAD winsorizing |
+| `panel.py` | wide OHLCV panel; eligibility dated by history and dollar volume, not by what exists today |
+| `factors.py` | twelve signed factors, three literal Alpha101 formulas, a rank-average composite |
+| `factor_eval.py` | rank IC, ICIR, t, IC decay, quantile spread, turnover, purged walk-forward, deflated Sharpe, the Harvey-Liu-Zhu t > 3 hurdle |
+| `portfolio.py` | vol targeting, weight caps, turnover buffer, ex-ante book vol |
+| `tca.py` | per-trade cost, annual turnover and drag, on the dashboard |
+
+What it deliberately does not include: breadth beyond 42 survivors, machine-learned factor weights
+(not enough independent observations to fit one honestly), intraday data, shorting.
 
 ## Quickstart
 
@@ -144,7 +191,21 @@ observations, and the top-vs-bottom quintile spread ran the wrong way. The desig
 be empty — Polymarket's history for these markets starts in December 2023 — which is a flaw in how the
 periods were set: [research/RESULTS_ODDS.md](research/RESULTS_ODDS.md).
 
-Scoreboard: six hypotheses, one thin pass.
+The seventh, top-5-of-21 crypto momentum, was exploratory by construction (its window was already
+contaminated) and showed that selection added nothing over equal weight:
+[research/RESULTS_XS20.md](research/RESULTS_XS20.md).
+
+The eighth, the first built from the factor stack — a rank-average of 30-day momentum, 3-day reversal
+and low volatility, top 10 of 42, vol-targeted to 20% and turnover-buffered — **passed** all four
+pre-registered criteria on its (weakened) holdout: +16.9% CAGR, Sharpe 0.92, −24% max drawdown
+against BTC's +10.7%, 0.45, −53%. The information-only decomposition says what kind of pass it is:
+ten coins chosen *alphabetically* with the same construction already beat BTC on Sharpe and
+drawdown, the extra return comes from the low-vol factor, and momentum contributes nothing. The IC
+criterion was met by a composite whose mean quantile spread is *negative*, a flaw in the criterion as
+written that the results file records: [research/RESULTS_MF.md](research/RESULTS_MF.md).
+
+Scoreboard: eight hypotheses, two passes, both risk-construction results. No alpha has been found;
+holding less when volatility rises is the only thing that has reliably helped.
 
 ## The numbers
 
@@ -178,7 +239,7 @@ Same signals every row. The only things that change are when the fill happens an
 ```
 espero/
   espero/
-    data.py         # Coinbase Exchange candles (public), CSV cache
+    data.py         # Coinbase/Yahoo/FRED fetches with retries and a cached fallback
     indicators.py   # causal SMAs, RSI, Bollinger, MACD
     signals.py      # four strategies + weighted combiner (pure functions)
     backtest.py     # one position, one bar at a time, two fill models
@@ -186,19 +247,35 @@ espero/
     risk.py         # pre-trade gate: size, exposure, daily loss cap
     paper.py        # simulated loop: closed bar -> signal -> next-bar fill -> journal
     broker.py       # Broker protocol, Coinbase Advanced adapter, DryRun wrapper
-    live.py         # real orders, capped and gated, same signals
+    live.py         # EXPERIMENTAL: real orders, capped and gated, same signals
+    tsmom.py        # monthly cross-asset trend paper account
+    xs.py           # weekly cross-sectional crypto paper account, degraded-universe guard
+    cash.py         # where idle cash lives, and why
+    runner.py       # `espero daily`: tsmom -> xs -> dashboard -> health.json, lock, notifications
+    notify.py       # macOS notification + optional webhook
+    dashboard.py    # static HTML, with TCA per account
+    ops.py          # Alpha101/191 operators, causal
+    panel.py        # wide panel + dated eligibility
+    factors.py      # the factor zoo
+    factor_eval.py  # rank IC, purged walk-forward, deflated Sharpe
+    portfolio.py    # vol targeting, caps, turnover buffer
+    tca.py          # transaction cost analysis
     report.py       # the matrix table and the equity chart
-    cli.py          # fetch | backtest | matrix | chart | paper
-  tests/            # 38 tests: timing, gaps, fees, causality, restart, risk gate, live caps
+    cli.py          # fetch | backtest | matrix | chart | paper | live | tsmom | xs | factors | daily | dashboard
+  tests/            # 141 tests
+  deploy/launchd/   # the LaunchAgent template; scripts/install-launchd.sh renders it
+  research/         # one pre-registration and one results file per hypothesis
   data/             # committed BTC/ETH daily candles so the numbers reproduce offline
   docs/AUDIT.md     # the audit that started this
+  docs/AUDIT_2026-10.md  # the second audit: what broke on a bad day, and the factor stack
+  docs/RUNBOOK.md   # install, check, pause, recover
 ```
 
 ## Roadmap
 
 - [x] Causal indicators + honest backtester + reference tests
-- [ ] Walk-forward split with a purge gap; report out-of-sample only
-- [ ] Position sizing as risk (stop distance × account), not notional
+- [x] Walk-forward split with a purge gap; report out-of-sample only (`factor_eval.purged_walk_forward`)
+- [x] Position sizing as risk: vol targeting and caps (`portfolio.py`), not yet wired to a live account
 - [x] SQLite journal: bars, signals, orders, fills, positions, equity
 - [x] Restart-safe paper trader on live candles, with a pre-trade risk gate
 - [x] Broker interface behind one protocol, with `client_order_id` idempotency
@@ -206,8 +283,11 @@ espero/
 - [ ] Reconciliation against a real venue on boot
 - [ ] Exchange-side stop orders (so the stop survives a crash)
 - [ ] Kill switch: daily loss cap, max open risk, max orders/minute
-- [ ] TCA report: fill vs mid at signal time
-- [ ] Docker + health endpoint
+- [x] TCA report per paper account (`tca.py`, on the dashboard)
+- [x] Scheduled run with health file, lock and notifications (launchd; Docker not needed for a Mac)
+- [x] Retrying HTTP with a cached fallback; degraded-universe guard
+- [ ] Dated listing/delisting file, so survivorship can be measured instead of disclosed
+- [ ] Forward paper account for hypothesis #8, if it passed
 
 The gate for live money is not "it backtests well". It is: two weeks of paper at zero duplicate
 orders, a restart mid-position that reconciles to the cent, and out-of-sample results that survive
@@ -217,6 +297,9 @@ your actual fee tier.
 
 - [docs/AUDIT.md](docs/AUDIT.md) — the original audit: what was broken, how it was measured, and the
   30-day plan this project is executing.
+- [docs/AUDIT_2026-10.md](docs/AUDIT_2026-10.md) — the second audit: ten findings, five money bugs
+  fixed, the deployment gaps closed, and what a factor shop would add.
+- [docs/RUNBOOK.md](docs/RUNBOOK.md) — running it unattended on a Mac.
 
 ## License
 
