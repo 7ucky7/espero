@@ -72,7 +72,7 @@ def _positions(latest: dict) -> dict:
 
 
 def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
-           live_db: Path = Path("live.db")) -> str:
+           live_db: Path = Path("live.db"), xs_db: Path = Path("xs.db")) -> str:
     rows = _read_account(tsmom_db)
     cards = []
     total = 0.0
@@ -203,6 +203,52 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
           <div class="big">${cash:,.2f}</div>
           <div class="sub">10% kept liquid · remainder swept to {vehicle} at {100 * apy:.2f}%
             · carry to date ${carry_total:,.2f}</div>
+        </section>""")
+
+    if xs_db.exists():
+        con = sqlite3.connect(xs_db)
+        con.row_factory = sqlite3.Row
+        try:
+            xr = con.execute("SELECT * FROM xs_account ORDER BY ts, id").fetchall()
+        except sqlite3.OperationalError:
+            xr = []
+        con.close()
+        if xr:
+            latest = dict(xr[-1])
+            equity = float(latest["equity"])
+            total += equity
+            pos = json.loads(latest.get("positions") or "{}")
+            sig = json.loads(latest.get("signals") or "{}")
+            w = json.loads(latest.get("weights") or "{}")
+            deposited = sum(float(r["deposit"] or 0) for r in xr)
+            pnl = equity - deposited
+            cum, curve = 0.0, []
+            for r in xr:
+                cum += float(r["deposit"] or 0)
+                curve.append(float(r["equity"]) - cum)
+            top = sorted(pos.items(), key=lambda kv: -kv[1])[:10]
+            body = "".join(
+                f"<tr><td>{c}</td><td class='num'>{100*sig.get(c, 0):+.1f}%</td>"
+                f"<td class='num'>{100*w.get(c, 0):.0f}%</td>"
+                f"<td class='num'>{v:,.2f}</td></tr>"
+                for c, v in top
+            ) or "<tr><td colspan='4' class='muted'>all cash</td></tr>"
+            as_of = datetime.fromtimestamp(int(latest["ts"]), timezone.utc).date()
+            cards.append(f"""
+        <section class="card">
+          <h2>Cross-sectional weekly <span class="pill">paper · top 10 of 42</span></h2>
+          <div class="big">${equity:,.2f}</div>
+          <div class="sub">as of {as_of} · {sum(1 for v in pos.values() if v > 0)} positions
+            · cash ${float(latest['cash']):,.2f}
+            · last action: {latest.get('note', '')}</div>
+          <div class="sub">deposited ${deposited:,.2f} · P&amp;L
+            <span class="{'pos' if pnl >= 0 else 'neg'}">{pnl:+,.2f}</span></div>
+          {_sparkline(curve)}
+          <table>
+            <thead><tr><th>coin</th><th class="num">7d</th><th class="num">weight</th>
+            <th class="num">value</th></tr></thead>
+            <tbody>{body}</tbody>
+          </table>
         </section>""")
 
     for name, path, label in (("Paper (bar strategy)", paper_db, "paper"),
