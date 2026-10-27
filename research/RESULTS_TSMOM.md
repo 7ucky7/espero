@@ -54,6 +54,20 @@ Behaviour: ~2.4 positions at a time out of 6, 10% turnover per month, 1–3% of 
 - **Long-only, six assets, one path.** The literature's version shorts the negative-trend assets; this
   one goes to cash and gives up half the effect.
 
+## Correction — the live lookback (found after starting the paper account)
+
+The backtest reindexed every asset to the SPY calendar, so its 252 rows meant ~12 months for all
+assets. The live account computed 252 rows **per asset**, which is a year for an ETF and **eight
+months for crypto**. The two rules were not the same rule.
+
+Fixed to a date-based **52-week (364-day)** lookback in `espero/tsmom.py`, matching the backtest's
+intent. It is not cosmetic: at the time of the fix the 252-row rule showed BTC +17.9% / ETH +15.6%
+(hold), while the 52-week rule showed **BTC −29.5% / ETH −42.1%** (exit). The live portfolio went from
+four positions to three — SPY, GLD, USO — with the rest in cash.
+
+The backtest result above is unaffected (it already used ~12 months). What changes is that the live
+account now runs the rule that was actually tested.
+
 ## What happens next, per the pre-registration
 
 Paper trade it through the existing harness for 90 days: monthly rebalance, six assets, $500 notional,

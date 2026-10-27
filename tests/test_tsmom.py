@@ -5,9 +5,22 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from espero import tsmom as T
+
+
+class TestLookback(unittest.TestCase):
+    def test_lookback_is_52_weeks_on_the_calendar_not_252_rows(self):
+        idx = pd.date_range("2024-01-01", periods=500, freq="D")
+        s = pd.Series(np.linspace(100, 200, 500), index=idx)
+        sig = T.signals({"X": s})["X"]
+        ref = s[s.index <= s.index[-1] - pd.Timedelta(days=T.LOOKBACK_DAYS)].iloc[-1]
+        self.assertAlmostEqual(sig, s.iloc[-1] / ref - 1, places=10)
+        # the old row-based version would have used the price 252 rows back
+        old = s.iloc[-1] / s.iloc[-253] - 1
+        self.assertNotAlmostEqual(sig, old, places=3)
 
 
 class TestWeights(unittest.TestCase):

@@ -56,12 +56,26 @@ def closes(series: Dict[str, pd.Series]) -> pd.DataFrame:
     return pd.DataFrame(series).sort_index().ffill()
 
 
+LOOKBACK_DAYS = 364   # 52 weeks: uniform across assets that trade 5 days and 7
+
+
 def signals(series: Dict[str, pd.Series]) -> Dict[str, float]:
+    """Look back 52 weeks on the calendar, not 252 rows.
+
+    252 rows is a year for an ETF (5 sessions/week) and eight months for crypto
+    (7 sessions/week). The backtest reindexed every asset to the SPY calendar,
+    so it meant ~12 months; the live account must mean the same thing.
+    """
     out = {}
     for name, s in series.items():
         s = s.dropna()
-        if len(s) > LOOKBACK:
-            out[name] = float(s.iloc[-1] / s.iloc[-LOOKBACK - 1] - 1)
+        if len(s) < 2:
+            continue
+        cutoff = s.index[-1] - pd.Timedelta(days=LOOKBACK_DAYS)
+        past = s[s.index <= cutoff]
+        if past.empty:
+            continue
+        out[name] = float(s.iloc[-1] / past.iloc[-1] - 1)
     return out
 
 
