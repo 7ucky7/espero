@@ -451,10 +451,10 @@ def render(fb: FastBook, mode: str):
         gap = Text(f"{1e4 * s.value:+.0f} bps", style="bold green" if s.value >= fb.threshold
                    else ("bold red" if s.value <= -fb.threshold else "bold"))
         gap.append(f"  = beta {s.beta:.2f} × BTC {1e4 * s.r_leader:+.0f} − own {1e4 * s.r_coin:+.0f}"
-                   f"   (acts at ±{1e4 * fb.threshold:.0f})", style=MUTED)
+                   f"   (acts at ±{1e4 * fb.threshold:.0f}", style=MUTED)
         mins = next_signal_minutes()
-        gap.append(f"\nnext update in {mins}m", style="bold" if mins <= 2 else MUTED)
-        gap.append(" (the signal moves only when an hourly bar closes)", style=MUTED)
+        gap.append(f" · next {mins}m", style="bold" if mins <= 2 else MUTED)
+        gap.append(")", style=MUTED)
         ic = "n/a" if s.rolling_ic is None else f"{s.rolling_ic:+.3f}"
         working = Text(f"2-week IC {ic}", style="red" if s.cold else "green")
         if s.cold:
@@ -569,7 +569,7 @@ def render(fb: FastBook, mode: str):
         Layout(log, name="log", size=6),
     )
     layout["body"].split_row(Layout(name="left"), Layout(name="right"))
-    layout["left"].split_column(Layout(why, name="why", size=8), Layout(risk, name="risk", size=7),
+    layout["left"].split_column(Layout(why, name="why", size=9), Layout(risk, name="risk", size=7),
                                 Layout(tape_p, name="tape"))
     layout["right"].split_column(Layout(resting_p, name="resting", size=6), Layout(fills_p, name="fills", size=9),
                                  Layout(ladder_p, name="ladder"))
