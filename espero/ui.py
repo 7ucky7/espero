@@ -31,13 +31,14 @@ except ImportError:  # pragma: no cover - the CLI explains how to install
 ACCENT = "#d97757"          # the orange of the pointer
 MUTED = "grey58"
 
-# the mascot: a blocky orange dog. Square body, two eyes, floppy ears, tongue out.
+# the mascot: a blocky orange dog, side view. Ear up, eye, snout left, tongue
+# hanging under the snout, four legs, tail up on the right.
 MASCOT = [
-    "▟█▙ ▄▄▄▄▄▄ ▟█▙",
-    "▜█▛█ ▀  ▀ █▜█▛",
-    "   █  ▄▄  █   ",
-    "   ▀▀▀▀▀▀▀▀   ",
-    "      ▜▛      ",
+    "  ▄█▖                ▗▛ ",
+    " ▟█ ▜▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟▛  ",
+    " ▜█▄▟▌██████████████▛   ",
+    "  ▜▛  █▌          ▐█    ",
+    "      ▀▀          ▀▀    ",
 ]
 # character offsets of the tongue in the joined art, so it can be coloured separately
 _joined = "\n".join(MASCOT)
