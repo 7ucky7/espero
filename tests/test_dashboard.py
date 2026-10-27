@@ -40,6 +40,19 @@ class TestDashboard(unittest.TestCase):
         self.assertIn("+13.9%", html)        # the snapshot the bot decided on
         self.assertIn("as of the last decision", html)
 
+    def test_cards_are_split_by_asset_class(self):
+        path = self.dir / "tsmom.db"
+        acc = tsmom.Account(path)
+        acc.cash = 100.0
+        acc.rebalance(pd.Series({"SPY": 100.0}), {"SPY": 1 / 6})
+        eq = acc.equity(pd.Series({"SPY": 100.0}))
+        acc.save(1_793_059_200, eq, {"SPY": 1 / 6}, "init",
+                 positions={"SPY": acc.units["SPY"] * 100.0}, signals={"SPY": 0.1})
+        html = dashboard.render(path, self.dir / "p.db", self.dir / "l.db")
+        for title in ("Equities", "Bonds", "Commodities", "Crypto", "Cash"):
+            self.assertIn(title, html)
+        self.assertIn("plan", html)          # the move column exists
+
     def test_equity_equals_cash_plus_positions(self):
         path = self.dir / "tsmom.db"
         acc = tsmom.Account(path)

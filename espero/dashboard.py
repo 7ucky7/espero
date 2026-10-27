@@ -19,6 +19,13 @@ import pandas as pd
 
 from . import tsmom as tsm
 
+CLASSES = [
+    ("Equities", ["SPY"]),
+    ("Bonds", ["TLT"]),
+    ("Commodities", ["GLD", "USO"]),
+    ("Crypto", ["BTC", "ETH"]),
+]
+
 
 def _read_account(path: Path) -> list[dict]:
     if not path.exists():
@@ -85,6 +92,13 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
         pnl = equity - deposited
         pnl_pct = 100 * pnl / deposited if deposited else 0.0
         weights = json.loads(latest.get("weights") or "{}")
+        # live signals power the "what would I do now" preview; the stored snapshot
+        # powers the audited decision. They are deliberately different numbers.
+        try:
+            live_sig = {k: float(v) for k, v in tsm.signals(tsm.load_series("2y")).items()}
+        except Exception:  # noqa: BLE001
+            live_sig = {}
+
         # prefer the snapshot taken at decision time; live signals are a fallback
         sig = {k: float(v) for k, v in json.loads(latest.get("signals") or "{}").items()}
         sig_note = "as of the last decision"
@@ -95,15 +109,39 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
             except Exception:  # noqa: BLE001
                 sig_note = ""
 
-        def _row(a: str, v: float) -> str:
-            r = sig.get(a)
-            txt = f"{100 * r:+.1f}%" if r is not None else "n/a"
-            cls = "pos" if (r or 0) > 0 else "neg"
-            return (f"<tr><td>{a}</td><td class='num'>{100 * weights.get(a, 0):.0f}%</td>"
-                    f"<td class='num'>{v:,.2f}</td><td class='num {cls}'>{txt}</td></tr>")
+        def class_rows(assets):
+            rows_out = []
+            for a in assets:
+                cur = positions.get(a, 0.0)
+                tgt = weights.get(a, 0.0) * equity
+                delta = tgt - cur
+                act = "hold" if abs(delta) < 1 else ("buy" if delta > 0 else "sell")
+                rows_out.append((a, sig.get(a), weights.get(a, 0.0), cur, tgt, delta, act))
+            return rows_out
 
-        pos_rows = "".join(_row(a, v) for a, v in sorted(positions.items()) if v > 0) \
-            or "<tr><td colspan='4' class='muted'>all cash</td></tr>"
+        def class_card(title, assets):
+            rs = class_rows(assets)
+            body = "".join(
+                f"<tr><td>{a}</td>"
+                f"<td class='num'>{('' if r is None else f'{100*r:+.1f}%')}</td>"
+                f"<td class='num'>{100*w:.0f}%</td>"
+                f"<td class='num'>{cur:,.2f}</td>"
+                f"<td class='num'>{tgt:,.2f}</td>"
+                f"<td class='num {('pos' if act == 'buy' else 'neg' if act == 'sell' else '')}'>"
+                f"{act} {abs(delta):,.2f}</td></tr>"
+                for a, r, w, cur, tgt, delta, act in rs
+            )
+            invested = sum(cur for *_, cur, _, _, _ in rs)
+            target = sum(tgt for *_, tgt, _, _ in rs)
+            return f"""
+        <section class="card">
+          <h2>{title} <span class="pill">{invested:,.0f} now → {target:,.0f} target</span></h2>
+          <table>
+            <thead><tr><th>asset</th><th class="num">52w</th><th class="num">target</th>
+            <th class="num">now</th><th class="num">plan</th><th class="num">move</th></tr></thead>
+            <tbody>{body}</tbody>
+          </table>
+        </section>"""
 
         # performance curve: equity net of money put in, so a deposit is not a gain
         cum, curve = 0.0, []
@@ -122,12 +160,49 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
             <span class="{'pos' if pnl >= 0 else 'neg'}">{pnl:+,.2f} ({pnl_pct:+.2f}%)</span>
             · cash in <b>{vehicle}</b> {100 * apy:.2f}% · carry ${carry_total:,.2f}</div>
           {_sparkline(curve)}
-          <table>
-            <thead><tr><th>asset</th><th class="num">target</th><th class="num">value</th>
-            <th class="num">12m</th></tr></thead>
-            <tbody>{pos_rows}</tbody>
-          </table>
           <div class="sub">{len(rows)} journal entries · last action: {latest.get('note', '')}</div>
+        </section>""")
+
+        for title, assets in CLASSES:
+            cards.append(class_card(title, assets))
+
+        if live_sig:
+            preview = []
+            for a, r in live_sig.items():
+                cur = positions.get(a, 0.0)
+                tgt = (1 / 6) * equity if r > 0 else 0.0
+                delta = tgt - cur
+                if abs(delta) >= 1:
+                    preview.append((a, r, tgt, delta))
+            preview.sort(key=lambda x: -abs(x[3]))
+            if preview:
+                rows_html = "".join(
+                    f"<tr><td>{a}</td><td class='num'>{100*r:+.1f}%</td>"
+                    f"<td class='num'>{tgt:,.2f}</td>"
+                    f"<td class='num {('pos' if d > 0 else 'neg')}'>"
+                    f"{'buy' if d > 0 else 'sell'} {abs(d):,.2f}</td></tr>"
+                    for a, r, tgt, d in preview
+                )
+            else:
+                rows_html = "<tr><td colspan='4' class='muted'>nothing would change</td></tr>"
+            cards.append(f"""
+        <section class="card">
+          <h2>Next rebalance preview <span class="pill">hypothetical</span></h2>
+          <div class="sub">live signals · what the rule would do if it rebalanced right now.
+            The real decision happens on the first trading day of the month.</div>
+          <table>
+            <thead><tr><th>asset</th><th class="num">52w</th><th class="num">target</th>
+            <th class="num">move</th></tr></thead>
+            <tbody>{rows_html}</tbody>
+          </table>
+        </section>""")
+
+        cards.append(f"""
+        <section class="card">
+          <h2>Cash <span class="pill">{vehicle}</span></h2>
+          <div class="big">${cash:,.2f}</div>
+          <div class="sub">10% kept liquid · remainder swept to {vehicle} at {100 * apy:.2f}%
+            · carry to date ${carry_total:,.2f}</div>
         </section>""")
 
     for name, path, label in (("Paper (bar strategy)", paper_db, "paper"),
