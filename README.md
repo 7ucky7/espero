@@ -123,6 +123,15 @@ the data was touched — did the same thing from the other direction: +115% CAGR
 then **−29.75% CAGR on the holdout** against +23.3% for buying BTC. Two hypotheses, two honest
 failures, both written down: [research/RESULTS.md](research/RESULTS.md).
 
+The third failed too (Polymarket liquidity provision — rewards don't cover inventory:
+[research/LP_NOTES.md](research/LP_NOTES.md)).
+
+The fourth **passed**: cross-asset time-series momentum over SPY/TLT/GLD/USO/BTC/ETH, pre-registered
+before its data was fetched. On the 2021–2026 holdout it returned +7.26% CAGR with a **−8.15% max
+drawdown against −14.56%** for equal-weight — less money, much less pain, including +1.6% in 2022 when
+long bonds fell 30%. The paper is [here](research/RESULTS_TSMOM.md). It is a drawdown-control result,
+not an income one, and the Sharpe margin (1.08 vs 1.02) is inside noise.
+
 ## The numbers
 
 BTC-USD, 2022-10-28 → 2026-10-27, 1,461 daily bars, $10,000, one long position.
