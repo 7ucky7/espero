@@ -99,3 +99,56 @@ def recent_closed_bars(product: str, granularity: int = 3600,
          "open": op, "high": hi, "low": lo, "close": cl, "volume": vol}
         for t, lo, hi, op, cl, vol in done
     ])
+
+
+# ---------------------------------------------------------------- other markets
+def fred_series(series_id: str) -> pd.DataFrame:
+    """Daily series from FRED's public CSV endpoint. No key required.
+
+    Example: DCOILWTICO (WTI spot, Cushing, $/bbl) goes back to 1986.
+    """
+    url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+    req = urllib.request.Request(url, headers={"User-Agent": "espero/0.1"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        text = r.read().decode()
+    rows = []
+    for line in text.splitlines()[1:]:
+        date, _, value = line.partition(",")
+        if not value or value in (".", "NA"):
+            continue
+        try:
+            rows.append({"dt": dt.datetime.fromisoformat(date).replace(tzinfo=dt.timezone.utc),
+                         "close": float(value)})
+        except ValueError:
+            continue
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return pd.DataFrame(columns=["dt", "open", "high", "low", "close", "volume"])
+    df["open"] = df["high"] = df["low"] = df["close"]
+    df["volume"] = 0.0
+    df["ts"] = (df["dt"].astype("int64") // 1_000_000_000).astype(int)
+    return df[["dt", "ts", "open", "high", "low", "close", "volume"]].sort_values("dt").reset_index(drop=True)
+
+
+def yahoo_daily(symbol: str, span: str = "5y") -> pd.DataFrame:
+    """Daily OHLCV from Yahoo's public chart endpoint (futures, ETFs, crypto)."""
+    q = urllib.parse.urlencode({"range": span, "interval": "1d"})
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(symbol)}?{q}"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        payload = json.load(r)
+    result = payload["chart"]["result"][0]
+    ts = result["timestamp"]
+    quote = result["indicators"]["quote"][0]
+    rows = []
+    for i, t in enumerate(ts):
+        o, h, l, c = (quote[k][i] for k in ("open", "high", "low", "close"))
+        if None in (o, h, l, c):
+            continue
+        rows.append({
+            "dt": dt.datetime.fromtimestamp(t, dt.timezone.utc),
+            "ts": int(t),
+            "open": float(o), "high": float(h), "low": float(l), "close": float(c),
+            "volume": float(quote["volume"][i] or 0),
+        })
+    return pd.DataFrame(rows).sort_values("dt").reset_index(drop=True)
