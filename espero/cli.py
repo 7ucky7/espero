@@ -112,6 +112,17 @@ def _cmd_paper_compare(args: argparse.Namespace) -> int:
 
 
 def _cmd_paper(args: argparse.Namespace) -> int:
+    from .lock import JournalBusy, JournalLock
+
+    try:
+        with JournalLock(args.state):
+            return _paper_loop(args)
+    except JournalBusy as exc:
+        print(f"refusing to start: {exc}")
+        return 3
+
+
+def _paper_loop(args: argparse.Namespace) -> int:
     from .data import recent_closed_bars
 
     journal = Journal(args.state)
