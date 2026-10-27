@@ -35,7 +35,7 @@ MUTED = "grey58"
 MASCOT = [
     "▗▄▄▄▄▄▄▄▐▛██▜▌ ",
     "▝▜██████▜████▛▘",
-    "▘▘ ▝▝  ▘▘ ▝▝   ",
+    "  ▘▘ ▝▝  ▘▘ ▝▝ ",
 ]
 STYLE = None
 if questionary is not None:
