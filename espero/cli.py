@@ -36,8 +36,9 @@ def _waiting(granularity: int) -> str:
     now = int(time.time())
     next_close = (now // granularity + 1) * granularity
     mins = max(0, (next_close - now) // 60)
-    stamp = time.strftime("%H:%M", time.gmtime(next_close))
-    return f"no new closed bar  ·  next {granularity // 60}-min bar closes at {stamp} UTC, in {mins} min"
+    opened = time.strftime("%H:%M", time.gmtime(next_close - granularity))
+    closes = time.strftime("%H:%M", time.gmtime(next_close))
+    return f"no new closed bar  ·  the {opened} bar closes at {closes} UTC, in {mins} min"
 
 
 def _load(path: str):
