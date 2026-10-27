@@ -9,6 +9,7 @@ from pathlib import Path
 from . import data
 from .backtest import Config, run
 from .broker import BrokerError, broker_from_env
+from . import features as fx
 from .journal import Journal
 from .live import LiveConfig, LiveTrader
 from .paper import PaperConfig, PaperTrader
@@ -165,6 +166,26 @@ def _cmd_live(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_features(args: argparse.Namespace) -> int:
+    if args.source == "hl":
+        df, col, name = fx.hyperliquid_funding(pages=args.pages), "funding", "hl_funding_btc"
+    elif args.source == "okx":
+        df, col, name = fx.okx_funding(pages=args.pages), "funding", "okx_funding_btc"
+    else:
+        if not args.token:
+            print("--token is required for --source poly", file=sys.stderr)
+            return 2
+        df, col, name = fx.polymarket_history(args.token), "prob", f"poly_{args.token[:10]}"
+
+    if df.empty:
+        print("no data returned", file=sys.stderr)
+        return 2
+    n = fx.save(args.out, name, df, col)
+    print(f"{n} rows -> {args.out} [{name}]")
+    print(f"range {int(df['ts'].min())} .. {int(df['ts'].max())}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="espero", description="small honest crypto research harness")
     p.add_argument("--version", action="version", version="espero 0.1.0")
@@ -198,6 +219,13 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("--loop", action="store_true")
     pp.add_argument("--interval", type=float, default=60.0)
     pp.set_defaults(func=_cmd_paper)
+
+    ft = sub.add_parser("features", help="fetch point-in-time features into SQLite")
+    ft.add_argument("--source", choices=["hl", "okx", "poly"], default="hl")
+    ft.add_argument("--out", default="features.db")
+    ft.add_argument("--pages", type=int, default=70)
+    ft.add_argument("--token", default="", help="Polymarket CLOB token id")
+    ft.set_defaults(func=_cmd_features)
 
     lv = sub.add_parser("live", help="trade a real account (dry-run unless confirmed)")
     lv.add_argument("--product", default="BTC-USD")

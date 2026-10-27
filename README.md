@@ -26,6 +26,11 @@ loop, four strategies, and a test suite whose job is to make the same mistakes i
   at the open, not at the stop.
 - **Numbers pinned in CI** — `tests/test_reference.py` asserts the audit's published figures against
   the committed dataset. Change the engine, and the claims break loudly.
+- **Point-in-time features** — funding rates (Hyperliquid, OKX) and prediction-market odds
+  (Polymarket CLOB) land in SQLite with two timestamps: when the data is *about* and when it could
+  first have been read. `features.attach()` refuses to use a feature that is younger than the bar it
+  would explain. The funding-extreme factor is wired into the signal stack and only fires when the
+  column exists.
 - **Paper trading with a spine** — `espero paper` runs the same signal code against live Coinbase
   candles, fills on the next bar's open (never the bar that produced the signal), writes every
   signal/order/fill/equity mark to SQLite, and resumes the open position after a restart. A risk
@@ -98,6 +103,27 @@ needed:
 
 ./scripts/install-hooks.sh       # optional: run the checks on every git push
 ```
+
+## The one factor that survived a first look
+
+Funding-rate extremes, Hyperliquid BTC perp, 2023-05 → 2026-10, attached to daily bars with a
+1-hour lag so nothing peeks:
+
+| Funding z-score | n | mean next-1d return | hit rate |
+|---|---|---|---|
+| **z < −2** (crowded shorts) | **60** | **+0.585%** | **63%** |
+| −2 … −1 | 103 | +0.038% | 49% |
+| −1 … 1 | 943 | +0.108% | 50% |
+| 1 … 2 | 87 | +0.080% | 51% |
+| z > 2 (crowded longs) | 61 | −0.045% | 49% |
+
+t-stat ≈ **2.14** on the left tail, and the sign holds in every year (2023 +0.15%, 2024 +0.34%,
+2025 +0.76%, 2026 +0.73%). Adding it to the four-strategy stack moves the same backtest from
+**+10.3% to +36.0%** at 4 bps fees, Sharpe 0.22 → 0.43.
+
+That is a lead, not a conclusion: 60 events, one asset, one venue, and a t-stat sitting right on the
+threshold. It is exactly the sort of thing that should be checked out-of-sample before a dollar
+follows it.
 
 ## The numbers
 

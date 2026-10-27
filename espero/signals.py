@@ -11,7 +11,7 @@ from typing import List, Optional
 import numpy as np
 import pandas as pd
 
-WEIGHTS = {"macross": 1.0, "rsi": 1.0, "bollinger": 1.0, "macd": 1.0}
+WEIGHTS = {"macross": 1.0, "rsi": 1.0, "bollinger": 1.0, "macd": 1.0, "funding": 1.0}
 CONSENSUS = 0.60
 MIN_CONFIDENCE = 0.65
 
@@ -55,6 +55,16 @@ def signals_at(row: pd.Series, prev: pd.Series) -> List[Signal]:
         out.append(Signal("BUY", 0.65, "macd"))
     elif row["macd_hist"] < 0 <= prev["macd_hist"]:
         out.append(Signal("SELL", 0.65, "macd"))
+
+    # 5. Funding extreme (only when a point-in-time funding_z column exists).
+    #    Crowded longs pay shorts -> negative edge for longs; the reverse squeeze
+    #    pays for upside.
+    fz = row.get("funding_z")
+    if fz is not None and np.isfinite(fz):
+        if fz <= -2.0:
+            out.append(Signal("BUY", 0.70, "funding"))
+        elif fz >= 2.0:
+            out.append(Signal("SELL", 0.70, "funding"))
     return out
 
 
