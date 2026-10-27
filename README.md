@@ -53,8 +53,8 @@ Run the tests:
 python -m unittest discover -s tests -v
 ```
 
-Or run the whole CI job locally — the same steps as `.github/workflows/ci.yml`, no Actions minutes
-needed (private repos draw on a paid quota):
+Or run the whole CI job locally — the same steps as `.github/workflows/ci.yml`, no hosted runner
+needed:
 
 ```bash
 ./scripts/check.sh --install     # first time
