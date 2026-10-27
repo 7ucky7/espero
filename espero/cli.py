@@ -15,6 +15,7 @@ from .journal import Journal
 from .live import LiveConfig, LiveTrader
 from .paper import PaperConfig, PaperTrader
 from . import tsmom as tsm
+from . import xs as xsm
 from . import dashboard as dash
 from .report import buy_and_hold, equity_png, format_matrix, matrix
 
@@ -211,6 +212,12 @@ def _cmd_dashboard(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_xs(args: argparse.Namespace) -> int:
+    res = xsm.run(args.state, args.cash, force=args.force, deposit=args.deposit)
+    print(xsm.format_report(res))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="espero", description="small honest crypto research harness")
     p.add_argument("--version", action="version", version="espero 0.1.0")
@@ -275,6 +282,13 @@ def build_parser() -> argparse.ArgumentParser:
     tm.add_argument("--report", action="store_true", help="print account history")
     tm.add_argument("--limit", type=int, default=30)
     tm.set_defaults(func=_cmd_tsmom)
+
+    xs_p = sub.add_parser("xs", help="weekly cross-sectional top-N crypto paper account")
+    xs_p.add_argument("--state", default="xs.db")
+    xs_p.add_argument("--cash", type=float, default=100.0)
+    xs_p.add_argument("--deposit", type=float, default=0.0)
+    xs_p.add_argument("--force", action="store_true")
+    xs_p.set_defaults(func=_cmd_xs)
 
     d = sub.add_parser("dashboard", help="static HTML dashboard for the paper accounts")
     d.add_argument("-o", "--out", default="dashboard.html")

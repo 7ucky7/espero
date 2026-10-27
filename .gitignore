@@ -34,3 +34,5 @@ research/data/pead/
 
 # cached odds histories
 research/data/odds/
+
+xs.db
