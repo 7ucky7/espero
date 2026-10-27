@@ -180,7 +180,7 @@ class TestRiskAndJournal(unittest.TestCase):
         out = buf.getvalue()
         self.assertIn("proposal", out)
         self.assertIn("SIGNAL COLD", out)
-        self.assertIn("edge budget", out)
+        self.assertIn("budget", out)
 
 
 if __name__ == "__main__":

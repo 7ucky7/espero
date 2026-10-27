@@ -373,94 +373,159 @@ class Keys:
             tty.setcbreak(self.fd)
 
 
+def _kv(pairs, muted="grey58"):
+    """A two-column key/value grid, keys muted, values aligned."""
+    from rich.table import Table
+    g = Table.grid(padding=(0, 1))
+    g.add_column(style=muted, justify="right")
+    g.add_column()
+    for k, v in pairs:
+        g.add_row(k, v)
+    return g
+
+
 def render(fb: FastBook, mode: str):
-    from rich.console import Group
+    from rich.layout import Layout
     from rich.panel import Panel
     from rich.table import Table
     from rich.text import Text
 
+    from .ui import MASCOT
+
     ACCENT, MUTED = "#d97757", "grey58"
     s, snap = fb.signal, fb.snap
+    mid = snap.mid if snap and snap.mid else None
 
-    head = Text()
-    head.append(f"{fb.product}  ", style="bold")
-    head.append(mode, style=MUTED)
-    if snap and snap.mid:
-        head.append(f"   mid {snap.mid:,.2f}   spread {snap.spread_bps:.2f} bps   "
-                    f"imb {snap.imbalance() or 0:+.2f}   trades/tick {len(snap.trades)}")
-    head.append(f"   equity ${fb.exchange.equity(snap):,.2f}   inv {fb.exchange.inventory:.6f}", style=MUTED)
+    # ------------------------------------------------------------- header
+    title = Text()
+    title.append(f"{fb.product}", style="bold")
+    title.append(f"   {mode}", style=MUTED)
     if fb.halted:
-        head.append(f"   HALTED: {fb.halted}", style="bold red")
-
-    why = Table.grid(padding=(0, 2))
-    why.add_column(style=MUTED)
-    why.add_column()
-    if s.error:
-        why.add_row("signal", Text(s.error, style="yellow"))
-    elif s.value is None:
-        why.add_row("signal", Text("warming up", style=MUTED))
+        title.append(f"   HALTED: {fb.halted}", style="bold red")
+    market = Text()
+    if mid:
+        market.append("mid ", style=MUTED)
+        market.append(f"{mid:,.2f}", style="bold")
+        market.append("   spread ", style=MUTED)
+        market.append(f"{snap.spread_bps:.2f} bps")
+        imb = snap.imbalance() or 0.0
+        market.append("   book ", style=MUTED)
+        market.append(f"{imb:+.2f}", style="green" if imb > 0.1 else ("red" if imb < -0.1 else None))
+        market.append(f"   {len(snap.trades)} prints", style=MUTED)
+        age = time.time() - snap.ts
+        market.append(f"   feed {age:.0f}s", style="red" if age > fb.limits.stale_feed_s else MUTED)
     else:
-        why.add_row("signal", f"{1e4 * s.value:+.0f} bps gap  =  beta {s.beta:.2f} × BTC {1e4 * s.r_leader:+.0f} bps"
-                              f"  −  own {1e4 * s.r_coin:+.0f} bps   (threshold ±{1e4 * fb.threshold:.0f})")
+        market.append("waiting for the book ...", style=MUTED)
+    account = Text()
+    account.append("equity ", style=MUTED)
+    account.append(f"${fb.exchange.equity(snap):,.2f}", style=f"bold {ACCENT}")
+    pnl = fb.day_pnl()
+    account.append(f"  {pnl:+,.2f} today", style="green" if pnl > 0 else ("red" if pnl < 0 else MUTED))
+    account.append("   inventory ", style=MUTED)
+    account.append(f"{fb.exchange.inventory:.6f}")
+    if mid and fb.exchange.inventory:
+        account.append(f" (${fb.exchange.inventory * mid:,.2f})", style=MUTED)
+    art = Text("\n".join(MASCOT), style=ACCENT)
+    head = Table.grid(padding=(0, 2))
+    head.add_column(no_wrap=True)
+    head.add_column()
+    head.add_row(art, Text.assemble(title, "\n", market, "\n", account))
+
+    # ---------------------------------------------------------------- why
+    if s.error:
+        why_rows = [("signal", Text(s.error, style="yellow"))]
+    elif s.value is None:
+        why_rows = [("signal", Text("warming up (needs 168 shared hourly bars)", style=MUTED))]
+    else:
+        gap = Text(f"{1e4 * s.value:+.0f} bps", style="bold green" if s.value >= fb.threshold
+                   else ("bold red" if s.value <= -fb.threshold else "bold"))
+        gap.append(f"  = beta {s.beta:.2f} × BTC {1e4 * s.r_leader:+.0f} − own {1e4 * s.r_coin:+.0f}"
+                   f"   (acts at ±{1e4 * fb.threshold:.0f})", style=MUTED)
         ic = "n/a" if s.rolling_ic is None else f"{s.rolling_ic:+.3f}"
-        why.add_row("working?", Text(f"2-week IC {ic}" + ("   SIGNAL COLD" if s.cold else ""),
-                                     style="red" if s.cold else None))
+        working = Text(f"2-week IC {ic}", style="red" if s.cold else "green")
+        if s.cold:
+            working.append("   SIGNAL COLD", style="bold red")
         vr = "n/a" if s.vol_ratio is None else f"{s.vol_ratio:.2f}× median"
         hour = datetime.now(timezone.utc).hour
         nxt = (8 - hour % 8) % 8 or 8
         settle = ((hour // 8 + 1) * 8) % 24
-        why.add_row("regime", f"hourly vol {vr}   ·   {nxt}h to next funding settlement (UTC {settle:02d}:00)")
+        why_rows = [("signal", gap), ("working", working),
+                    ("regime", Text(f"hourly vol {vr}   ·   funding settles in {nxt}h (UTC {settle:02d}:00)"))]
     cost = fb.cost_bps()
     ratio = MEASURED_EDGE_BPS / cost if cost > 0 else math.inf
-    why.add_row("edge budget", Text(f"measured {MEASURED_EDGE_BPS:.1f} bps per {HORIZON_H}h  vs  cost {cost:.1f} bps "
-                                    f"(2× maker {fb.maker_bps:.0f} + half spread)  →  ratio {ratio:.1f}"
-                                    + ("   below 2: default no" if ratio < MIN_EDGE_RATIO else ""),
-                                    style="red" if ratio < MIN_EDGE_RATIO else "green"))
-    why.add_row("", Text(f"edge source: {MEASURED_EDGE_SOURCE}", style=MUTED))
+    edge = Text(f"{MEASURED_EDGE_BPS:.1f} bps edge vs {cost:.1f} bps cost  →  ratio {ratio:.1f}",
+                style="green" if ratio >= MIN_EDGE_RATIO else "red")
+    if ratio < MIN_EDGE_RATIO:
+        edge.append("   below 2: default no", style="bold red")
+    why_rows.append(("budget", edge))
+    why_rows.append(("source", Text(MEASURED_EDGE_SOURCE, style=MUTED)))
+    why = Panel(_kv(why_rows), title="why", title_align="left", border_style=MUTED)
 
-    risk = Table.grid(padding=(0, 3))
-    cells = []
+    # --------------------------------------------------------------- risk
+    risk_rows = []
     for name, (val, lim, frac) in fb.risk().items():
-        style = "bold red" if frac >= 0.8 else ("yellow" if frac >= 0.5 else None)
-        risk.add_column()
-        cells.append(Text(f"{name} {val:,.1f}/{lim:,.0f}", style=style))
-    risk.add_row(*cells)
+        bar_n = int(min(1.0, max(0.0, frac)) * 12)
+        style = "bold red" if frac >= 0.8 else ("yellow" if frac >= 0.5 else "green")
+        cell = Text("█" * bar_n + "░" * (12 - bar_n) + f"  {val:,.1f} / {lim:,.0f}", style=style)
+        risk_rows.append((name, cell))
+    risk = Panel(_kv(risk_rows), title="risk", title_align="left", border_style=MUTED)
 
-    resting = Table(box=None, header_style=MUTED, padding=(0, 2), title="resting", title_style=MUTED)
-    for c in ("side", "price", "size", "filled", "queue ahead", "age"):
-        resting.add_column(c)
+    # ------------------------------------------------------- orders, fills
+    resting = Table(box=None, header_style=MUTED, padding=(0, 1), expand=True)
+    for c, j in (("side", "left"), ("price", "right"), ("size", "right"), ("filled", "right"),
+                 ("queue", "right"), ("age", "right")):
+        resting.add_column(c, justify=j)
     for o in fb.exchange.resting():
         age = (snap.ts - o.placed_ts) if snap else 0
-        resting.add_row(o.side, f"{o.price:,.2f}", f"{o.size:.6f}", f"{o.filled:.6f}", f"{o.queue_ahead:.4f}",
-                        f"{age:.0f}s")
+        resting.add_row(Text(o.side, style="green" if o.side == "buy" else "red"), f"{o.price:,.2f}",
+                        f"{o.size:.5f}", f"{o.filled:.5f}", f"{o.queue_ahead:.3f}", f"{age:.0f}s")
     if not fb.exchange.resting():
         resting.add_row(Text("none", style=MUTED), "", "", "", "", "")
+    resting_p = Panel(resting, title="resting", title_align="left", border_style=MUTED)
 
-    fills = Table(box=None, header_style=MUTED, padding=(0, 2), title="fills · TCA", title_style=MUTED)
-    for c in ("time", "side", "price", "size", "vs mid", "delay", "fee"):
-        fills.add_column(c)
-    for f in fb.exchange.fills[-5:]:
+    fills = Table(box=None, header_style=MUTED, padding=(0, 1), expand=True)
+    for c, j in (("time", "left"), ("side", "left"), ("price", "right"), ("size", "right"),
+                 ("vs mid", "right"), ("delay", "right"), ("fee", "right")):
+        fills.add_column(c, justify=j)
+    for f in fb.exchange.fills[-6:]:
         slip = Text(f"{f.slippage_bps:+.1f} bps", style="green" if f.slippage_bps <= 0 else "red")
-        fills.add_row(datetime.fromtimestamp(f.ts, timezone.utc).strftime("%H:%M:%S"), f.side, f"{f.price:,.2f}",
-                      f"{f.size:.6f}", slip, f"{f.delay_s:.0f}s", f"{f.fee:.4f}")
+        fills.add_row(datetime.fromtimestamp(f.ts, timezone.utc).strftime("%H:%M:%S"),
+                      Text(f.side, style="green" if f.side == "buy" else "red"), f"{f.price:,.2f}",
+                      f"{f.size:.5f}", slip, f"{f.delay_s:.0f}s", f"{f.fee:.4f}")
+    if not fb.exchange.fills:
+        fills.add_row(Text("none yet", style=MUTED), "", "", "", "", "", "")
+    fills_p = Panel(fills, title="fills · TCA vs mid at decision", title_align="left", border_style=MUTED)
 
+    # ----------------------------------------------------------- proposal
+    keys = Text("Enter place · n decline · r reprice · c cancel · j note · k kill · q quit", style=MUTED)
     if fb.proposal:
         p = fb.proposal
         body = Text()
-        body.append(f"{p.side.upper()} {p.size:.6f} @ {p.price:,.2f} post-only", style="bold")
+        body.append(f"{p.side.upper()} {p.size:.5f} @ {p.price:,.2f}", style="bold")
+        body.append("  post-only", style=MUTED)
         body.append(f"   {p.reason}\n")
-        body.append(f"edge {p.edge_bps:.1f} bps vs cost {p.cost_bps:.1f} bps, ratio {p.ratio:.1f}  ",
+        body.append(f"edge {p.edge_bps:.1f} vs cost {p.cost_bps:.1f} bps, ratio {p.ratio:.1f}  ",
                     style="green" if p.advised else "red")
-        body.append("advised" if p.advised else "NOT advised", style="bold green" if p.advised else "bold red")
-        body.append("\nEnter place · n decline · r reprice · c cancel · j note · k kill · q quit", style=MUTED)
-        prop = Panel(body, title="proposal", border_style=ACCENT)
+        body.append("ADVISED" if p.advised else "NOT ADVISED", style="bold green" if p.advised else "bold red")
+        body.append("\n")
+        body.append(keys)
+        prop = Panel(body, title="proposal", title_align="left", border_style=ACCENT)
     else:
-        prop = Panel(Text("no proposal · n/a   (keys: r reprice · c cancel · j note · k kill · q quit)", style=MUTED),
-                     border_style=MUTED)
+        prop = Panel(Text.assemble(Text("no proposal   ", style=MUTED), keys), border_style=MUTED)
 
-    log = Text("\n".join(fb.log[-8:]), style=MUTED)
-    return Group(Panel(head, border_style=MUTED), Panel(why, title="why", border_style=MUTED),
-                 Panel(risk, title="risk", border_style=MUTED), resting, fills, prop, Panel(log, border_style=MUTED))
+    log = Panel(Text("\n".join(fb.log[-4:]) or " ", style=MUTED), border_style=MUTED)
+
+    layout = Layout()
+    layout.split_column(
+        Layout(Panel(head, border_style=MUTED), name="head", size=5),
+        Layout(name="body"),
+        Layout(prop, name="prop", size=5),
+        Layout(log, name="log", size=6),
+    )
+    layout["body"].split_row(Layout(name="left"), Layout(name="right"))
+    layout["left"].split_column(Layout(why, name="why", size=9), Layout(risk, name="risk"))
+    layout["right"].split_column(Layout(resting_p, name="resting", size=9), Layout(fills_p, name="fills"))
+    return layout
 
 
 def run(product: str, cash: float = 500.0, venue: str = "coinbase", record: bool = False,
@@ -490,7 +555,8 @@ def run(product: str, cash: float = 500.0, venue: str = "coinbase", record: bool
 
     fb.say("started; nothing is placed without Enter")
     try:
-        with Keys() as keys, Live(render(fb, mode), console=console, refresh_per_second=4, screen=True) as live:
+        with Keys() as keys, Live(render(fb, mode), console=console, refresh_per_second=4, screen=True,
+                                  vertical_overflow="crop") as live:
             while True:
                 try:
                     snap = next(feed) if feed is not None else live_book.read()
