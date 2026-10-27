@@ -3,6 +3,8 @@
 A small, honest crypto research harness: causal indicators, next-bar fills, and tests that fail
 the moment you cheat.
 
+[![ci](https://github.com/7ucky7/espero/actions/workflows/ci.yml/badge.svg)](https://github.com/7ucky7/espero/actions/workflows/ci.yml)
+
 ## Why this exists
 
 I inherited a 12,000-line trading bot. It looked complete — data layer, risk manager, order manager,
