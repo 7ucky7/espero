@@ -162,6 +162,7 @@ class FastBook:
     log: List[str] = field(default_factory=list)
     entry_ts: Optional[float] = None
     why_by_order: Dict[str, dict] = field(default_factory=dict)   # evidence as it stood at Enter
+    mids: List[float] = field(default_factory=list)                 # last few minutes of mid prints
 
     def __post_init__(self):
         v = VENUES[self.venue]
@@ -179,6 +180,9 @@ class FastBook:
     # ------------------------------------------------------------- a tick
     def on_snapshot(self, snap: BookSnapshot, signal: Optional[SignalState] = None) -> List[Fill]:
         self.snap = snap
+        if snap.mid:
+            self.mids.append(snap.mid)
+            self.mids = self.mids[-600:]
         if signal is not None:
             self.signal = signal
         self._roll_day(snap)
@@ -515,6 +519,38 @@ def render(fb: FastBook, mode: str):
 
     log = Panel(Text("\n".join(fb.log[-4:]) or " ", style=MUTED), border_style=MUTED)
 
+    # --------------------------------------------------------- depth ladder
+    ladder = Table(box=None, header_style=MUTED, padding=(0, 1), expand=True)
+    for c, j in (("", "left"), ("price", "right"), ("size", "right"), ("", "left")):
+        ladder.add_column(c, justify=j)
+    if snap and snap.bids and snap.asks:
+        levels = 6
+        top = max([sz for _, sz in snap.asks[:levels]] + [sz for _, sz in snap.bids[:levels]] + [1e-9])
+        mine = {(o.side, round(o.price, 8)) for o in fb.exchange.resting()}
+        for px, sz in reversed(snap.asks[:levels]):
+            bar = "█" * max(1, int(16 * sz / top))
+            tag = Text("◀ you", style="bold") if ("sell", round(px, 8)) in mine else Text("")
+            ladder.add_row(Text("ask", style="red"), f"{px:,.2f}", f"{sz:.3f}", Text(bar, style="red") + tag)
+        ladder.add_row(Text("mid", style=MUTED), Text(f"{mid:,.2f}", style="bold"), "", Text("", style=MUTED))
+        for px, sz in snap.bids[:levels]:
+            bar = "█" * max(1, int(16 * sz / top))
+            tag = Text("◀ you", style="bold") if ("buy", round(px, 8)) in mine else Text("")
+            ladder.add_row(Text("bid", style="green"), f"{px:,.2f}", f"{sz:.3f}", Text(bar, style="green") + tag)
+    else:
+        ladder.add_row(Text("waiting", style=MUTED), "", "", "")
+    ladder_p = Panel(ladder, title="book", title_align="left", border_style=MUTED)
+
+    # ----------------------------------------------------------- mid tape
+    from .ui import sparkline
+    tape = Text()
+    if len(fb.mids) >= 2:
+        lo, hi = min(fb.mids[-120:]), max(fb.mids[-120:])
+        tape.append(sparkline(fb.mids, width=60), style=ACCENT)
+        tape.append(f"\n{lo:,.2f} … {hi:,.2f}  last {len(fb.mids[-120:])} ticks", style=MUTED)
+    else:
+        tape.append("collecting ticks ...", style=MUTED)
+    tape_p = Panel(tape, title="mid", title_align="left", border_style=MUTED)
+
     layout = Layout()
     layout.split_column(
         Layout(Panel(head, border_style=MUTED), name="head", size=5),
@@ -523,8 +559,10 @@ def render(fb: FastBook, mode: str):
         Layout(log, name="log", size=6),
     )
     layout["body"].split_row(Layout(name="left"), Layout(name="right"))
-    layout["left"].split_column(Layout(why, name="why", size=9), Layout(risk, name="risk"))
-    layout["right"].split_column(Layout(resting_p, name="resting", size=9), Layout(fills_p, name="fills"))
+    layout["left"].split_column(Layout(why, name="why", size=8), Layout(risk, name="risk", size=7),
+                                Layout(tape_p, name="tape"))
+    layout["right"].split_column(Layout(resting_p, name="resting", size=6), Layout(fills_p, name="fills", size=9),
+                                 Layout(ladder_p, name="ladder"))
     return layout
 
 
