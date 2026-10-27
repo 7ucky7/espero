@@ -31,6 +31,18 @@ except ImportError:  # pragma: no cover - the CLI explains how to install
 ACCENT = "#d97757"          # the orange of the pointer
 MUTED = "grey58"
 
+# the mascot: a blocky orange dog. Square body, two eyes, floppy ears, tongue out.
+MASCOT = [
+    "▟█▙ ▄▄▄▄▄▄ ▟█▙",
+    "▜█▛█ ▀  ▀ █▜█▛",
+    "   █  ▄▄  █   ",
+    "   ▀▀▀▀▀▀▀▀   ",
+    "      ▜▛      ",
+]
+# character offsets of the tongue in the joined art, so it can be coloured separately
+_joined = "\n".join(MASCOT)
+MASCOT_TONGUE = (_joined.rindex("▜▛"), _joined.rindex("▜▛") + 2)
+
 STYLE = None
 if questionary is not None:
     STYLE = Style([
@@ -136,8 +148,14 @@ def header(state: Path) -> Panel:
         line2.append("no run recorded yet  ·  launchd runs daily at 07:30", style=MUTED)
     line2.append("  ·  next 07:30 local", style=MUTED)
 
+    art = Text("\n".join(MASCOT), style=ACCENT)
+    art.stylize("bold red", MASCOT_TONGUE[0], MASCOT_TONGUE[1])
     body = Text.assemble(line1, "\n", line2)
-    return Panel(body, border_style=MUTED, padding=(0, 1))
+    grid = Table.grid(padding=(0, 2))
+    grid.add_column(no_wrap=True)
+    grid.add_column()
+    grid.add_row(art, Text.assemble("\n", body))
+    return Panel(grid, border_style=MUTED, padding=(0, 1))
 
 
 def accounts_table(state: Path) -> Table:
