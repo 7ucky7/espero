@@ -462,6 +462,26 @@ def act_fast(console, state):
     _run(console, ["fast", "--product", product, "--venue", venue, "--state-dir", str(state)], state)
 
 
+def act_degen(console, state):
+    what = questionary.select("打板 — altcoins breaking out on volume (paper, hypothesis #10)",
+                              choices=["scan: who is moving right now", "paper: run the 5m loop",
+                                       "backtest: last 30 days"],
+                              style=STYLE, pointer="❯").ask()
+    if not what:
+        return
+    venue = questionary.select("Charge whose taker fee?", choices=["binanceus", "kraken", "coinbase", "perp"],
+                               default="binanceus", style=STYLE, pointer="❯").ask() or "binanceus"
+    if what.startswith("scan"):
+        _run(console, ["degen", "scan", "--venue", venue], state)
+    elif what.startswith("paper"):
+        console.print(Text("ctrl-c returns to the menu; state is kept in degen.db here", style=MUTED))
+        _run(console, ["degen", "paper", "--venue", venue, "--state", str(state / "degen.db"), "--loop"], state)
+    else:
+        console.print(Text("fetches 30 days of 5m candles for 60 coins the first time (about ten minutes)",
+                           style=MUTED))
+        _run(console, ["degen", "backtest", "--venue", venue], state)
+
+
 def act_factors(console, state):
     console.print(Text("builds or reuses data/panel, then evaluates the zoo (a minute or two)", style=MUTED))
     _run(console, ["factors"], state)
@@ -496,6 +516,7 @@ MENU: List[Tuple[str, Callable]] = [
     ("Scan: lead-lag signal across all coins, pick one to trade", act_scan),
     ("Fast screen: resting orders on the live book (semi-auto, paper)", act_fast),
     ("Watch the single-coin paper loop", act_paper),
+    ("Degen altcoins: 打板 breakout scan, backtest, paper loop", act_degen),
     ("Factor IC table (research)", act_factors),
     ("Run the tests", act_tests),
     ("Quit", None),

@@ -81,6 +81,18 @@ notes go to `fast.db` with the "why" as it stood at decision time.
 
 Kept because its journal loop is the template for the live path. Not scheduled, not a basket.
 
+## Drawer 6: degen altcoins, 打板 (hypothesis #10, paper)
+
+```bash
+.venv/bin/python -m espero degen scan                                   # who is breaking out on volume right now
+.venv/bin/python -m espero degen backtest --days 30                     # replay through every venue's fees, print the verdict
+.venv/bin/python -m espero degen paper --venue binanceus --state degen.db --loop   # the live 5m paper loop
+```
+
+Top 60 Coinbase altcoins by 24h volume, new 4h high on a 2-sigma volume spike, stop 2 ATR, trail
+2.5 ATR, target 3 ATR, time stop 3h, three slots. Rules and pass criteria are frozen in
+`research/PREREGISTRATION_DEGEN.md`; the loop refuses to start twice on one journal.
+
 ## Drawer 5: live money. Off.
 
 `espero live` is experimental and needs `.env` keys, `ESPERO_ALLOW_LIVE=1` and `--confirm-live`

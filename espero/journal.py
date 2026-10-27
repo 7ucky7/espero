@@ -131,6 +131,11 @@ class Journal:
         return PendingOrder(row["id"], row["product"], row["created_ts"],
                             row["side"], row["size"], row["reason"])
 
+    def pending_orders(self) -> List[PendingOrder]:
+        rows = self.db.execute("SELECT * FROM orders WHERE status='pending' ORDER BY created_ts").fetchall()
+        return [PendingOrder(r["id"], r["product"], r["created_ts"], r["side"], r["size"], r["reason"])
+                for r in rows]
+
     def fill_order(self, order_id: str, ts: int, px: float, fee: float) -> None:
         self.db.execute(
             "UPDATE orders SET status='filled', filled_ts=?, filled_px=?, fee=? WHERE id=?",
@@ -163,6 +168,16 @@ class Journal:
         return Position(row["id"], row["product"], row["entry_ts"],
                         row["entry_px"], row["size"], row["stop"], row["target"],
                         row["entry_fee"] or 0.0)
+
+    def open_positions(self) -> List[Position]:
+        rows = self.db.execute("SELECT * FROM positions WHERE exit_ts IS NULL ORDER BY entry_ts").fetchall()
+        return [Position(r["id"], r["product"], r["entry_ts"], r["entry_px"], r["size"],
+                         r["stop"], r["target"], r["entry_fee"] or 0.0) for r in rows]
+
+    def update_stop(self, position_id: str, stop: float) -> None:
+        """A trailing stop is state: it must survive a restart like the position does."""
+        self.db.execute("UPDATE positions SET stop=? WHERE id=?", (stop, position_id))
+        self.db.commit()
 
     def close_position(self, position_id: str, ts: int, px: float, pnl: float,
                        reason: str) -> None:

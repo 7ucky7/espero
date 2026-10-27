@@ -8,6 +8,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pandas as pd
+
 from . import dashboard as dash
 from . import data
 from . import features as fx
@@ -169,6 +171,186 @@ def _paper_loop(args: argparse.Namespace) -> int:
             journal.close()
         return 0
 
+    step()
+    journal.close()
+    return 0
+
+
+# ------------------------------------------------------------------ degen (#10)
+def _degen_universe(args: argparse.Namespace) -> list:
+    print(f"ranking Coinbase altcoins by 24h dollar volume (top {args.top}) ...", flush=True)
+    uni = data.degen_universe(top=args.top)
+    print(f"{len(uni)} coins, {uni[0]['product']} .. {uni[-1]['product']}" if uni else "no products")
+    return uni
+
+
+def _degen_table(rows: list, venue: str) -> None:
+    from .venues import round_trip_bps
+
+    cost = round_trip_bps(venue, maker=False)
+    try:
+        from rich.console import Console
+        from rich.table import Table
+    except ImportError:  # plain text is fine
+        print(f"{'coin':<12}{'status':<20}{'score':>6}{'burst':>8}{'vol_z':>7}{'rng/atr':>8}{'$vol 24h':>12}")
+        for r in rows:
+            if r.get("error"):
+                print(f"{r['product']:<12}{'error':<20}  {r['error']}")
+                continue
+            print(f"{r['product']:<12}{r['status']:<20}{r['score']:>6.2f}{1e4 * r['burst']:>+8.0f}"
+                  f"{r['vol_z']:>7.1f}{r['range_x']:>8.1f}{r['dollar_volume']:>12,.0f}")
+        print(f"\nburst in bps over the last hour; round trip on {venue} costs {cost:.0f} bps taker")
+        return
+    t = Table(title="打板 — altcoins moving now, 5m bars", show_lines=False)
+    for col, just in (("coin", "left"), ("status", "left"), ("score", "right"), ("burst bps", "right"),
+                      ("vol z", "right"), ("range/ATR", "right"), ("ATR bps", "right"), ("$vol 24h", "right")):
+        t.add_column(col, justify=just)
+    for r in rows:
+        if r.get("error"):
+            t.add_row(r["product"], f"[red]{r['error'][:40]}[/red]", "", "", "", "", "", "")
+            continue
+        style = "bold green" if r["status"] == "BREAKOUT" else ("yellow" if r["status"] == "near" else "")
+        st = f"[{style}]{r['status']}[/{style}]" if style else r["status"]
+        atr_bps = 1e4 * float(r["atr"]) / float(r["close"]) if r["close"] else float("nan")
+        t.add_row(r["product"], st, f"{r['score']:.2f}", f"{1e4 * r['burst']:+.0f}", f"{r['vol_z']:.1f}",
+                  f"{r['range_x']:.1f}", f"{atr_bps:.0f}", f"{r['dollar_volume']:,.0f}")
+    c = Console()
+    c.print(t)
+    c.print(f"[grey58]stop is 2 ATR, target 3 ATR; a round trip on {venue} costs {cost:.0f} bps taker, "
+            f"so the ATR column is the edge budget each stop risks[/grey58]")
+
+
+def _cmd_degen_scan(args: argparse.Namespace) -> int:
+    from .degen import scan
+
+    uni = _degen_universe(args)
+    if not uni:
+        return 2
+    rows = scan(uni, fetch=data.recent_closed_bars)
+    _degen_table(rows, args.venue)
+    return 0
+
+
+def _cmd_degen_backtest(args: argparse.Namespace) -> int:
+    from .degen import compare_venues, verdict
+
+    uni = _degen_universe(args)
+    if not uni:
+        return 2
+    cache = Path(args.cache)
+    frames, dv = {}, {}
+    for i, u in enumerate(uni, 1):
+        p = u["product"]
+        path = cache / f"{p.replace('-', '')}_300s_{args.days}d.csv"
+        try:
+            if path.exists():
+                df = data.load(path)
+            else:
+                print(f"[{i}/{len(uni)}] fetching {p} {args.days}d of 5m candles ...", flush=True)
+                df = data.fetch(p, args.days, 300)
+                data.save(df, path)
+        except Exception as exc:  # noqa: BLE001 - one coin missing is reported, not fatal
+            print(f"   {p}: {type(exc).__name__}: {exc}")
+            continue
+        if "ts" not in df:
+            df["ts"] = (pd.to_datetime(df["time"], utc=True).astype("int64") // 10**9)
+        frames[p] = df
+        dv[p] = float(u["dollar_volume"])
+    if not frames:
+        print("nothing to replay")
+        return 2
+    venues = [v.strip() for v in args.venues.split(",") if v.strip()]
+    print(f"replaying {len(frames)} coins x {args.days}d through {', '.join(venues)} ...", flush=True)
+    rows = compare_venues(frames, venues, initial=args.cash, dollar_volume=dv)
+    lines = [f"{'venue':<28}{'trades':>7}{'hit':>6}{'PF':>7}{'fees':>8}{'maxDD%':>8}{'P&L':>9}{'equity':>9}  exits"]
+    for r in rows:
+        ex = " ".join(f"{k}={v}" for k, v in sorted(r["reasons"].items()))
+        lines.append(f"{r['name']:<28}{r['trades']:>7}{r['hit']:>6.2f}{r['profit_factor']:>7.2f}"
+                     f"{r['entry_fees']:>8.2f}{100 * r['max_dd_pct']:>8.1f}{r['pnl']:>+9.2f}{r['equity']:>9.2f}  {ex}")
+    crit = verdict(rows)
+    lines.append("")
+    for c in crit:
+        lines.append(f"  [{'x' if c['met'] else ' '}] {c['criterion']}")
+    passed = all(c["met"] for c in crit)
+    lines.append(f"\nverdict: {'PASS' if passed else 'FAIL'} (pre-registered, research/PREREGISTRATION_DEGEN.md)")
+    text = "\n".join(lines)
+    print(text)
+    if args.out:
+        Path(args.out).write_text(f"```\n{text}\n```\n")
+        print(f"-> {args.out}")
+    return 0
+
+
+def _cmd_degen_paper(args: argparse.Namespace) -> int:
+    from .lock import JournalBusy, JournalLock
+
+    try:
+        with JournalLock(args.state):
+            return _degen_loop(args)
+    except JournalBusy as exc:
+        print(f"refusing to start: {exc}")
+        return 3
+
+
+def _degen_loop(args: argparse.Namespace) -> int:
+    from .degen import GRANULARITY, WARMUP, DegenConfig, DegenTrader, last_row
+
+    journal = Journal(args.state)
+    cfg = DegenConfig.for_venue(args.venue, initial=args.cash)
+    trader = DegenTrader(journal, cfg)
+    print(f"打板 paper loop on {args.venue}: fees {1e4 * cfg.fee:.1f} bps per side"
+          + (f", funding {1e4 * cfg.funding_8h:.2f} bps per 8h" if cfg.funding_8h else "")
+          + f"; cash {trader.cash:.2f}, {len(trader.positions)} open -> {args.state}")
+    state = {"universe": [], "refreshed": 0.0}
+
+    def step() -> None:
+        if time.time() - state["refreshed"] > 3600:
+            state["universe"] = _degen_universe(args)
+            state["refreshed"] = time.time()
+        rows, errors = {}, 0
+        for u in state["universe"]:
+            p = u["product"]
+            try:
+                df = data.recent_closed_bars(p, GRANULARITY, 300)
+            except Exception as exc:  # noqa: BLE001 - skip the coin this cycle
+                errors += 1
+                print(f"   {p}: {type(exc).__name__}: {exc}")
+                continue
+            if len(df) < WARMUP:
+                continue
+            known = journal.last_bar_ts(p) or 0
+            fresh = df[df["ts"] > known]
+            if fresh.empty:
+                continue
+            # seed history silently so the trail and the restart have bars to read
+            for bar in fresh.iloc[:-1].to_dict("records"):
+                journal.add_bar(p, bar)
+            row = last_row(p, df, float(u["dollar_volume"]))
+            row.update({k: float(df.iloc[-1][k]) for k in ("open", "high", "low", "close", "volume")})
+            rows[p] = row
+            time.sleep(0.12)
+        if not rows:
+            print(_waiting(GRANULARITY))
+            return
+        stamp = datetime.fromtimestamp(max(r["ts"] for r in rows.values()), timezone.utc).strftime("%H:%M")
+        events = trader.on_cycle(rows)
+        quiet = [e for e in events if "no slot" not in e and "blocked" not in e]
+        print(f"{stamp} UTC  {len(rows)} coins{f', {errors} errors' if errors else ''}  "
+              f"cash={trader.cash:.2f} equity={trader.equity():.2f} open={len(trader.positions)}")
+        for e in quiet:
+            print("  ", e)
+
+    if args.loop:
+        print("ctrl-c to stop; a restart resumes the open positions")
+        try:
+            while True:
+                step()
+                time.sleep(args.interval)
+        except KeyboardInterrupt:
+            print("stopped")
+        finally:
+            journal.close()
+        return 0
     step()
     journal.close()
     return 0
@@ -506,6 +688,26 @@ def build_parser() -> argparse.ArgumentParser:
     sc.add_argument("--state-dir", default=".")
     sc.add_argument("--once", action="store_true", help="print the table and exit")
     sc.set_defaults(func=_cmd_scan)
+
+    dg = sub.add_parser("degen", help="打板: scan altcoins breaking out on volume, backtest it, paper trade it (#10)")
+    dgs = dg.add_subparsers(dest="degen_cmd", required=True)
+    for name, fn, h in (("scan", _cmd_degen_scan, "rank the altcoins moving now (no writes)"),
+                        ("backtest", _cmd_degen_backtest, "replay the last N days through every venue's fees"),
+                        ("paper", _cmd_degen_paper, "live-market paper loop on 5m bars")):
+        q = dgs.add_parser(name, help=h)
+        q.add_argument("--top", type=int, default=60, help="universe: top N altcoins by 24h dollar volume")
+        q.add_argument("--venue", choices=sorted(VENUES), default="binanceus")
+        q.add_argument("--cash", type=float, default=500.0)
+        q.set_defaults(func=fn)
+        if name == "backtest":
+            q.add_argument("--days", type=int, default=30)
+            q.add_argument("--venues", default="binanceus,kraken,coinbase,perp")
+            q.add_argument("--cache", default="data/degen", help="where the fetched 5m candles are kept")
+            q.add_argument("-o", "--out", default="", help="write the table and verdict here")
+        if name == "paper":
+            q.add_argument("--state", default="degen.db")
+            q.add_argument("--loop", action="store_true")
+            q.add_argument("--interval", type=float, default=60.0)
 
     dy = sub.add_parser("daily", help="the scheduled run: tsmom -> xs -> dashboard -> health.json")
     dy.add_argument("--state-dir", default=".", help="where the .db files, dashboard and health live")

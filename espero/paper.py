@@ -44,6 +44,17 @@ class PaperConfig:
         return cls(fee=v.taker_bps / 1e4, funding_8h=v.funding_bps_8h / 1e4, **kw)
 
 
+def funding_due(prev_ts: int, ts: int, entry_ts: int, notional: float, rate: float) -> float:
+    """Funding owed for each 8h settlement in (prev_ts, ts] that falls after
+    `entry_ts`. Longs pay a positive rate. Shared by every paper book that can
+    hold a perp."""
+    if not rate:
+        return 0.0
+    first = (prev_ts // FUNDING_PERIOD_S + 1) * FUNDING_PERIOD_S
+    n = sum(1 for t in range(first, ts + 1, FUNDING_PERIOD_S) if t > entry_ts)
+    return n * notional * rate
+
+
 class PaperTrader:
     def __init__(self, journal: Journal, cfg: PaperConfig):
         self.journal = journal
@@ -142,11 +153,9 @@ class PaperTrader:
         """Charge funding for each settlement time in (prev_ts, ts] that falls
         after the position was opened. Longs pay a positive rate."""
         pos = self.position
-        first = (prev_ts // FUNDING_PERIOD_S + 1) * FUNDING_PERIOD_S
-        n = sum(1 for t in range(first, ts + 1, FUNDING_PERIOD_S) if t > pos.entry_ts)
-        if n == 0:
+        paid = funding_due(prev_ts, ts, pos.entry_ts, pos.size * price, self.cfg.funding_8h)
+        if not paid:
             return 0.0
-        paid = n * pos.size * price * self.cfg.funding_8h
         self.cash -= paid
         pos.entry_fee += paid
         self.journal.charge_position(pos.id, paid)

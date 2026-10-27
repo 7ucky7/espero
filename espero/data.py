@@ -16,13 +16,17 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional, Sequence
 
 import pandas as pd
 
 log = logging.getLogger(__name__)
 
-BASE = "https://api.exchange.coinbase.com/products/{product}/candles"
+EXCHANGE = "https://api.exchange.coinbase.com"
+BASE = EXCHANGE + "/products/{product}/candles"
+PRODUCTS_URL = EXCHANGE + "/products"
+STATS_URL = EXCHANGE + "/products/{product}/stats"
+STABLECOINS = {"USDT", "USDC", "DAI", "PYUSD", "USDP", "GUSD", "EURC", "TUSD", "PAX", "USD1", "RLUSD"}
 DEFAULT_DIR = Path("data")
 CACHE_DIR = Path(os.environ.get("ESPERO_CACHE", "data/cache"))
 MAX_CACHE_AGE_DAYS = 3     # older than this, a cached series is not a fallback, it is history
@@ -62,6 +66,53 @@ def http_get(url: str, headers: Optional[dict] = None, timeout: int = 30,
 
 def http_json(url: str, headers: Optional[dict] = None, timeout: int = 30) -> dict:
     return json.loads(http_get(url, headers=headers, timeout=timeout))
+
+
+def list_products(quote: str = "USD", exclude: Sequence[str] = ("BTC", "ETH"),
+                  fetch: Callable[[str], object] = None) -> List[str]:
+    """Every live, tradable `<base>-<quote>` product on Coinbase Exchange, minus
+    stablecoins and the majors in `exclude`. Public endpoint, no key."""
+    fetch = fetch or http_json
+    rows = fetch(PRODUCTS_URL)
+    out = []
+    for r in rows:
+        if r.get("quote_currency") != quote or r.get("status") != "online":
+            continue
+        if r.get("trading_disabled") or r.get("fx_stablecoin"):
+            continue
+        base = r.get("base_currency", "")
+        if base in STABLECOINS or base in exclude:
+            continue
+        out.append(r["id"])
+    return sorted(out)
+
+
+def product_stats(product: str, fetch: Callable[[str], object] = None) -> dict:
+    """24h stats: `last`, `volume` (base units) and the dollar volume derived from them."""
+    fetch = fetch or http_json
+    r = fetch(STATS_URL.format(product=product))
+    last, vol = float(r.get("last") or 0), float(r.get("volume") or 0)
+    return {"product": product, "last": last, "volume": vol, "dollar_volume": last * vol}
+
+
+def degen_universe(top: int = 60, min_dollar_volume: float = 0.0, products: Optional[List[str]] = None,
+                   fetch: Callable[[str], object] = None, pause: float = 0.1,
+                   sleep=time.sleep) -> List[dict]:
+    """The altcoins people are actually trading right now: every listed USD
+    product ranked by 24h dollar volume, top `top`. One stats call per product
+    (a few hundred, paced); a failing product is skipped, never guessed."""
+    products = products if products is not None else list_products(fetch=fetch)
+    stats = []
+    for p in products:
+        try:
+            stats.append(product_stats(p, fetch=fetch))
+        except Exception as exc:  # noqa: BLE001 - one dead product must not kill the scan
+            log.warning("stats %s: %s", p, exc)
+        if pause:
+            sleep(pause)
+    stats = [s for s in stats if s["dollar_volume"] >= min_dollar_volume]
+    stats.sort(key=lambda s: -s["dollar_volume"])
+    return stats[:top]
 
 
 def candle_path(product: str, granularity: int, directory: Path = DEFAULT_DIR) -> Path:
