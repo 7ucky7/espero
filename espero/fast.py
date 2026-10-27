@@ -255,6 +255,16 @@ class FastBook:
     entry_ts: Optional[float] = None
     why_by_order: Dict[str, dict] = field(default_factory=dict)   # evidence as it stood at Enter
     mids: List[float] = field(default_factory=list)                 # last few minutes of mid prints
+    prints: List[tuple] = field(default_factory=list)               # (snapshot ts, trades in it)
+
+    def prints_per_min(self) -> Optional[float]:
+        """Trades per minute over the last minute of snapshots. The public trades
+        endpoint refreshes every few seconds, so per-tick counts are mostly 0."""
+        if not self.snap or len(self.prints) < 2:
+            return None
+        recent = [(t, n) for t, n in self.prints if self.snap.ts - t <= 60]
+        span = self.snap.ts - recent[0][0] if recent else 0
+        return 60.0 * sum(n for _, n in recent) / span if span >= 10 else None
 
     def __post_init__(self):
         v = VENUES[self.venue]
@@ -275,6 +285,8 @@ class FastBook:
         if snap.mid:
             self.mids.append(snap.mid)
             self.mids = self.mids[-600:]
+        self.prints.append((snap.ts, len(snap.trades)))
+        self.prints = [(t, n) for t, n in self.prints if snap.ts - t <= 120]
         if signal is not None:
             self.signal = signal
         self._roll_day(snap)
@@ -514,7 +526,8 @@ def render(fb: FastBook, mode: str):
         imb = snap.imbalance() or 0.0
         market.append("   book ", style=MUTED)
         market.append(f"{imb:+.2f}", style="green" if imb > 0.1 else ("red" if imb < -0.1 else None))
-        market.append(f"   {len(snap.trades)} prints", style=MUTED)
+        ppm = fb.prints_per_min()
+        market.append("   " + ("counting prints ..." if ppm is None else f"{ppm:,.0f} prints/min"), style=MUTED)
         age = time.time() - snap.ts
         market.append(f"   feed {age:.0f}s", style="red" if age > fb.limits.stale_feed_s else MUTED)
     else:

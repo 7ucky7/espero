@@ -93,6 +93,16 @@ class TestScan(unittest.TestCase):
         self.assertNotIn("TRX-USD", ps)
 
 
+class TestPrintsRate(unittest.TestCase):
+    def test_prints_per_minute_averages_batched_ticks(self):
+        with tempfile.TemporaryDirectory() as d:
+            fb = book(d)
+            for i in range(31):                             # a batch of 8 every 4 seconds, zeros between
+                trades = [("buy", 100.1, 0.01)] * 8 if i % 4 == 0 else []
+                fb.on_snapshot(snap(ts=float(i), trades=trades), fast.SignalState())
+            self.assertAlmostEqual(fb.prints_per_min(), 60 * 64 / 30, places=6)
+
+
 class TestCountdown(unittest.TestCase):
     def test_minutes_to_the_next_hourly_close(self):
         self.assertEqual(fast.next_signal_minutes(3600 * 10 + 5 * 60), 56)   # 10:05 -> 11:00, +1 refresh
