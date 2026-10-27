@@ -203,7 +203,7 @@ def _degen_table(rows: list, venue: str) -> None:
         return
     t = Table(title="打板 — altcoins moving now, 5m bars", show_lines=False)
     for col, just in (("coin", "left"), ("status", "left"), ("score", "right"), ("burst bps", "right"),
-                      ("vol z", "right"), ("range/ATR", "right"), ("ATR bps", "right"), ("$vol 24h", "right")):
+                      ("vol z", "right"), ("rng/ATR", "right"), ("ATR bps", "right"), ("$M 24h", "right")):
         t.add_column(col, justify=just)
     for r in rows:
         if r.get("error"):
@@ -213,7 +213,7 @@ def _degen_table(rows: list, venue: str) -> None:
         st = f"[{style}]{r['status']}[/{style}]" if style else r["status"]
         atr_bps = 1e4 * float(r["atr"]) / float(r["close"]) if r["close"] else float("nan")
         t.add_row(r["product"], st, f"{r['score']:.2f}", f"{1e4 * r['burst']:+.0f}", f"{r['vol_z']:.1f}",
-                  f"{r['range_x']:.1f}", f"{atr_bps:.0f}", f"{r['dollar_volume']:,.0f}")
+                  f"{r['range_x']:.1f}", f"{atr_bps:.0f}", f"{r['dollar_volume'] / 1e6:.1f}")
     c = Console()
     c.print(t)
     c.print(f"[grey58]stop is 2 ATR, target 3 ATR; a round trip on {venue} costs {cost:.0f} bps taker, "

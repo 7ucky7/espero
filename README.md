@@ -54,6 +54,18 @@ venue's cost and the signal's recent IC on the same line. Paper only. The book c
 replayed at any speed, which is how it is tested and practised. Details: `espero/book.py`,
 `execution.py`, `fast.py`, and [research/RESULTS_LEADLAG2.md](research/RESULTS_LEADLAG2.md).
 
+## The degen drawer (打板)
+
+One experiment with free rein, hypothesis #10: the Chinese retail playbook of hitting the board.
+`espero degen scan` ranks the top 60 Coinbase altcoins by 24-hour volume on a cross-sectional score
+of last-hour return, volume surprise and range expansion; a coin that prints a new 4-hour high on a
+2-sigma volume spike is a candidate. `espero degen paper` runs that rule on live 5-minute bars with
+up to three positions, every stop, trail and target in units of the coin's own ATR (so SOL gets a
+wider stop than BTC without anyone choosing it), entries at the next open, the venue's taker fee.
+`espero degen backtest` replays the last 30 days through every venue's fees. The rules and the five
+pass criteria were committed before any candle was fetched:
+[research/PREREGISTRATION_DEGEN.md](research/PREREGISTRATION_DEGEN.md). Paper only, no key.
+
 ## Running unattended
 
 The product is the two paper accounts. `espero daily` marks both, rebalances when each one's calendar
