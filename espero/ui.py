@@ -31,12 +31,13 @@ except ImportError:  # pragma: no cover - the CLI explains how to install
 ACCENT = "#d97757"          # the orange of the pointer
 MUTED = "grey58"
 
-# the mascot: a dog in profile, facing right. Ear up, nose forward, tail behind.
+# the mascot: a block dog in the Claude Code style. Ear, eye, snout on the
+# left; a body no longer than the head is tall; four feet; tail up behind.
 MASCOT = [
-    r"         __     ",
-    r"  (___()'`;     ",
-    r"  /,    /`      ",
-    "  " + "\\" * 2 + '"--' + "\\" * 2 + "      ",
+    "  ▄▄▄            ▗▟▘ ",
+    " ▟█ ▜▙▄▄▄▄▄▄▄▄▄▄▟▛   ",
+    "▐▙▄▟▌██████████▛▘    ",
+    "     ▘▘ ▝▝  ▘▘ ▝▝    ",
 ]
 STYLE = None
 if questionary is not None:
