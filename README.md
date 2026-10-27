@@ -134,6 +134,13 @@ drawdown against −14.56%** for equal-weight — less money, much less pain, in
 long bonds fell 30%. The paper is [here](research/RESULTS_TSMOM.md). It is a drawdown-control result,
 not an income one, and the Sharpe margin (1.08 vs 1.02) is inside noise.
 
+The fifth, PEAD on 60 large caps with SEC timestamps, **failed**: −1.64% CAGR and Sharpe −0.05 on the
+holdout against SPY's +13.4% and 0.84 — it lost in the design period too. 5,351 filings, a clean
+point-in-time design, and no edge in the most scrutinised pond on earth:
+[research/RESULTS_PEAD.md](research/RESULTS_PEAD.md).
+
+Scoreboard: five hypotheses, one thin pass.
+
 ## The numbers
 
 BTC-USD, 2022-10-28 → 2026-10-27, 1,461 daily bars, $10,000, one long position.

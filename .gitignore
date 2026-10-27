@@ -28,3 +28,6 @@ tsmom.db
 
 # generated dashboard
 dashboard.html
+
+# SEC / price cache for research
+research/data/pead/
