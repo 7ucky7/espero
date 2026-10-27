@@ -31,19 +31,13 @@ except ImportError:  # pragma: no cover - the CLI explains how to install
 ACCENT = "#d97757"          # the orange of the pointer
 MUTED = "grey58"
 
-# the mascot: a blocky orange dog, side view. Ear up, eye, snout left, tongue
-# hanging under the snout, four legs, tail up on the right.
+# the mascot: a dog in profile, facing right. Ear up, nose forward, tail behind.
 MASCOT = [
-    "  ▄█▖                ▗▛ ",
-    " ▟█ ▜▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▟▛  ",
-    " ▜█▄▟▌██████████████▛   ",
-    "  ▜▛  █▌          ▐█    ",
-    "      ▀▀          ▀▀    ",
+    r"         __     ",
+    r"  (___()'`;     ",
+    r"  /,    /`      ",
+    "  " + "\\" * 2 + '"--' + "\\" * 2 + "      ",
 ]
-# character offsets of the tongue in the joined art, so it can be coloured separately
-_joined = "\n".join(MASCOT)
-MASCOT_TONGUE = (_joined.rindex("▜▛"), _joined.rindex("▜▛") + 2)
-
 STYLE = None
 if questionary is not None:
     STYLE = Style([
@@ -149,8 +143,7 @@ def header(state: Path) -> Panel:
         line2.append("no run recorded yet  ·  launchd runs daily at 07:30", style=MUTED)
     line2.append("  ·  next 07:30 local", style=MUTED)
 
-    art = Text("\n".join(MASCOT), style=ACCENT)
-    art.stylize("bold red", MASCOT_TONGUE[0], MASCOT_TONGUE[1])
+    art = Text("\n".join(MASCOT), style=f"bold {ACCENT}")
     body = Text.assemble(line1, "\n", line2)
     grid = Table.grid(padding=(0, 2))
     grid.add_column(no_wrap=True)
