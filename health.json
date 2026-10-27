@@ -1,0 +1,32 @@
+{
+  "last_run": "2026-10-27T09:45:38+00:00",
+  "last_success": "2026-10-27T09:45:38+00:00",
+  "ok": true,
+  "paused": false,
+  "steps": {
+    "tsmom": {
+      "ok": true,
+      "seconds": 1.0,
+      "note": "init",
+      "equity": 99.95,
+      "error": "",
+      "skipped": false
+    },
+    "xs": {
+      "ok": true,
+      "seconds": 6.6,
+      "note": "init",
+      "equity": 99.9,
+      "error": "",
+      "skipped": false
+    },
+    "dashboard": {
+      "ok": true,
+      "seconds": 1.2,
+      "note": "wrote /Users/fredp/Espero Trading QuantBot/espero/dashboard.html",
+      "equity": null,
+      "error": "",
+      "skipped": false
+    }
+  }
+}

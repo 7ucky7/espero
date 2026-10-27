@@ -191,14 +191,22 @@ def _cmd_features(args: argparse.Namespace) -> int:
 
 
 def _cmd_tsmom(args: argparse.Namespace) -> int:
+    if args.report:   # read-only: a report must not write a mark
+        from datetime import datetime, timezone
+        acc = tsm.Account(Path(args.state))
+        for row in reversed(acc.history(args.limit)):
+            day = datetime.fromtimestamp(int(row["ts"]), timezone.utc).date()
+            print(f"{day}  equity {row['equity']:8.2f}  {row['note']}")
+        return 0
     res = tsm.run(args.state, args.cash, force=args.force, span=args.span,
                   deposit=args.deposit)
-    if args.report:
-        for row in reversed(res["account"].history(args.limit)):
-            print(f"{row['ts']:>12d}  equity {row['equity']:8.2f}  {row['note']}")
-        return 0
     print(tsm.format_report(res))
     return 0
+
+
+def _cmd_ui(args: argparse.Namespace) -> int:
+    from .ui import main as ui_main
+    return ui_main(Path(args.state_dir))
 
 
 def _cmd_dashboard(args: argparse.Namespace) -> int:
@@ -267,7 +275,11 @@ def _cmd_xs(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="espero", description="small honest crypto research harness")
     p.add_argument("--version", action="version", version="espero 0.2.0")
-    sub = p.add_subparsers(dest="cmd", required=True)
+    sub = p.add_subparsers(dest="cmd", required=False)
+
+    u = sub.add_parser("ui", help="interactive home screen (the default when no command is given)")
+    u.add_argument("--state-dir", default=".")
+    u.set_defaults(func=_cmd_ui)
 
     f = sub.add_parser("fetch", help="download public Coinbase candles to CSV")
     f.add_argument("product", nargs="?", default="BTC-USD")
@@ -374,7 +386,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.cmd is None:
+        if sys.stdin.isatty():
+            return _cmd_ui(argparse.Namespace(state_dir="."))
+        parser.print_help()
+        return 0
     return args.func(args)
 
 

@@ -7,7 +7,7 @@ stop it.
 ## Install
 
 ```bash
-uv venv .venv && uv pip install -e ".[chart,dev]" --python .venv/bin/python
+uv venv .venv && uv pip install -e ".[chart,tui,dev]" --python .venv/bin/python
 ./scripts/check.sh                   # tests + audit table + CLI smoke test
 ./scripts/install-launchd.sh         # daily at 07:30 local time
 ```

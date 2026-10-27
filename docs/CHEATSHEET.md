@@ -6,7 +6,13 @@ Everything runs from the project folder:
 cd "/Users/fredp/Espero Trading QuantBot/espero"
 ```
 
-## The two commands you actually need
+## The one command you actually need
+
+```bash
+.venv/bin/espero          # the home screen: status on top, arrow-key menu below
+```
+
+Every menu item is one of the commands in the drawers below; the two most useful without the menu:
 
 ```bash
 cat health.json          # did this morning's run work? last_success, per-step ok/error/equity

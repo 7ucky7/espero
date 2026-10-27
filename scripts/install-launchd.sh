@@ -34,7 +34,7 @@ fi
 
 if [ ! -x "$PYTHON" ]; then
     echo "no python at $PYTHON" >&2
-    echo "create one:  uv venv .venv && uv pip install -e '.[chart,dev]' --python .venv/bin/python" >&2
+    echo "create one:  uv venv .venv && uv pip install -e '.[chart,tui,dev]' --python .venv/bin/python" >&2
     echo "or point at one:  PYTHON=/path/to/python $0" >&2
     exit 1
 fi

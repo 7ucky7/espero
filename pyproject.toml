@@ -22,6 +22,7 @@ dependencies = ["numpy>=1.24,<3", "pandas>=2.0,<4"]
 
 [project.optional-dependencies]
 chart = ["Pillow>=10"]
+tui = ["rich>=13", "questionary>=2"]
 dev = ["pytest>=8", "ruff>=0.6"]
 
 [project.scripts]

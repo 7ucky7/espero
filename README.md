@@ -36,6 +36,13 @@ loop, four strategies, and a test suite whose job is to make the same mistakes i
   signal/order/fill/equity mark to SQLite, and resumes the open position after a restart. A risk
   gate sits under the strategy: max 25% of equity per position, 1% risk per trade, daily loss cap.
 
+## The home screen
+
+`espero` with no arguments opens an interactive screen: the two accounts and the last run's health on
+top, an arrow-key menu below (status, dashboard, a no-write preview of what each rule would decide now,
+history, run the daily job, deposit, pause, log, the single-coin loop, the factor table, tests). Needs
+the `tui` extra: `pip install -e ".[chart,tui,dev]"`. Everything on the menu is also a plain command.
+
 ## Running unattended
 
 The product is the two paper accounts. `espero daily` marks both, rebalances when each one's calendar
