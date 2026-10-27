@@ -91,7 +91,8 @@ Kept because its journal loop is the template for the live path. Not scheduled, 
 
 Top 60 Coinbase altcoins by 24h volume, new 4h high on a 2-sigma volume spike, stop 2 ATR, trail
 2.5 ATR, target 3 ATR, time stop 3h, three slots. Rules and pass criteria are frozen in
-`research/PREREGISTRATION_DEGEN.md`; the loop refuses to start twice on one journal.
+`research/PREREGISTRATION_DEGEN.md`; the loop refuses to start twice on one journal. The 30-day
+backtest **failed** before fees (`research/RESULTS_DEGEN.md`): use the scan as a view, not the loop as a plan.
 
 ## Drawer 5: live money. Off.
 

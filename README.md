@@ -65,6 +65,7 @@ wider stop than BTC without anyone choosing it), entries at the next open, the v
 `espero degen backtest` replays the last 30 days through every venue's fees. The rules and the five
 pass criteria were committed before any candle was fetched:
 [research/PREREGISTRATION_DEGEN.md](research/PREREGISTRATION_DEGEN.md). Paper only, no key.
+**Backtest verdict: FAIL**, and not on fees: [research/RESULTS_DEGEN.md](research/RESULTS_DEGEN.md).
 
 ## Running unattended
 
@@ -239,7 +240,12 @@ unscaled gap has the same ranks as plain reversal, caught before any data was fe
 the data (the beta-scaled version does not beat reversal, and the 4 bps spread is the bid-ask bounce):
 [research/RESULTS_LEADLAG2.md](research/RESULTS_LEADLAG2.md).
 
-Scoreboard: ten tests, two passes, both risk-construction results. No alpha has been found;
+The tenth, 打板 altcoin breakout chasing on 5-minute bars, failed on the data: 180 trades in 30 days,
+28% hit rate against a 40% break-even, and a loss *before fees*. Half the stops were gaps on the bar
+after the fill: the 2-sigma volume bar is the climax, and the rule buys it. The scanner stays; the
+rule does not: [research/RESULTS_DEGEN.md](research/RESULTS_DEGEN.md).
+
+Scoreboard: eleven tests, two passes, both risk-construction results. No alpha has been found;
 holding less when volatility rises is the only thing that has reliably helped.
 
 ## The numbers
