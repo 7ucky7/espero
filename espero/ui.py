@@ -450,6 +450,10 @@ def act_paper(console, state):
                    "--loop", "--interval", "60"], state)
 
 
+def act_scan(console, state):
+    _run(console, ["scan", "--state-dir", str(state)], state)
+
+
 def act_fast(console, state):
     product = questionary.text("Product:", default="ETH-USD", style=STYLE).ask() or "ETH-USD"
     venue = questionary.select("Charge whose maker fee?", choices=["binanceus", "kraken", "coinbase"],
@@ -489,6 +493,7 @@ MENU: List[Tuple[str, Callable]] = [
     ("Deposit paper capital", act_deposit),
     ("Pause / resume", act_pause),
     ("Show the log", act_logs),
+    ("Scan: lead-lag signal across all coins, pick one to trade", act_scan),
     ("Fast screen: resting orders on the live book (semi-auto, paper)", act_fast),
     ("Watch the single-coin paper loop", act_paper),
     ("Factor IC table (research)", act_factors),

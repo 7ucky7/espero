@@ -52,6 +52,8 @@ class SignalState:
     rank_note: str = ""
     rolling_ic: Optional[float] = None  # time-series corr of signal vs 3h fwd, last 2 weeks
     vol_ratio: Optional[float] = None   # last-24h hourly vol / median hourly vol in window
+    pct: Optional[float] = None         # |value| as a percentile of |signal| over the last 2 weeks
+    last_close: Optional[float] = None
     bars: int = 0
     updated: float = 0.0
     error: str = ""
@@ -89,6 +91,8 @@ class CandleSignal:
 
 def compute_signal(coin: pd.Series, leader: pd.Series, window: int = 168,
                    horizon: int = HORIZON_H) -> SignalState:
+    if coin.dropna().empty:
+        return SignalState(error="no recent hourly candles on Coinbase")
     df = pd.concat({"c": coin, "l": leader}, axis=1).dropna()
     st = SignalState(bars=len(df))
     if len(df) < max(window, 30) + horizon + 5:
@@ -103,6 +107,10 @@ def compute_signal(coin: pd.Series, leader: pd.Series, window: int = 168,
     st.beta = float(beta.iloc[-1])
     st.r_leader = float(rl.iloc[-1])
     st.r_coin = float(rc.iloc[-1])
+    st.last_close = float(df["c"].iloc[-1])
+    recent = sig.abs().dropna().iloc[-336:]
+    if len(recent) >= 48:
+        st.pct = float((recent <= abs(st.value)).mean())
     fwd = df["c"].shift(-horizon) / df["c"] - 1
     pair = pd.concat([sig, fwd], axis=1).dropna().iloc[-336:]       # two weeks
     if len(pair) >= 48:
@@ -111,6 +119,90 @@ def compute_signal(coin: pd.Series, leader: pd.Series, window: int = 168,
     med = float(hourly_vol.median()) if hourly_vol.notna().any() else 0.0
     st.vol_ratio = float(hourly_vol.iloc[-1] / med) if med > 0 else None
     return st
+
+
+# ------------------------------------------------------------------ the scan
+@dataclass
+class ScanRow:
+    product: str
+    state: SignalState
+
+    @property
+    def coin(self) -> str:
+        return self.product.split("-")[0]
+
+
+def scan(products: List[str], leader: str = "BTC-USD", window: int = 168, fetch=None,
+         pause: float = 0.12) -> List[ScanRow]:
+    """The beta-scaled lead-lag signal for every product, from the same closed
+    hourly candles the fast screen uses. One request per coin, gently paced
+    under Coinbase's public limit. Failures come back as rows with an error."""
+    fetch = fetch or data.recent_closed_bars
+    lead = fetch(leader, 3600, 300).set_index("ts")["close"]
+    rows = []
+    for p in products:
+        if p == leader:
+            continue
+        try:
+            coin = fetch(p, 3600, 300).set_index("ts")["close"]
+            st = compute_signal(coin, lead, window)
+        except Exception as exc:  # noqa: BLE001 - one bad coin must not stop the scan
+            st = SignalState(error=f"{type(exc).__name__}: {exc}")
+        rows.append(ScanRow(p, st))
+        if pause:
+            time.sleep(pause)
+    return sort_scan(rows)
+
+
+def sort_scan(rows: List[ScanRow]) -> List[ScanRow]:
+    """Largest gaps first (either sign), errors last."""
+    return sorted(rows, key=lambda r: (r.state.value is None, -abs(r.state.value or 0.0)))
+
+
+def scan_status(st: SignalState, threshold: float) -> str:
+    if st.value is None:
+        return "no signal"
+    if st.value >= threshold:
+        return "BUY candidate"
+    if st.value <= -threshold:
+        return "sell if held"
+    if abs(st.value) >= 0.7 * threshold:
+        return "near"
+    return ""
+
+
+def scan_table(rows: List[ScanRow], threshold: float, title: str = ""):
+    from rich.table import Table
+    from rich.text import Text
+    MUTED = "grey58"
+    t = Table(title=title or None, box=None, header_style=MUTED, padding=(0, 2), title_style=MUTED)
+    for c, j in (("#", "right"), ("coin", "left"), ("signal", "right"), ("pctile", "right"), ("beta", "right"),
+                 ("BTC 1h", "right"), ("own 1h", "right"), ("2w IC", "right"), ("vol", "right"), ("", "left")):
+        t.add_column(c, justify=j)
+    for i, r in enumerate(rows, 1):
+        st = r.state
+        if st.value is None:
+            t.add_row(str(i), r.coin, "", "", "", "", "", "", "", Text(st.error[:40] or "no signal", style=MUTED))
+            continue
+        status = scan_status(st, threshold)
+        sig_style = "bold green" if st.value >= threshold else ("bold red" if st.value <= -threshold
+                                                                else ("yellow" if status == "near" else None))
+        ic = Text("n/a" if st.rolling_ic is None else f"{st.rolling_ic:+.2f}",
+                  style="red" if st.cold else None)
+        t.add_row(str(i), r.coin, Text(f"{1e4 * st.value:+.0f} bps", style=sig_style),
+                  "" if st.pct is None else f"{100 * st.pct:.0f}%", f"{st.beta:.2f}",
+                  f"{1e4 * st.r_leader:+.0f}", f"{1e4 * st.r_coin:+.0f}", ic,
+                  "" if st.vol_ratio is None else f"{st.vol_ratio:.1f}×",
+                  Text(status, style="bold green" if status == "BUY candidate"
+                       else ("red" if status == "sell if held" else MUTED)))
+    return t
+
+
+def scan_products() -> List[str]:
+    """The XS universe, quoted in USD, minus the coins Coinbase does not list."""
+    from .xs import UNIVERSE
+    missing = {"RUNE", "THETA", "TRX"}           # RESULTS_LEADLAG2.md: not on Coinbase
+    return [f"{c}-USD" for c in UNIVERSE if c not in missing]
 
 
 # ------------------------------------------------------------------ the book
@@ -453,6 +545,8 @@ def render(fb: FastBook, mode: str):
         gap.append(f"  = beta {s.beta:.2f} × BTC {1e4 * s.r_leader:+.0f} − own {1e4 * s.r_coin:+.0f}"
                    f"   (acts at ±{1e4 * fb.threshold:.0f}", style=MUTED)
         mins = next_signal_minutes()
+        if s.pct is not None:
+            gap.append(f" · {100 * s.pct:.0f}th pctile", style=MUTED)
         gap.append(f" · next {mins}m", style="bold" if mins <= 2 else MUTED)
         gap.append(")", style=MUTED)
         ic = "n/a" if s.rolling_ic is None else f"{s.rolling_ic:+.3f}"

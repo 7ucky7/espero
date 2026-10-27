@@ -48,6 +48,51 @@ class TestSignal(unittest.TestCase):
         self.assertIn("need", st.error)
 
 
+class TestScan(unittest.TestCase):
+    def fetch(self, product, granularity, limit):
+        rng = np.random.default_rng(abs(hash(product)) % 2**32)
+        n = 300
+        idx = np.arange(n) * 3600
+        if product == "BAD-USD":
+            raise OSError("404")
+        lead = 100 * np.exp(np.cumsum(np.random.default_rng(7).normal(0, 0.01, n)))
+        close = lead * np.exp(np.cumsum(rng.normal(0, 0.004, n)))
+        return pd.DataFrame({"ts": idx, "close": close})
+
+    def test_scan_sorts_by_absolute_gap_and_keeps_failures(self):
+        rows = fast.scan(["BTC-USD", "AAA-USD", "BBB-USD", "BAD-USD"], fetch=self.fetch, pause=0)
+        self.assertEqual([r.coin for r in rows][-1], "BAD")          # errors last
+        self.assertNotIn("BTC", [r.coin for r in rows])              # the leader is not scanned
+        gaps = [abs(r.state.value) for r in rows if r.state.value is not None]
+        self.assertEqual(gaps, sorted(gaps, reverse=True))
+        self.assertIn("404", rows[-1].state.error)
+
+    def test_percentile_and_status(self):
+        rows = fast.scan(["AAA-USD"], fetch=self.fetch, pause=0)
+        st = rows[0].state
+        self.assertTrue(0 < st.pct <= 1)
+        self.assertEqual(fast.scan_status(fast.SignalState(value=0.004), 0.003), "BUY candidate")
+        self.assertEqual(fast.scan_status(fast.SignalState(value=-0.004), 0.003), "sell if held")
+        self.assertEqual(fast.scan_status(fast.SignalState(value=0.0025), 0.003), "near")
+        self.assertEqual(fast.scan_status(fast.SignalState(value=0.0001), 0.003), "")
+
+    def test_scan_table_renders(self):
+        import io
+
+        from rich.console import Console
+        rows = fast.scan(["AAA-USD", "BAD-USD"], fetch=self.fetch, pause=0)
+        buf = io.StringIO()
+        Console(file=buf, width=120).print(fast.scan_table(rows, 0.003, title="t"))
+        out = buf.getvalue()
+        self.assertIn("AAA", out)
+        self.assertIn("OSError", out)
+
+    def test_scan_products_skip_coins_coinbase_does_not_list(self):
+        ps = fast.scan_products()
+        self.assertIn("ETH-USD", ps)
+        self.assertNotIn("TRX-USD", ps)
+
+
 class TestCountdown(unittest.TestCase):
     def test_minutes_to_the_next_hourly_close(self):
         self.assertEqual(fast.next_signal_minutes(3600 * 10 + 5 * 60), 56)   # 10:05 -> 11:00, +1 refresh

@@ -223,6 +223,46 @@ def _cmd_fast(args: argparse.Namespace) -> int:
                     threshold=args.threshold / 1e4, order_notional=args.order_notional)
 
 
+def _cmd_scan(args: argparse.Namespace) -> int:
+    from rich.console import Console
+
+    from . import fast as fst
+
+    console = Console()
+    threshold = args.threshold / 1e4
+    products = [p.strip().upper() for p in args.products.split(",") if p.strip()] or fst.scan_products()
+    products = [p if "-" in p else f"{p}-USD" for p in products]
+    while True:
+        with console.status(f"scanning {len(products)} coins against BTC ...", spinner="dots"):
+            rows = fst.scan(products)
+        stamp = time.strftime("%H:%M UTC", time.gmtime())
+        mins = fst.next_signal_minutes()
+        console.print(fst.scan_table(rows, threshold, title=f"lead-lag signal · {stamp} · "
+                                     f"acts at ±{args.threshold:.0f} bps · next update in {mins}m"))
+        n_buy = sum(1 for r in rows if fst.scan_status(r.state, threshold) == "BUY candidate")
+        console.print(f"[grey58]{n_buy} buy candidate(s). pctile = how unusual this gap is for that coin over "
+                      f"two weeks. 2w IC red = signal cold on that coin.[/]")
+        if args.once or not sys.stdin.isatty():
+            return 0
+        try:
+            import questionary
+        except ImportError:
+            return 0
+        from .ui import STYLE
+        choices = [questionary.Choice(f"{r.coin:6s} {1e4 * r.state.value:+5.0f} bps  "
+                                      f"{fst.scan_status(r.state, threshold)}", value=r.product)
+                   for r in rows if r.state.value is not None][:15]
+        choices += [questionary.Choice("rescan", value="__rescan"), questionary.Choice("quit", value=None)]
+        pick = questionary.select("Open the fast screen on:", choices=choices, style=STYLE, pointer="❯").ask()
+        if pick == "__rescan":
+            continue
+        if not pick:
+            return 0
+        from .fast import run as fast_run
+        fast_run(pick, cash=args.cash, venue=args.venue, record=args.record, state_dir=Path(args.state_dir),
+                 threshold=threshold, order_notional=args.order_notional)
+
+
 def _cmd_ui(args: argparse.Namespace) -> int:
     from .ui import main as ui_main
     return ui_main(Path(args.state_dir))
@@ -392,6 +432,17 @@ def build_parser() -> argparse.ArgumentParser:
     fs.add_argument("--interval", type=float, default=1.0)
     fs.add_argument("--state-dir", default=".")
     fs.set_defaults(func=_cmd_fast)
+
+    sc = sub.add_parser("scan", help="the lead-lag signal for every coin, then open the fast screen on one")
+    sc.add_argument("--products", default="", help="comma-separated, e.g. ETH,SOL,LINK (default: the 39 on Coinbase)")
+    sc.add_argument("--threshold", type=float, default=30.0, help="bps gap that makes a buy candidate")
+    sc.add_argument("--venue", choices=["binanceus", "kraken", "coinbase"], default="binanceus")
+    sc.add_argument("--cash", type=float, default=500.0)
+    sc.add_argument("--order-notional", type=float, default=50.0)
+    sc.add_argument("--record", action="store_true")
+    sc.add_argument("--state-dir", default=".")
+    sc.add_argument("--once", action="store_true", help="print the table and exit")
+    sc.set_defaults(func=_cmd_scan)
 
     dy = sub.add_parser("daily", help="the scheduled run: tsmom -> xs -> dashboard -> health.json")
     dy.add_argument("--state-dir", default=".", help="where the .db files, dashboard and health live")
