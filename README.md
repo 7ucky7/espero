@@ -104,26 +104,19 @@ needed:
 ./scripts/install-hooks.sh       # optional: run the checks on every git push
 ```
 
-## The one factor that survived a first look
+## One factor, tested honestly
 
-Funding-rate extremes, Hyperliquid BTC perp, 2023-05 → 2026-10, attached to daily bars with a
-1-hour lag so nothing peeks:
+Funding-rate extremes looked like an edge: on Hyperliquid BTC, funding below z = −2 was followed by
++0.585% on the next day (63% hit, n = 60), and the same rule on ETH returned +28% over the 2025–26
+holdout while holding lost money.
 
-| Funding z-score | n | mean next-1d return | hit rate |
-|---|---|---|---|
-| **z < −2** (crowded shorts) | **60** | **+0.585%** | **63%** |
-| −2 … −1 | 103 | +0.038% | 49% |
-| −1 … 1 | 943 | +0.108% | 50% |
-| 1 … 2 | 87 | +0.080% | 51% |
-| z > 2 (crowded longs) | 61 | −0.045% | 49% |
+Then the longer history arrived. On Deribit's seven years of funding (2019–2026), the identical rule
+produced **25 trades, +17.2%, t = 0.91** — no evidence of edge — and the selection period before the
+holdout showed nothing at all.
 
-t-stat ≈ **2.14** on the left tail, and the sign holds in every year (2023 +0.15%, 2024 +0.34%,
-2025 +0.76%, 2026 +0.73%). Adding it to the four-strategy stack moves the same backtest from
-**+10.3% to +36.0%** at 4 bps fees, Sharpe 0.22 → 0.43.
-
-That is a lead, not a conclusion: 60 events, one asset, one venue, and a t-stat sitting right on the
-threshold. It is exactly the sort of thing that should be checked out-of-sample before a dollar
-follows it.
+The full write-up, including why a fixed z-threshold cannot be shared across venues (Deribit's funding
+std is 8× Hyperliquid's), is in [research/FINDINGS.md](research/FINDINGS.md). The short version: it
+was a regime, not a law, and it is not traded by anything in this repo.
 
 ## The numbers
 

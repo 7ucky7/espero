@@ -87,6 +87,38 @@ def hyperliquid_funding(pages: int = 70, coin: str = "BTC",
     return df.drop_duplicates("ts").sort_values("ts").reset_index(drop=True)
 
 
+def deribit_funding(start_ms: int = 1_546_300_800_000,
+                    end_ms: int = 1_793_059_200_000) -> pd.DataFrame:
+    """Hourly funding history, long enough to cover several market regimes.
+
+    Deribit is used here because it is the only free source reachable from this
+    machine that goes back before 2023.
+    """
+    import datetime as _dt
+
+    rows = []
+    cursor = start_ms
+    while cursor < end_ms:
+        nxt = min(cursor + 30 * 24 * 3600 * 1000, end_ms)
+        params = {
+            "instrument_name": "BTC-PERPETUAL",
+            "start_timestamp": cursor,
+            "end_timestamp": nxt,
+            "count": 1000,
+        }
+        data = _get("https://www.deribit.com/api/v2/public/get_funding_rate_history",
+                    params).get("result", [])
+        rows.extend(data)
+        cursor = nxt
+        time.sleep(0.15)
+    if not rows:
+        return pd.DataFrame(columns=["ts", "funding"])
+    df = pd.DataFrame([{"ts": int(r["timestamp"]) // 1000,
+                        "funding": float(r["interest_8h"] if "interest_8h" in r else r["interest"])}
+                       for r in rows])
+    return df.drop_duplicates("ts").sort_values("ts").reset_index(drop=True)
+
+
 def polymarket_history(token_id: str, fidelity: int = 60) -> pd.DataFrame:
     """Implied probability of one outcome, from the CLOB price history."""
     data = _get(POLY_HISTORY, {"market": token_id, "interval": "max", "fidelity": fidelity})
