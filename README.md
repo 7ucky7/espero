@@ -3,8 +3,6 @@
 A small, honest crypto research harness: causal indicators, next-bar fills, and tests that fail
 the moment you cheat.
 
-![tests](https://github.com/7ucky7/espero/actions/workflows/ci.yml/badge.svg)
-
 ## Why this exists
 
 I inherited a 12,000-line trading bot. It looked complete — data layer, risk manager, order manager,
@@ -53,6 +51,14 @@ Run the tests:
 
 ```bash
 python -m unittest discover -s tests -v
+```
+
+Or run the whole CI job locally — the same steps as `.github/workflows/ci.yml`, no Actions minutes
+needed (private repos draw on a paid quota):
+
+```bash
+./scripts/check.sh --install     # first time
+./scripts/check.sh               # tests + audit table + CLI smoke test
 ```
 
 ## The numbers
