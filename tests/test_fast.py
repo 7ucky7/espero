@@ -93,6 +93,29 @@ class TestScan(unittest.TestCase):
         self.assertNotIn("TRX-USD", ps)
 
 
+class TestPrices(unittest.TestCase):
+    def test_decimals_follow_the_price(self):
+        self.assertEqual(fast.px(2314.561), "2,314.56")
+        self.assertEqual(fast.px(2.57843), "2.5784")
+        self.assertEqual(fast.px(0.123456), "0.12346")
+        self.assertEqual(fast.px(0.0000123456), "0.00001235")
+        self.assertEqual(fast.px(None), "-")
+
+    def test_open_proposal_follows_the_touch_and_keeps_dollar_size(self):
+        with tempfile.TemporaryDirectory() as d:
+            fb = book(d)
+            sig = fast.SignalState(value=0.01, beta=1.0, r_leader=0.01, r_coin=0.0)
+            fb.on_snapshot(snap(bid=100.0, ask=100.1), sig)
+            notional = fb.proposal.size * fb.proposal.price
+            fb.on_snapshot(snap(ts=13, bid=101.0, ask=101.1), fast.SignalState(value=0.01))
+            self.assertEqual(fb.proposal.price, 101.0)
+            self.assertAlmostEqual(fb.proposal.size * fb.proposal.price, notional)
+            fb.accept()
+            o = fb.exchange.resting()[0]
+            self.assertEqual(o.price, 101.0)
+            self.assertAlmostEqual(o.queue_ahead, 1.0)          # only the size at the touch, not the levels above
+
+
 class TestPrintsRate(unittest.TestCase):
     def test_prints_per_minute_averages_batched_ticks(self):
         with tempfile.TemporaryDirectory() as d:

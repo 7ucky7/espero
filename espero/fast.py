@@ -293,13 +293,15 @@ class FastBook:
         fills = self.exchange.on_snapshot(snap)
         for f in fills:
             self._record_fill(f)
-            self.say(f"filled {f.side} {f.size:.6f} @ {f.price:.2f}  {f.slippage_bps:+.1f} bps vs mid, "
+            self.say(f"filled {f.side} {f.size:.6f} @ {px(f.price)}  {f.slippage_bps:+.1f} bps vs mid, "
                      f"{f.delay_s:.0f}s")
             if self.exchange.inventory > 1e-12 and self.entry_ts is None:
                 self.entry_ts = f.ts
             if self.exchange.inventory <= 1e-12:
                 self.entry_ts = None
         self._check_risk(snap)
+        if self.proposal is not None:
+            self._follow_touch(snap)
         if not self.halted and self.proposal is None and not self.exchange.resting():
             self.proposal = self._propose(snap)
         return fills
@@ -335,6 +337,19 @@ class FastBook:
                             MEASURED_EDGE_BPS, self.cost_bps(), snap.ts)
         return None
 
+    def _follow_touch(self, snap: BookSnapshot) -> None:
+        """An open proposal re-quotes at the current touch every tick, so Enter
+        places it where the market is now, not where it was when proposed."""
+        p = self.proposal
+        touch = snap.best_bid if p.side == "buy" else snap.best_ask
+        if touch is None or touch == p.price:
+            return
+        if p.side == "buy" and p.reason and not p.reason.startswith("held"):
+            notional = p.size * p.price
+            p.size = notional / touch                     # keep the dollar size, not the coin size
+        p.price = touch
+        p.cost_bps = self.cost_bps()
+
     def leader_name(self) -> str:
         return "BTC"
 
@@ -349,11 +364,11 @@ class FastBook:
         order = self.exchange.place_post_only(snap, p.side, p.price, p.size, decision_mid=snap.mid)
         self.proposal = None
         if order.status == "rejected":
-            self.say(f"rejected {p.side} {p.size:.6f} @ {p.price:.2f} (would cross or no funds)")
+            self.say(f"rejected {p.side} {p.size:.6f} @ {px(p.price)} (would cross or no funds)")
             return "rejected"
         self.placed_times.append(snap.ts)
         self.why_by_order[order.id] = self.why()
-        self.say(f"resting {p.side} {p.size:.6f} @ {p.price:.2f}  queue ahead {order.queue_ahead:.4f}")
+        self.say(f"resting {p.side} {p.size:.6f} @ {px(p.price)}  queue ahead {order.queue_ahead:.4f}")
         return order.id
 
     def decline(self) -> None:
@@ -367,11 +382,11 @@ class FastBook:
         if snap is None:
             return
         for o in self.exchange.cancel_all():
-            px = snap.best_bid if o.side == "buy" else snap.best_ask
-            new = self.exchange.place_post_only(snap, o.side, px, o.remaining, decision_mid=o.decision_mid)
+            price = snap.best_bid if o.side == "buy" else snap.best_ask
+            new = self.exchange.place_post_only(snap, o.side, price, o.remaining, decision_mid=o.decision_mid)
             if new.status == "resting":
                 self.why_by_order[new.id] = self.why_by_order.get(o.id, self.why())
-            self.say(f"repriced {o.side} {o.price:.2f} -> {px:.2f} [{new.status}]")
+            self.say(f"repriced {o.side} {px(o.price)} -> {px(price)} [{new.status}]")
 
     def cancel(self) -> None:
         n = len(self.exchange.cancel_all())
@@ -481,6 +496,20 @@ class Keys:
             tty.setcbreak(self.fd)
 
 
+def px(p: Optional[float]) -> str:
+    """A price with the decimals its size needs: 2,314.56 · 2.5784 · 0.0000123."""
+    if p is None:
+        return "-"
+    a = abs(p)
+    if a >= 1000:
+        return f"{p:,.2f}"
+    if a >= 1:
+        return f"{p:,.4f}"
+    if a >= 0.01:
+        return f"{p:.5f}"
+    return f"{p:.8f}"
+
+
 def next_signal_minutes(now: Optional[float] = None) -> int:
     """Minutes until the next hourly bar closes, plus the one-minute refresh lag
     of the candle signal. This is the next moment a proposal can appear."""
@@ -520,7 +549,7 @@ def render(fb: FastBook, mode: str):
     market = Text()
     if mid:
         market.append("mid ", style=MUTED)
-        market.append(f"{mid:,.2f}", style="bold")
+        market.append(px(mid), style="bold")
         market.append("   spread ", style=MUTED)
         market.append(f"{snap.spread_bps:.2f} bps")
         imb = snap.imbalance() or 0.0
@@ -598,7 +627,7 @@ def render(fb: FastBook, mode: str):
         resting.add_column(c, justify=j)
     for o in fb.exchange.resting():
         age = (snap.ts - o.placed_ts) if snap else 0
-        resting.add_row(Text(o.side, style="green" if o.side == "buy" else "red"), f"{o.price:,.2f}",
+        resting.add_row(Text(o.side, style="green" if o.side == "buy" else "red"), px(o.price),
                         f"{o.size:.5f}", f"{o.filled:.5f}", f"{o.queue_ahead:.3f}", f"{age:.0f}s")
     if not fb.exchange.resting():
         resting.add_row(Text("none", style=MUTED), "", "", "", "", "")
@@ -611,7 +640,7 @@ def render(fb: FastBook, mode: str):
     for f in fb.exchange.fills[-6:]:
         slip = Text(f"{f.slippage_bps:+.1f} bps", style="green" if f.slippage_bps <= 0 else "red")
         fills.add_row(datetime.fromtimestamp(f.ts, timezone.utc).strftime("%H:%M:%S"),
-                      Text(f.side, style="green" if f.side == "buy" else "red"), f"{f.price:,.2f}",
+                      Text(f.side, style="green" if f.side == "buy" else "red"), px(f.price),
                       f"{f.size:.5f}", slip, f"{f.delay_s:.0f}s", f"{f.fee:.4f}")
     if not fb.exchange.fills:
         fills.add_row(Text("none yet", style=MUTED), "", "", "", "", "", "")
@@ -622,7 +651,7 @@ def render(fb: FastBook, mode: str):
     if fb.proposal:
         p = fb.proposal
         body = Text()
-        body.append(f"{p.side.upper()} {p.size:.5f} @ {p.price:,.2f}", style="bold")
+        body.append(f"{p.side.upper()} {p.size:.5f} @ {px(p.price)}", style="bold")
         body.append("  post-only", style=MUTED)
         body.append(f"   {p.reason}\n")
         body.append(f"edge {p.edge_bps:.1f} vs cost {p.cost_bps:.1f} bps, ratio {p.ratio:.1f}  ",
@@ -644,15 +673,15 @@ def render(fb: FastBook, mode: str):
         levels = 6
         top = max([sz for _, sz in snap.asks[:levels]] + [sz for _, sz in snap.bids[:levels]] + [1e-9])
         mine = {(o.side, round(o.price, 8)) for o in fb.exchange.resting()}
-        for px, sz in reversed(snap.asks[:levels]):
+        for lvl, sz in reversed(snap.asks[:levels]):
             bar = "█" * max(1, int(16 * sz / top))
-            tag = Text("◀ you", style="bold") if ("sell", round(px, 8)) in mine else Text("")
-            ladder.add_row(Text("ask", style="red"), f"{px:,.2f}", f"{sz:.3f}", Text(bar, style="red") + tag)
-        ladder.add_row(Text("mid", style=MUTED), Text(f"{mid:,.2f}", style="bold"), "", Text("", style=MUTED))
-        for px, sz in snap.bids[:levels]:
+            tag = Text("◀ you", style="bold") if ("sell", round(lvl, 8)) in mine else Text("")
+            ladder.add_row(Text("ask", style="red"), px(lvl), f"{sz:,.3f}", Text(bar, style="red") + tag)
+        ladder.add_row(Text("mid", style=MUTED), Text(px(mid), style="bold"), "", Text("", style=MUTED))
+        for lvl, sz in snap.bids[:levels]:
             bar = "█" * max(1, int(16 * sz / top))
-            tag = Text("◀ you", style="bold") if ("buy", round(px, 8)) in mine else Text("")
-            ladder.add_row(Text("bid", style="green"), f"{px:,.2f}", f"{sz:.3f}", Text(bar, style="green") + tag)
+            tag = Text("◀ you", style="bold") if ("buy", round(lvl, 8)) in mine else Text("")
+            ladder.add_row(Text("bid", style="green"), px(lvl), f"{sz:,.3f}", Text(bar, style="green") + tag)
     else:
         ladder.add_row(Text("waiting", style=MUTED), "", "", "")
     ladder_p = Panel(ladder, title="book", title_align="left", border_style=MUTED)
@@ -663,7 +692,7 @@ def render(fb: FastBook, mode: str):
     if len(fb.mids) >= 2:
         lo, hi = min(fb.mids[-120:]), max(fb.mids[-120:])
         tape.append(sparkline(fb.mids, width=60), style=ACCENT)
-        tape.append(f"\n{lo:,.2f} … {hi:,.2f}  last {len(fb.mids[-120:])} ticks", style=MUTED)
+        tape.append(f"\n{px(lo)} … {px(hi)}  last {len(fb.mids[-120:])} ticks", style=MUTED)
     else:
         tape.append("collecting ticks ...", style=MUTED)
     tape_p = Panel(tape, title="mid", title_align="left", border_style=MUTED)
