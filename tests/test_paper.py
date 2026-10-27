@@ -61,6 +61,15 @@ class PaperTestCase(unittest.TestCase):
 
 
 class TestPaperFills(PaperTestCase):
+    def test_signal_under_the_backtest_floor_is_ignored(self):
+        # combine() can return 0.60 (one Bollinger vote); the backtest needs 0.65.
+        # The paper book must apply the same floor or it trades a different rule.
+        t = self.trader()
+        paper_mod.combine = ScriptedSignal(nth=1, confidence=0.60)
+        self.prime(t)
+        self.assertIsNone(t.pending)
+        self.assertIsNone(t.position)
+
     def test_signal_queues_instead_of_filling(self):
         t = self.trader()
         paper_mod.combine = ScriptedSignal(nth=1)

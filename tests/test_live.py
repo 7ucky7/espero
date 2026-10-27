@@ -78,6 +78,13 @@ class LiveTestCase(unittest.TestCase):
 
 
 class TestLiveOrders(LiveTestCase):
+    def test_signal_under_the_backtest_floor_is_ignored(self):
+        broker = FakeBroker()
+        trader = LiveTrader(self.journal, broker, self.cfg, kill_file=self.dir / "KILL")
+        live_mod.combine = ScriptedSignal(nth=1, confidence=0.60)
+        self.prime(trader)
+        self.assertEqual(broker.orders, [])
+
     def test_signal_places_a_capped_order_with_a_client_id(self):
         broker = FakeBroker()
         trader = LiveTrader(self.journal, broker, self.cfg, kill_file=self.dir / "KILL")

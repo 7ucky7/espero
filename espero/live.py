@@ -32,7 +32,7 @@ from .broker import Broker, new_client_id
 from .indicators import add_indicators
 from .journal import Journal, Position
 from .risk import RiskLimits, check_buy
-from .signals import combine, signals_at
+from .signals import MIN_CONFIDENCE, combine, signals_at
 
 SELL_OVERRIDE_CONFIDENCE = 0.8   # a SELL at a loss needs this much conviction
 
@@ -109,6 +109,10 @@ class LiveTrader:
                 events.append(self._sell(exit_px, ts, reason))
 
         signal = self._signal_at_close()
+        if signal is not None and signal.confidence < MIN_CONFIDENCE:
+            # the backtest ignores anything under the floor; so must we, or the
+            # paper and live books run a different strategy from the tested one
+            signal = None
         if signal is not None:
             self.journal.add_signal(self.cfg.product, ts, signal)
             if signal.side == "BUY" and self.position is None:

@@ -19,7 +19,7 @@ import pandas as pd
 from .indicators import add_indicators
 from .journal import Journal, PendingOrder, Position
 from .risk import RiskLimits, check_buy
-from .signals import combine, signals_at
+from .signals import MIN_CONFIDENCE, combine, signals_at
 
 
 @dataclass
@@ -71,6 +71,10 @@ class PaperTrader:
 
         # 3. decide at the close
         signal = self._signal_at_close()
+        if signal is not None and signal.confidence < MIN_CONFIDENCE:
+            # the backtest ignores anything under the floor; so must we, or the
+            # paper and live books run a different strategy from the tested one
+            signal = None
         if signal is not None:
             self.journal.add_signal(self.cfg.product, ts, signal)
             if signal.side == "BUY" and self.position is None and self.pending is None:
