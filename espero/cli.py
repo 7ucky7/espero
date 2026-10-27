@@ -7,16 +7,16 @@ import sys
 import time
 from pathlib import Path
 
+from . import dashboard as dash
 from . import data
+from . import features as fx
+from . import tsmom as tsm
+from . import xs as xsm
 from .backtest import Config, run
 from .broker import BrokerError, broker_from_env
-from . import features as fx
 from .journal import Journal
 from .live import LiveConfig, LiveTrader
 from .paper import PaperConfig, PaperTrader
-from . import tsmom as tsm
-from . import xs as xsm
-from . import dashboard as dash
 from .report import buy_and_hold, equity_png, format_matrix, matrix
 
 

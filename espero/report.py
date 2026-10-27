@@ -10,7 +10,7 @@ from typing import Dict, List
 
 import pandas as pd
 
-from .backtest import Config, Result, run
+from .backtest import Config, run
 
 CASES = [
     ("as coded (look-ahead), 2% notional, 10 bps", Config(timing="same_bar", fee=0.001, sizing="risk2pct")),

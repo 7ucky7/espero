@@ -9,7 +9,6 @@ capped at 1/6 each, remainder in cash. Execute at the next month's first open.
 """
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import numpy as np

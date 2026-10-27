@@ -14,7 +14,6 @@ import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -32,9 +31,8 @@ CREATE TABLE IF NOT EXISTS features (
 
 
 def _get(url: str, params: dict) -> dict:
-    req = urllib.request.Request(url + "?" + urllib.parse.urlencode(params), headers=UA)
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.load(r)
+    from .data import http_json
+    return http_json(url + "?" + urllib.parse.urlencode(params), headers=UA)
 
 
 # ------------------------------------------------------------------ sources
@@ -69,10 +67,9 @@ def hyperliquid_funding(pages: int = 70, coin: str = "BTC",
     for _ in range(pages):
         body = json.dumps({"type": "fundingHistory", "coin": coin,
                            "startTime": cursor}).encode()
-        req = urllib.request.Request("https://api.hyperliquid.xyz/info", data=body,
-                                     headers={**UA, "Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=30) as r:
-            page = json.load(r)
+        from .data import http_get
+        page = json.loads(http_get("https://api.hyperliquid.xyz/info", data=body,
+                                   headers={**UA, "Content-Type": "application/json"}))
         if not page:
             break
         rows.extend(page)
@@ -94,7 +91,6 @@ def deribit_funding(start_ms: int = 1_546_300_800_000,
     Deribit is used here because it is the only free source reachable from this
     machine that goes back before 2023.
     """
-    import datetime as _dt
 
     rows = []
     cursor = start_ms

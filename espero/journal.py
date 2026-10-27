@@ -66,8 +66,9 @@ class Journal:
     def __init__(self, path: str | Path):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(self.path)
+        self.db = sqlite3.connect(self.path, timeout=5.0)
         self.db.row_factory = sqlite3.Row
+        self.db.execute("PRAGMA journal_mode=WAL")   # a reader never blocks the writer
         self.db.executescript(SCHEMA)
         self.db.commit()
 

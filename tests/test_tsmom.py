@@ -111,6 +111,39 @@ class TestAccount(unittest.TestCase):
         acc.rebalance(pd.Series({"SPY": 10.0}), {"SPY": 1 / 6})
         self.assertGreaterEqual(acc.cash, -1e-9)
 
+    def test_fully_invested_rebalance_does_not_borrow_the_fees(self):
+        # one-pass costing left cash at exactly -(traded * COST)
+        acc = T.Account(self.path)
+        acc.cash = 100.0
+        px = pd.Series({"SPY": 10.0, "GLD": 20.0})
+        acc.rebalance(px, {"SPY": 0.5, "GLD": 0.5})
+        self.assertGreaterEqual(acc.cash, -1e-9)
+        self.assertAlmostEqual(acc.equity(px), 100.0 * (1 - T.COST), places=6)
+
+
+class TestCalendar(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.path = Path(self.tmp.name) / "acct.db"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_rebalances_once_per_month_not_once_per_day_of_the_window(self):
+        from datetime import datetime, timezone
+        acc = T.Account(self.path)
+        acc.cash = 100.0
+        day1 = datetime(2026, 12, 1, 12, tzinfo=timezone.utc)   # Tuesday
+        day2 = datetime(2026, 12, 2, 12, tzinfo=timezone.utc)
+        self.assertTrue(T.rebalance_due(acc, day1))
+        acc.save(int(day1.timestamp()), 100.0, {}, "rebalance")
+        self.assertFalse(T.rebalance_due(acc, day2))
+        self.assertTrue(T.rebalance_due(acc, datetime(2027, 1, 1, 12, tzinfo=timezone.utc)))
+
+    def test_weekend_is_never_a_rebalance_day(self):
+        from datetime import datetime, timezone
+        self.assertFalse(T.first_trading_day(datetime(2026, 11, 1, tzinfo=timezone.utc)))  # Sunday
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

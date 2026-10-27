@@ -12,14 +12,14 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List
 
 import pandas as pd
 
 from .indicators import add_indicators
 from .journal import Journal, PendingOrder, Position
 from .risk import RiskLimits, check_buy
-from .signals import MIN_CONFIDENCE, combine, signals_at
+from .signals import combine, signals_at
 
 
 @dataclass

@@ -13,9 +13,6 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
-
-import pandas as pd
 
 from . import tsmom as tsm
 
@@ -154,7 +151,8 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
         <section class="card">
           <h2>Cross-asset trend <span class="pill">paper</span></h2>
           <div class="big">${equity:,.2f}</div>
-          <div class="sub">as of {as_of} · cash ${cash:,.2f} · {sum(1 for v in positions.values() if v > 0)} positions
+          <div class="sub">as of {as_of} · cash ${cash:,.2f} ·
+            {sum(1 for v in positions.values() if v > 0)} positions
             · {sig_note}</div>
           <div class="sub">deposited ${deposited:,.2f} · P&amp;L
             <span class="{'pos' if pnl >= 0 else 'neg'}">{pnl:+,.2f} ({pnl_pct:+.2f}%)</span>

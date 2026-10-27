@@ -8,16 +8,60 @@ from __future__ import annotations
 import csv
 import datetime as dt
 import json
+import logging
+import os
+import random
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import pandas as pd
 
+log = logging.getLogger(__name__)
+
 BASE = "https://api.exchange.coinbase.com/products/{product}/candles"
 DEFAULT_DIR = Path("data")
+CACHE_DIR = Path(os.environ.get("ESPERO_CACHE", "data/cache"))
+MAX_CACHE_AGE_DAYS = 3     # older than this, a cached series is not a fallback, it is history
+RETRIES = 4
+UA = {"User-Agent": "espero/0.1"}
+
+
+class FetchError(RuntimeError):
+    """An HTTP source failed after every retry."""
+
+
+def http_get(url: str, headers: Optional[dict] = None, timeout: int = 30,
+             retries: int = RETRIES, sleep=time.sleep, data: Optional[bytes] = None) -> bytes:
+    """GET with bounded exponential backoff and jitter.
+
+    Retries on connection errors, timeouts, 429 and 5xx. A 4xx other than 429
+    is not retried: the request is wrong, not the network.
+    """
+    req = urllib.request.Request(url, headers=headers or UA, data=data)
+    last: Optional[Exception] = None
+    for attempt in range(retries):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.read()
+        except urllib.error.HTTPError as exc:
+            last = exc
+            if exc.code != 429 and exc.code < 500:
+                raise FetchError(f"{url}: HTTP {exc.code}") from exc
+        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as exc:
+            last = exc
+        if attempt < retries - 1:
+            delay = min(30.0, 0.5 * 2 ** attempt) * (1 + random.random() * 0.5)
+            log.warning("fetch failed (%s), retry %d/%d in %.1fs", last, attempt + 1, retries, delay)
+            sleep(delay)
+    raise FetchError(f"{url}: {last}") from last
+
+
+def http_json(url: str, headers: Optional[dict] = None, timeout: int = 30) -> dict:
+    return json.loads(http_get(url, headers=headers, timeout=timeout))
 
 
 def candle_path(product: str, granularity: int, directory: Path = DEFAULT_DIR) -> Path:
@@ -30,10 +74,7 @@ def fetch_page(product: str, granularity: int, start: dt.datetime, end: dt.datet
         "start": start.isoformat().replace("+00:00", "Z"),
         "end": end.isoformat().replace("+00:00", "Z"),
     })
-    req = urllib.request.Request(BASE.format(product=product) + "?" + q,
-                                 headers={"User-Agent": "espero/0.1"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.load(r)
+    return http_json(BASE.format(product=product) + "?" + q)
 
 
 def fetch(product: str, days: int, granularity: int = 86400) -> pd.DataFrame:
@@ -86,10 +127,7 @@ def recent_closed_bars(product: str, granularity: int = 3600,
     bar that can still change must never be treated as closed.
     """
     q = urllib.parse.urlencode({"granularity": granularity})
-    req = urllib.request.Request(BASE.format(product=product) + "?" + q,
-                                 headers={"User-Agent": "espero/0.1"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        rows = json.load(r)
+    rows = http_json(BASE.format(product=product) + "?" + q)
     now = int(time.time())
     done = [r for r in rows if int(r[0]) + granularity <= now]
     done.sort(key=lambda r: r[0])
@@ -108,9 +146,7 @@ def fred_series(series_id: str) -> pd.DataFrame:
     Example: DCOILWTICO (WTI spot, Cushing, $/bbl) goes back to 1986.
     """
     url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
-    req = urllib.request.Request(url, headers={"User-Agent": "espero/0.1"})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        text = r.read().decode()
+    text = http_get(url, timeout=60).decode()
     rows = []
     for line in text.splitlines()[1:]:
         date, _, value = line.partition(",")
@@ -130,14 +166,45 @@ def fred_series(series_id: str) -> pd.DataFrame:
     return df[["dt", "ts", "open", "high", "low", "close", "volume"]].sort_values("dt").reset_index(drop=True)
 
 
-def yahoo_daily(symbol: str, span: str = "5y") -> pd.DataFrame:
-    """Daily OHLCV from Yahoo's public chart endpoint (futures, ETFs, crypto)."""
+def cache_path(symbol: str, span: str, directory: Path = None) -> Path:
+    directory = Path(directory) if directory is not None else CACHE_DIR
+    return directory / f"{symbol.replace('=', '_').replace('^', '')}_{span}.csv"
+
+
+def _cached(symbol: str, span: str, directory: Path, max_age_days: float) -> Optional[pd.DataFrame]:
+    p = cache_path(symbol, span, directory)
+    if not p.exists():
+        return None
+    age_days = (time.time() - p.stat().st_mtime) / 86400.0
+    if age_days > max_age_days:
+        log.warning("cache for %s is %.1f days old; not using it", symbol, age_days)
+        return None
+    df = pd.read_csv(p)
+    df["dt"] = pd.to_datetime(df["dt"], utc=True)
+    return df.sort_values("dt").reset_index(drop=True)
+
+
+def yahoo_daily(symbol: str, span: str = "5y", cache_dir: Path = None,
+                max_cache_age_days: float = MAX_CACHE_AGE_DAYS) -> pd.DataFrame:
+    """Daily OHLCV from Yahoo's public chart endpoint (futures, ETFs, crypto).
+
+    Every successful fetch is written to a CSV cache. When the fetch fails after
+    its retries, a cache younger than `max_cache_age_days` is returned instead,
+    with a warning, so a transient outage produces a stale-but-honest mark
+    rather than no mark. Callers that rank assets must still check staleness.
+    """
     q = urllib.parse.urlencode({"range": span, "interval": "1d"})
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(symbol)}?{q}"
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        payload = json.load(r)
-    result = payload["chart"]["result"][0]
+    try:
+        payload = http_json(url, headers={"User-Agent": "Mozilla/5.0"})
+        result = payload["chart"]["result"][0]
+    except (FetchError, KeyError, IndexError, TypeError, ValueError) as exc:
+        cached = _cached(symbol, span, cache_dir, max_cache_age_days)
+        if cached is None:
+            raise FetchError(f"yahoo {symbol}: {exc}; no usable cache") from exc
+        log.warning("yahoo %s failed (%s); using cache from %s", symbol, exc,
+                    cached["dt"].iloc[-1])
+        return cached
     ts = result["timestamp"]
     quote = result["indicators"]["quote"][0]
     rows = []
@@ -151,4 +218,10 @@ def yahoo_daily(symbol: str, span: str = "5y") -> pd.DataFrame:
             "open": float(o), "high": float(h), "low": float(l), "close": float(c),
             "volume": float(quote["volume"][i] or 0),
         })
-    return pd.DataFrame(rows).sort_values("dt").reset_index(drop=True)
+    df = pd.DataFrame(rows).sort_values("dt").reset_index(drop=True)
+    if not df.empty:
+        try:
+            save(df, cache_path(symbol, span, cache_dir))
+        except OSError as exc:  # a read-only disk must not stop a mark
+            log.warning("could not write cache for %s: %s", symbol, exc)
+    return df

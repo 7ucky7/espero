@@ -20,9 +20,7 @@ import argparse
 import json
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
 
-import numpy as np
 import pandas as pd
 
 GAMMA = "https://gamma-api.polymarket.com/markets"
