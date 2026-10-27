@@ -59,6 +59,8 @@ needed (private repos draw on a paid quota):
 ```bash
 ./scripts/check.sh --install     # first time
 ./scripts/check.sh               # tests + audit table + CLI smoke test
+
+./scripts/install-hooks.sh       # optional: run the checks on every git push
 ```
 
 ## The numbers

@@ -7,12 +7,23 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-if [ -n "${PYTHON:-}" ]; then
-    PY=$PYTHON
-elif [ -x .venv/bin/python ]; then
-    PY=.venv/bin/python
-else
-    PY=python3
+pick_python() {
+    for cand in "${PYTHON:-}" ".venv/bin/python" "python3" "python"; do
+        [ -n "$cand" ] || continue
+        { command -v "$cand" >/dev/null 2>&1 || [ -x "$cand" ]; } || continue
+        if "$cand" -c "import numpy, pandas" >/dev/null 2>&1; then
+            echo "$cand"
+            return 0
+        fi
+    done
+    return 1
+}
+
+if ! PY=$(pick_python); then
+    echo "no python with numpy+pandas found." >&2
+    echo "create one:  python3 -m venv .venv && .venv/bin/pip install -e '.[chart]'" >&2
+    echo "or point at one:  PYTHON=/path/to/python ./scripts/check.sh" >&2
+    exit 1
 fi
 
 if [ "${1:-}" = "--install" ]; then
