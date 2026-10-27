@@ -50,3 +50,7 @@ data/cache/
 state/
 KILL
 .venv/
+
+# recorded order books and the fast-screen journal (session data, not code)
+data/book/
+fast.db
