@@ -1,0 +1,62 @@
+fetching 365 days of hourly candles from Coinbase ...
+39 coins, 8756 hours; not on Coinbase: ['RUNE', 'THETA', 'TRX']
+eligible in the last hour: 23 / 38
+window 2025-10-27 11:00:00 → 2026-10-27 11:00:00
+
+## factor table, primary horizon 3h (purged 4-block walk-forward, 24h embargo)
+
+```
+factor           IC is   t is  IC oos   ICIR  t oos   hit   Q5-Q1  churn  pass
+leadlag_beta_1h  +0.028   1.43  +0.040   0.15  13.44  0.56  +0.04%   0.76  YES
+leadlag_beta_3h  +0.023   1.18  +0.050   0.19  16.44  0.58  +0.04%   0.46  YES
+leadlag_1h      +0.029   1.46  +0.042   0.16  14.18  0.56  +0.04%   0.77  YES
+leadlag_3h      +0.029   1.40  +0.053   0.20  17.30  0.58  +0.04%   0.46  YES
+rev_1           +0.029   1.46  +0.042   0.16  14.18  0.56  +0.04%   0.77  YES
+rev_3           +0.029   1.40  +0.053   0.20  17.30  0.58  +0.04%   0.46  YES
+mom_7           -0.026  -1.38  -0.027  -0.10  -8.75  0.45  +0.03%   0.31  -
+mom_30          -0.066  -3.70  -0.022  -0.08  -7.10  0.47  +0.04%   0.16  -
+lowvol_30       +0.068   2.89  +0.034   0.11   9.58  0.54  -0.03%   0.06  YES
+maxret_30       +0.066   3.18  +0.028   0.10   8.59  0.54  -0.04%   0.05  YES
+amihud_30       -0.032  -2.07  -0.022  -0.08  -6.71  0.47  +0.00%   0.03  -
+volume_z_20     +0.012   0.67  +0.001   0.01   0.52  0.50  +0.04%   0.63  -
+alpha101_6      +0.034   2.22  +0.008   0.04   3.12  0.52  -0.01%   0.31  YES
+alpha101_12     +0.021   1.26  +0.006   0.02   2.19  0.51  +0.00%   0.62  -
+alpha101_101    -0.029  -1.65  -0.034  -0.14 -11.97  0.45  -0.03%   0.77  -
+
+15 factors tried; pass = OOS t > 3 (Harvey-Liu-Zhu hurdle). Expected best t among 15 null factors over 7854 dates ≈ 1.77.
+  train 2025-11-26..2025-12-02  test 2025-12-03..2026-02-23
+  train 2025-11-26..2026-02-22  test 2026-02-23..2026-05-16
+  train 2025-11-26..2026-05-15  test 2026-05-16..2026-08-06
+  train 2025-11-26..2026-08-05  test 2026-08-06..2026-10-27
+```
+
+## leadlag_beta_1h across horizons (information)
+
+| horizon | IC oos | ICIR | t oos | hit | Q5-Q1 | churn |
+|---|---|---|---|---|---|---|
+| 1h | +0.0406 | 0.16 | 13.83 | 0.56 | +2.4 bps | 0.76 |
+| 3h | +0.0395 | 0.15 | 13.44 | 0.56 | +3.7 bps | 0.76 |
+| 6h | +0.0327 | 0.13 | 11.10 | 0.55 | +2.4 bps | 0.76 |
+| 12h | +0.0225 | 0.09 | 7.70 | 0.53 | +0.6 bps | 0.76 |
+
+#9 check: leadlag_1h t=14.18 vs rev_1 t=14.18 (identical by construction: True)
+
+## criteria at 3h
+
+| criterion | required | actual | met |
+|---|---|---|---|
+| OOS IC t > 3 | > 3 | 13.44 | yes |
+| beats rev_1 (t) | > 14.18 | 13.44 | **no** |
+| Q5-Q1 spread > 10 bps | > 10.0 | +3.7 bps | **no** |
+| hit rate > 0.52 | > 0.52 | 0.560 | yes |
+
+spread net of costs per 3h: Binance.US -0.3 bps · Coinbase -236.3 bps  (one round trip per rebalance)
+
+IC decay of leadlag_beta_1h (mean IC by horizon, full window):
+1     0.0404
+2     0.0395
+3     0.0391
+6     0.0323
+12    0.0219
+24    0.0135
+exit=0
