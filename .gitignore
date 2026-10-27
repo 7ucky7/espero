@@ -31,3 +31,6 @@ dashboard.html
 
 # SEC / price cache for research
 research/data/pead/
+
+# cached odds histories
+research/data/odds/

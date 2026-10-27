@@ -139,7 +139,12 @@ holdout against SPY's +13.4% and 0.84 — it lost in the design period too. 5,35
 point-in-time design, and no edge in the most scrutinised pond on earth:
 [research/RESULTS_PEAD.md](research/RESULTS_PEAD.md).
 
-Scoreboard: five hypotheses, one thin pass.
+The sixth, crypto-policy odds as a composite signal, **failed** too: Spearman +0.024 across 422
+observations, and the top-vs-bottom quintile spread ran the wrong way. The design period turned out to
+be empty — Polymarket's history for these markets starts in December 2023 — which is a flaw in how the
+periods were set: [research/RESULTS_ODDS.md](research/RESULTS_ODDS.md).
+
+Scoreboard: six hypotheses, one thin pass.
 
 ## The numbers
 
