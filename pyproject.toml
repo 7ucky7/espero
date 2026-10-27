@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "espero"
+version = "0.1.0"
+description = "A small, honest crypto research harness: causal indicators, next-bar fills, tests that fail when you cheat."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "7ucky7" }]
+keywords = ["trading", "backtesting", "crypto", "research"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
+dependencies = ["numpy>=1.24", "pandas>=2.0"]
+
+[project.optional-dependencies]
+chart = ["Pillow>=10"]
+dev = ["pytest>=8"]
+
+[project.scripts]
+espero = "espero.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/7ucky7/espero"
+
+[tool.setuptools]
+packages = ["espero"]
