@@ -213,6 +213,25 @@ def _cmd_dashboard(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_daily(args: argparse.Namespace) -> int:
+    from .runner import run_daily
+
+    try:
+        res = run_daily(state_dir=Path(args.state_dir), cash_tsmom=args.cash_tsmom,
+                        cash_xs=args.cash_xs, force=args.force, dry_run=args.dry_run,
+                        notify=not args.no_notify)
+    except RuntimeError as exc:   # the lock is held by a live run
+        print(f"cannot start: {exc}", file=sys.stderr)
+        return 3
+    for name, step in res.steps.items():
+        status = "skip" if step.skipped else ("ok" if step.ok else "FAIL")
+        extra = step.error or step.note
+        print(f"{name:<10s} {status:<5s} {step.seconds:5.1f}s  {extra}")
+    if res.paused:
+        print("paused: KILL file present")
+    return res.exit_code
+
+
 def _cmd_xs(args: argparse.Namespace) -> int:
     res = xsm.run(args.state, args.cash, force=args.force, deposit=args.deposit)
     print(xsm.format_report(res))
@@ -221,7 +240,7 @@ def _cmd_xs(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="espero", description="small honest crypto research harness")
-    p.add_argument("--version", action="version", version="espero 0.1.0")
+    p.add_argument("--version", action="version", version="espero 0.2.0")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     f = sub.add_parser("fetch", help="download public Coinbase candles to CSV")
@@ -290,6 +309,15 @@ def build_parser() -> argparse.ArgumentParser:
     xs_p.add_argument("--deposit", type=float, default=0.0)
     xs_p.add_argument("--force", action="store_true")
     xs_p.set_defaults(func=_cmd_xs)
+
+    dy = sub.add_parser("daily", help="the scheduled run: tsmom -> xs -> dashboard -> health.json")
+    dy.add_argument("--state-dir", default=".", help="where the .db files, dashboard and health live")
+    dy.add_argument("--cash-tsmom", type=float, default=100.0)
+    dy.add_argument("--cash-xs", type=float, default=100.0)
+    dy.add_argument("--force", action="store_true", help="rebalance both accounts now")
+    dy.add_argument("--dry-run", action="store_true", help="preflight: no network, no account changes")
+    dy.add_argument("--no-notify", action="store_true")
+    dy.set_defaults(func=_cmd_daily)
 
     d = sub.add_parser("dashboard", help="static HTML dashboard for the paper accounts")
     d.add_argument("-o", "--out", default="dashboard.html")

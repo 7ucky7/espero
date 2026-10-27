@@ -1,0 +1,207 @@
+"""`espero daily`: the one command a scheduler runs.
+
+    tsmom mark/rebalance  ->  xs mark/rebalance  ->  dashboard  ->  health.json
+
+Rules:
+
+* one run at a time -- a lock file with the owner's pid; a stale lock from a
+  dead process is removed, a live one aborts the run
+* a KILL file in the state directory pauses everything, including marks
+* each step is isolated: a failure is logged, notified, and recorded in
+  health.json, and the remaining steps still run (a broken Yahoo symbol must
+  not stop the dashboard from showing yesterday's numbers)
+* the exit code is non-zero when any step failed, so launchd and CI notice
+* `--dry-run` is a preflight: it checks the directory, the lock, the logging
+  and renders the dashboard from whatever databases exist, without touching
+  the network or the accounts. It is what CI runs
+"""
+from __future__ import annotations
+
+import json
+import logging
+import logging.handlers
+import os
+import sys
+import time
+import traceback
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Callable, Dict, Optional
+
+from . import dashboard as dash
+from . import notify as notifier
+from . import tsmom as tsm
+from . import xs as xsm
+
+log = logging.getLogger("espero.daily")
+
+LOG_DIR = Path(os.environ.get("ESPERO_LOG_DIR", Path.home() / "Library" / "Logs" / "espero"))
+TRADE_NOTES = ("init", "rebalance", "deposit")
+
+
+@dataclass
+class StepResult:
+    ok: bool
+    seconds: float
+    note: str = ""
+    equity: Optional[float] = None
+    error: str = ""
+    skipped: bool = False
+
+
+@dataclass
+class DailyResult:
+    started: str
+    steps: Dict[str, StepResult] = field(default_factory=dict)
+    paused: bool = False
+
+    @property
+    def ok(self) -> bool:
+        return not self.paused and all(s.ok for s in self.steps.values())
+
+    @property
+    def exit_code(self) -> int:
+        return 0 if self.ok or self.paused else 1
+
+
+# ------------------------------------------------------------------ logging
+def setup_logging(log_dir: Path = LOG_DIR, level: int = logging.INFO) -> Path:
+    log_dir = Path(log_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    path = log_dir / "daily.log"
+    root = logging.getLogger()
+    root.setLevel(level)
+    fmt = logging.Formatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s")
+    if not any(getattr(h, "_espero", False) for h in root.handlers):
+        fh = logging.handlers.RotatingFileHandler(path, maxBytes=2_000_000, backupCount=5)
+        fh.setFormatter(fmt)
+        fh._espero = True  # type: ignore[attr-defined]
+        root.addHandler(fh)
+        sh = logging.StreamHandler(sys.stderr)
+        sh.setFormatter(fmt)
+        sh._espero = True  # type: ignore[attr-defined]
+        root.addHandler(sh)
+    return path
+
+
+# --------------------------------------------------------------------- lock
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+class Lock:
+    def __init__(self, path: Path):
+        self.path = Path(path)
+
+    def __enter__(self):
+        if self.path.exists():
+            try:
+                pid = int(self.path.read_text().strip() or 0)
+            except ValueError:
+                pid = 0
+            if pid and _pid_alive(pid):
+                raise RuntimeError(f"another run holds {self.path} (pid {pid})")
+            log.warning("removing stale lock %s (pid %s is gone)", self.path, pid)
+            self.path.unlink()
+        self.path.write_text(str(os.getpid()))
+        return self
+
+    def __exit__(self, *exc):
+        try:
+            self.path.unlink()
+        except FileNotFoundError:
+            pass
+        return False
+
+
+# -------------------------------------------------------------------- steps
+def _step(name: str, fn: Callable[[], dict], result: DailyResult, notify: bool) -> Optional[dict]:
+    t0 = time.time()
+    try:
+        out = fn()
+    except Exception as exc:  # noqa: BLE001 - every step is isolated on purpose
+        err = f"{type(exc).__name__}: {exc}"
+        log.error("%s FAILED: %s\n%s", name, err, traceback.format_exc())
+        result.steps[name] = StepResult(False, time.time() - t0, error=err)
+        if notify:
+            notifier.notify(f"espero {name} failed", err[:200])
+        return None
+    note = str(out.get("note", "")) if isinstance(out, dict) else ""
+    equity = out.get("equity") if isinstance(out, dict) else None
+    result.steps[name] = StepResult(True, time.time() - t0, note=note, equity=equity)
+    log.info("%s ok in %.1fs: %s equity=%s", name, time.time() - t0, note,
+             f"{equity:.2f}" if equity is not None else "-")
+    if notify and note.split(" ")[0] in TRADE_NOTES:
+        notifier.notify(f"espero {name}: {note}", f"equity ${equity:,.2f}")
+    return out
+
+
+def write_health(state_dir: Path, result: DailyResult) -> Path:
+    path = state_dir / "health.json"
+    prev = {}
+    if path.exists():
+        try:
+            prev = json.loads(path.read_text())
+        except ValueError:
+            prev = {}
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    doc = {
+        "last_run": now,
+        "last_success": now if result.ok else prev.get("last_success"),
+        "ok": result.ok,
+        "paused": result.paused,
+        "steps": {k: {"ok": v.ok, "seconds": round(v.seconds, 1), "note": v.note,
+                      "equity": v.equity, "error": v.error, "skipped": v.skipped}
+                  for k, v in result.steps.items()},
+    }
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(doc, indent=2))
+    os.replace(tmp, path)   # a reader never sees a half-written file
+    return path
+
+
+def run_daily(state_dir: Path = Path("."), cash_tsmom: float = 100.0, cash_xs: float = 100.0,
+              force: bool = False, dry_run: bool = False, notify: bool = True,
+              now: Optional[datetime] = None, log_dir: Path = LOG_DIR) -> DailyResult:
+    state_dir = Path(state_dir)
+    state_dir.mkdir(parents=True, exist_ok=True)
+    log_path = setup_logging(log_dir)
+    result = DailyResult(started=datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    log.info("daily run start (state=%s, log=%s, dry_run=%s)", state_dir.resolve(), log_path, dry_run)
+
+    if (state_dir / "KILL").exists():
+        log.warning("KILL file present in %s: paused, nothing runs", state_dir)
+        result.paused = True
+        write_health(state_dir, result)
+        return result
+
+    tsmom_db, xs_db = state_dir / "tsmom.db", state_dir / "xs.db"
+    paper_db, live_db = state_dir / "paper.db", state_dir / "live.db"
+
+    with Lock(state_dir / "daily.lock"):
+        if dry_run:
+            for name in ("tsmom", "xs"):
+                result.steps[name] = StepResult(True, 0.0, note="skipped (dry run)", skipped=True)
+                log.info("%s skipped (dry run)", name)
+        else:
+            _step("tsmom", lambda: tsm.run(str(tsmom_db), cash_tsmom, force=force, now=now),
+                  result, notify)
+            _step("xs", lambda: xsm.run(str(xs_db), cash_xs, force=force, now=now), result, notify)
+
+        def render():
+            out = dash.write(state_dir / "dashboard.html", tsmom_db=tsmom_db, paper_db=paper_db,
+                             live_db=live_db, xs_db=xs_db)
+            return {"note": f"wrote {out}"}
+
+        _step("dashboard", render, result, notify)
+
+    path = write_health(state_dir, result)
+    log.info("daily run %s (%s)", "ok" if result.ok else "FAILED", path)
+    return result
