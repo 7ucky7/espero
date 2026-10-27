@@ -172,6 +172,15 @@ class Journal:
         )
         self.db.commit()
 
+    def charge_position(self, position_id: str, amount: float) -> None:
+        """Add a carrying cost (perp funding) to the position's fee bill, so the
+        realised P&L at exit includes it and a restart does not forget it."""
+        self.db.execute(
+            "UPDATE positions SET entry_fee = COALESCE(entry_fee, 0) + ? WHERE id=?",
+            (amount, position_id),
+        )
+        self.db.commit()
+
     def closed_positions(self) -> List[sqlite3.Row]:
         return self.db.execute(
             "SELECT * FROM positions WHERE exit_ts IS NOT NULL ORDER BY exit_ts"

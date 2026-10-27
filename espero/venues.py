@@ -19,6 +19,11 @@ class Venue:
     min_notional: float
     api: str             # adapter class name in espero.broker
     asset_class: str = "crypto"   # "crypto" or "equity"
+    kind: str = "spot"            # "spot" or "perp"
+    funding_bps_8h: float = 0.0   # perps: what a long pays every 8h (assumed constant)
+
+
+FUNDING_PERIOD_S = 8 * 3600       # 00:00, 08:00, 16:00 UTC on most venues
 
 
 VENUES: Dict[str, Venue] = {
@@ -31,6 +36,15 @@ VENUES: Dict[str, Venue] = {
     "alpaca": Venue("Alpaca", maker_bps=0.0, taker_bps=0.0,
                     symbol="{base}", min_notional=1.0, api="AlpacaBroker",
                     asset_class="equity"),
+    # A generic USDT/USD perpetual at base tier. The fees are typical of the large
+    # perp venues; funding is the long-run average for BTC (0.01% per 8h, longs
+    # pay). Real funding swings with the market and can flip sign or exceed 0.1%.
+    # US residents cannot use Binance, Bybit or OKX perps; the regulated US route
+    # (Coinbase perpetual-style futures) has its own schedule. Check it before
+    # trusting these numbers for anything but a comparison.
+    "perp": Venue("Perp (generic, base tier)", maker_bps=2.0, taker_bps=5.0,
+                  symbol="{base}-PERP", min_notional=5.0, api="",
+                  kind="perp", funding_bps_8h=1.0),
 }
 
 

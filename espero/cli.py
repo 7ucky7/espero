@@ -5,6 +5,7 @@ import argparse
 import pathlib
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import dashboard as dash
@@ -18,6 +19,7 @@ from .journal import Journal
 from .live import LiveConfig, LiveTrader
 from .paper import PaperConfig, PaperTrader
 from .report import buy_and_hold, equity_png, format_matrix, matrix
+from .venues import VENUES
 
 
 def _cmd_fetch(args: argparse.Namespace) -> int:
@@ -79,12 +81,50 @@ def _cmd_chart(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_paper_compare(args: argparse.Namespace) -> int:
+    from .paper import compare_venues
+
+    src = Journal(args.journal)
+    bars = [dict(r) for r in src.db.execute(
+        "SELECT ts, open, high, low, close, volume FROM bars WHERE product=? ORDER BY ts",
+        (args.product,)).fetchall()]
+    src.db.close()
+    if len(bars) < 60:
+        print(f"only {len(bars)} bars in {args.journal}; need at least 60")
+        return 2
+    venues = [v.strip() for v in args.venues.split(",") if v.strip()]
+    unknown = [v for v in venues if v not in VENUES]
+    if unknown:
+        print(f"unknown venue(s): {', '.join(unknown)}; known: {', '.join(sorted(VENUES))}")
+        return 2
+    rows = compare_venues(bars, venues, product=args.product,
+                          granularity=args.granularity, initial=args.cash)
+    first = datetime.fromtimestamp(bars[0]["ts"], timezone.utc).strftime("%m-%d %H:%M")
+    last = datetime.fromtimestamp(bars[-1]["ts"], timezone.utc).strftime("%m-%d %H:%M")
+    print(f"{len(bars)} bars of {args.product}, {first} .. {last} UTC; same signals, same fills\n")
+    print(f"{'venue':<28}{'trades':>7}{'wins':>6}{'fees':>9}{'funding':>9}{'P&L':>9}{'equity':>10}")
+    for r in rows:
+        print(f"{r['name']:<28}{r['trades']:>7}{r['wins']:>6}{r['fees']:>9.2f}"
+              f"{r['funding']:>9.2f}{r['pnl']:>+9.2f}{r['equity']:>10.2f}")
+    print("\nfees are taker (the loop fills at the next open); perp funding assumed "
+          "constant at the venue's average, longs pay")
+    return 0
+
+
 def _cmd_paper(args: argparse.Namespace) -> int:
     from .data import recent_closed_bars
 
     journal = Journal(args.state)
-    cfg = PaperConfig(product=args.product, granularity=args.granularity,
-                      initial=args.cash, fee=args.fee_bps / 1e4)
+    if args.venue:
+        cfg = PaperConfig.for_venue(args.venue, product=args.product,
+                                    granularity=args.granularity, initial=args.cash)
+        if args.fee_bps is not None:
+            cfg.fee = args.fee_bps / 1e4
+    else:
+        cfg = PaperConfig(product=args.product, granularity=args.granularity,
+                          initial=args.cash, fee=(args.fee_bps or 0.0) / 1e4)
+    print(f"fees {1e4 * cfg.fee:.1f} bps per side"
+          + (f", funding {1e4 * cfg.funding_8h:.2f} bps per 8h on longs" if cfg.funding_8h else ""))
     trader = PaperTrader(journal, cfg)
 
     def step() -> None:
@@ -363,11 +403,23 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("--granularity", type=int, default=3600)
     pp.add_argument("--state", default="paper.db")
     pp.add_argument("--cash", type=float, default=500.0)
-    pp.add_argument("--fee-bps", type=float, default=0.0)
+    pp.add_argument("--fee-bps", type=float, default=None,
+                    help="per side; overrides the venue's taker fee")
+    pp.add_argument("--venue", choices=sorted(VENUES), default=None,
+                    help="take taker fee and perp funding from the venue table")
     pp.add_argument("--seed", type=int, default=300, help="bars of history to keep")
     pp.add_argument("--loop", action="store_true")
     pp.add_argument("--interval", type=float, default=60.0)
     pp.set_defaults(func=_cmd_paper)
+
+    pc = sub.add_parser("paper-compare",
+                        help="replay one paper journal's bars under each venue's fees and funding")
+    pc.add_argument("journal", help="a paper .db whose bars to replay")
+    pc.add_argument("--product", default="BTC-USD")
+    pc.add_argument("--granularity", type=int, default=300)
+    pc.add_argument("--cash", type=float, default=500.0)
+    pc.add_argument("--venues", default="coinbase,kraken,binanceus,perp")
+    pc.set_defaults(func=_cmd_paper_compare)
 
     ft = sub.add_parser("features", help="fetch point-in-time features into SQLite")
     ft.add_argument("--source", choices=["hl", "okx", "poly"], default="hl")

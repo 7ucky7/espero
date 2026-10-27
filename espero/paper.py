@@ -20,6 +20,7 @@ from .indicators import add_indicators
 from .journal import Journal, PendingOrder, Position
 from .risk import RiskLimits, check_buy
 from .signals import MIN_CONFIDENCE, combine, signals_at
+from .venues import FUNDING_PERIOD_S, VENUES
 
 
 @dataclass
@@ -28,11 +29,19 @@ class PaperConfig:
     granularity: int = 3600
     initial: float = 500.0
     fee: float = 0.0          # per side; 0.0002 hyperliquid-ish, 0.006 coinbase
+    funding_8h: float = 0.0   # perps: fraction of notional a long pays per 8h period
     slippage: float = 0.0005  # per side
     warmup: int = 50
     stop_pct: float = 0.05
     target_pct: float = 0.10
     limits: RiskLimits = field(default_factory=RiskLimits)
+
+    @classmethod
+    def for_venue(cls, venue: str, **kw) -> "PaperConfig":
+        """Taker fee and funding from the venue table. The paper loop fills at the
+        next open, which is a market order, so it pays the taker side."""
+        v = VENUES[venue]
+        return cls(fee=v.taker_bps / 1e4, funding_8h=v.funding_bps_8h / 1e4, **kw)
 
 
 class PaperTrader:
@@ -51,8 +60,15 @@ class PaperTrader:
         close = float(bar["close"])
         events: List[str] = []
 
+        prev_ts = self.journal.last_bar_ts(self.cfg.product)
         if not self.journal.add_bar(self.cfg.product, bar):
             return ["duplicate bar ignored"]
+
+        # 0. perp funding for every settlement the open position was held through
+        if self.position is not None and self.cfg.funding_8h and prev_ts is not None:
+            paid = self._funding(prev_ts, ts, close)
+            if paid:
+                events.append(f"funding paid {paid:.4f}")
 
         # 1. exits on the open position (never on the bar it was opened)
         if self.position is not None and self.position.entry_ts != ts:
@@ -122,6 +138,20 @@ class PaperTrader:
         d = add_indicators(df)
         return combine(signals_at(d.iloc[-1], d.iloc[-2]))
 
+    def _funding(self, prev_ts: int, ts: int, price: float) -> float:
+        """Charge funding for each settlement time in (prev_ts, ts] that falls
+        after the position was opened. Longs pay a positive rate."""
+        pos = self.position
+        first = (prev_ts // FUNDING_PERIOD_S + 1) * FUNDING_PERIOD_S
+        n = sum(1 for t in range(first, ts + 1, FUNDING_PERIOD_S) if t > pos.entry_ts)
+        if n == 0:
+            return 0.0
+        paid = n * pos.size * price * self.cfg.funding_8h
+        self.cash -= paid
+        pos.entry_fee += paid
+        self.journal.charge_position(pos.id, paid)
+        return paid
+
     def _exit_trigger(self, bar: dict):
         pos, open_px = self.position, float(bar["open"])
         if open_px <= pos.stop:
@@ -185,3 +215,39 @@ class PaperTrader:
         if row is None:
             return 0.0
         return equity - (row["cash"] + row["position_value"])
+
+
+def compare_venues(bars: List[dict], venues: List[str], product: str = "BTC-USD",
+                   granularity: int = 3600, initial: float = 500.0,
+                   state_dir=None) -> List[dict]:
+    """Replay the same closed bars through a fresh paper book per venue.
+
+    Same bars, same signals, same fills; only the fee and funding differ. This
+    is the only fair way to compare venues, because a live loop on each would
+    see different bars and draw different conclusions from noise."""
+    import tempfile
+    from pathlib import Path
+
+    out = []
+    with tempfile.TemporaryDirectory(dir=state_dir) as d:
+        for v in venues:
+            j = Journal(Path(d) / f"{v}.db")
+            t = PaperTrader(j, PaperConfig.for_venue(v, product=product,
+                                                     granularity=granularity, initial=initial))
+            funding = 0.0
+            for b in bars:
+                for e in t.on_bar(b):
+                    if e.startswith("funding paid"):
+                        funding += float(e.split()[-1])
+            last = float(bars[-1]["close"]) if bars else 0.0
+            closed = j.closed_positions()
+            fees = sum((r["fee"] or 0.0) for r in j.db.execute(
+                "SELECT fee FROM orders WHERE status='filled'").fetchall())
+            out.append({
+                "venue": v, "name": VENUES[v].name, "trades": len(closed),
+                "wins": sum(1 for r in closed if (r["pnl"] or 0) > 0),
+                "fees": fees, "funding": funding,
+                "equity": t._equity(last), "pnl": t._equity(last) - initial,
+            })
+            j.db.close()
+    return out

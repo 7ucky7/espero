@@ -149,5 +149,79 @@ class TestRestart(PaperTestCase):
         self.assertGreater(cash, 0)
 
 
+class TestPerpFunding(PaperTestCase):
+    """Funding is charged once per 8h settlement held through, persists, and
+    lands in the realised P&L. Bar i has ts 1_000_000 + 1000*i, so the first
+    settlement (35 * 28800 = 1_008_000) falls on bar 8."""
+
+    def _long(self, funding=0.0001) -> PaperTrader:
+        self.cfg.funding_8h = funding
+        t = self.trader()
+        paper_mod.combine = ScriptedSignal(nth=1)
+        self.prime(t)
+        t.on_bar(bar(3, 100.0))                     # long from bar 3
+        self.assertIsNotNone(t.position)
+        return t
+
+    def test_charged_once_at_the_settlement(self):
+        t = self._long()
+        size, cash = t.position.size, t.cash
+        paid = [e for i in range(4, 10) for e in t.on_bar(bar(i, 100.0)) if "funding" in e]
+        self.assertEqual(len(paid), 1)
+        self.assertAlmostEqual(cash - t.cash, size * 100.0 * 0.0001)
+
+    def test_spot_pays_no_funding(self):
+        t = self._long(funding=0.0)
+        cash = t.cash
+        for i in range(4, 10):
+            t.on_bar(bar(i, 100.0))
+        self.assertAlmostEqual(t.cash, cash)
+
+    def test_funding_survives_a_restart_and_reaches_the_pnl(self):
+        t = self._long()
+        size = t.position.size
+        for i in range(4, 10):
+            t.on_bar(bar(i, 100.0))
+        self.journal.close()
+        t2 = self.trader()                          # new process, same file
+        self.assertAlmostEqual(t2.position.entry_fee, size * 100.0 * 0.0001)
+        t2.on_bar(bar(10, 100.0, low=85.0))         # stop out at 90
+        pnl = t2.journal.closed_positions()[-1]["pnl"]
+        self.assertAlmostEqual(pnl, (90.0 - 100.0) * size - size * 100.0 * 0.0001)
+
+
+class TestVenueCompare(unittest.TestCase):
+    def test_same_trades_different_bill(self):
+        orig = paper_mod.combine
+        try:
+            from espero.signals import Signal as S
+            calls = {"n": 0}
+
+            def alternate(_sigs):
+                calls["n"] += 1
+                if calls["n"] % 6 == 1:
+                    return S("BUY", 0.9, "t")
+                if calls["n"] % 6 == 4:
+                    return S("SELL", 0.9, "t")
+                return None
+            paper_mod.combine = alternate
+            bars = [bar(i, 100.0 + (i % 5)) for i in range(120)]
+            rows = {r["venue"]: r for r in paper_mod.compare_venues(
+                bars, ["coinbase", "perp"], granularity=GRAN)}
+        finally:
+            paper_mod.combine = orig
+        self.assertGreater(rows["coinbase"]["trades"], 0)
+        self.assertEqual(rows["coinbase"]["trades"], rows["perp"]["trades"])
+        self.assertGreater(rows["coinbase"]["fees"], 10 * rows["perp"]["fees"])
+        self.assertEqual(rows["coinbase"]["funding"], 0.0)
+        self.assertGreater(rows["perp"]["pnl"], rows["coinbase"]["pnl"])
+
+    def test_for_venue_reads_the_table(self):
+        cfg = PaperConfig.for_venue("perp")
+        self.assertAlmostEqual(cfg.fee, 0.0005)
+        self.assertAlmostEqual(cfg.funding_8h, 0.0001)
+        self.assertEqual(PaperConfig.for_venue("coinbase").funding_8h, 0.0)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
