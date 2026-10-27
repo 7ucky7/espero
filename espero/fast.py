@@ -419,10 +419,12 @@ def render(fb: FastBook, mode: str):
     why.add_row("", Text(f"edge source: {MEASURED_EDGE_SOURCE}", style=MUTED))
 
     risk = Table.grid(padding=(0, 3))
+    cells = []
     for name, (val, lim, frac) in fb.risk().items():
         style = "bold red" if frac >= 0.8 else ("yellow" if frac >= 0.5 else None)
         risk.add_column()
-        risk.add_row(Text(f"{name} {val:,.1f}/{lim:,.0f}", style=style))
+        cells.append(Text(f"{name} {val:,.1f}/{lim:,.0f}", style=style))
+    risk.add_row(*cells)
 
     resting = Table(box=None, header_style=MUTED, padding=(0, 2), title="resting", title_style=MUTED)
     for c in ("side", "price", "size", "filled", "queue ahead", "age"):
