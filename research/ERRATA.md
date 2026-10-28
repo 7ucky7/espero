@@ -100,3 +100,9 @@ points here. Numbers below were reproduced from cached data during the 2026-10-2
   Binance.US fees, polling every 5 minutes. Registered 60 days (to 2026-12-27; to 30 trades or
   2027-02-25 at the latest if fewer). Started after the backtest had already failed, to record
   whether the live period agrees.
+- **#10 and #13 forward books stopped early**, 2026-10-28 about 06:20 UTC, at the user's request:
+  both backtests had already failed, so the forward tests could not change either verdict. #10
+  (`degen.db`, registered to 2026-11-10): 13 closed trades, 1 win, −$18.93, equity $481.07, flat
+  when stopped. #13 (`degen-1h.db`): one bar, no trades. Neither is a forward result; both
+  journals are kept. The user's Coinbase-fee book in Terminal 8 (`degen-coinbase.db`) is not
+  part of any test and was left running.
