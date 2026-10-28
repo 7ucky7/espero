@@ -98,7 +98,9 @@ def simulate(prices: pd.Series, bankroll: float, spread: float, reward_per_day: 
         "rewards": rewards, "fills_bid": fills["bid"], "fills_ask": fills["ask"],
         "inventory_shares": shares, "inventory_value": shares * final_mid,
         "max_inventory": max_inventory, "cash": cash, "equity": equity,
-        "net": equity - bankroll - rewards,   # trading P&L, before rewards
+        # trading P&L, before rewards. Rewards are never added to cash, so they must
+        # not be subtracted here (the first version did, understating it by `rewards`)
+        "net": equity - bankroll,
     }
 
 

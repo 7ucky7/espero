@@ -13,7 +13,12 @@ Differences from paper trading, stated loudly:
   the process dies, the stop dies with it. That is why the kill switch exists
 * every order is capped in notional and gated by a daily loss limit that
   resets at the UTC day boundary, and by the same pre-trade risk gate the
-  paper trader uses, fed with the real day's P&L
+  paper trader uses, fed with the real day's P&L. The day's baseline is the
+  first equity mark of that UTC day in the journal, so a restart keeps it
+* the KILL file and the daily loss limit stop new entries, never exits: an
+  open position keeps its stop and target exactly when things are going wrong
+* a dry run never moves money, so its cash is the venue balance adjusted by
+  what the journal says the dry trades would have done
 * a SELL signal exits the position under the same rule the backtest and the
   paper trader use (in profit, or confidence above 0.8). The first version
   only exited on stop/target, which was a different strategy from the one
@@ -63,19 +68,39 @@ class LiveTrader:
         self.position: Optional[Position] = journal.current_position(cfg.product)
         self.day_start_equity: Optional[float] = None
         self.day: Optional[str] = None
+        base, _, quote = cfg.product.partition("-")
+        self.base, self.quote = base, quote or cfg.quote_currency
 
     # ------------------------------------------------------------------ safety
     def _roll_day(self, ts: int) -> None:
-        """Reset the daily loss baseline when the bar belongs to a new UTC day."""
+        """Reset the daily loss baseline when the bar belongs to a new UTC day.
+        The baseline is that day's first equity mark in the journal, so a
+        restart mid-day does not forgive the day's losses."""
         day = datetime.fromtimestamp(ts, timezone.utc).date().isoformat()
         if day != self.day:
             self.day = day
-            self.day_start_equity = self.equity()
+            row = self.journal.db.execute(
+                "SELECT equity FROM equity WHERE date(ts,'unixepoch')=? ORDER BY ts LIMIT 1", (day,),
+            ).fetchone()
+            self.day_start_equity = float(row["equity"]) if row else self.equity()
 
     def day_pnl(self) -> float:
         if self.day_start_equity is None:
             return 0.0
         return self.equity() - self.day_start_equity
+
+    def cash(self) -> float:
+        """Venue balance; in a dry run, plus what the dry trades would have done
+        (realised P&L of closed positions, minus the cost of the open one)."""
+        cash = self.broker.balance(self.quote)
+        if not self.broker.live:
+            realised = self.journal.db.execute(
+                "SELECT COALESCE(SUM(pnl), 0) AS p FROM positions WHERE product=? AND exit_ts IS NOT NULL",
+                (self.cfg.product,)).fetchone()["p"]
+            cash += float(realised)
+            if self.position is not None:
+                cash -= self.position.size * self.position.entry_px + self.position.entry_fee
+        return cash
 
     def halted(self) -> Optional[str]:
         if self.kill_file.exists():
@@ -86,9 +111,8 @@ class LiveTrader:
         return None
 
     def equity(self) -> float:
-        cash = self.broker.balance(self.cfg.quote_currency)
         size = self.position.size if self.position else 0.0
-        return cash + size * self.broker.price(self.cfg.product)
+        return self.cash() + size * self.broker.price(self.cfg.product)
 
     # --------------------------------------------------------------------- run
     def on_bar(self, bar: dict) -> List[str]:
@@ -101,7 +125,8 @@ class LiveTrader:
         self._roll_day(ts)
         stop_reason = self.halted()
         if stop_reason:
-            return [f"halted: {stop_reason}"]
+            # exits only: no new entry, but the stop and target still run
+            events.append(f"halted: {stop_reason} (exits only)")
 
         if self.position is not None and self.position.entry_ts != ts:
             exit_px, reason = self._exit_trigger(bar)
@@ -115,15 +140,14 @@ class LiveTrader:
             signal = None
         if signal is not None:
             self.journal.add_signal(self.cfg.product, ts, signal)
-            if signal.side == "BUY" and self.position is None:
+            if signal.side == "BUY" and self.position is None and not stop_reason:
                 events.append(self._buy(close, signal.confidence, ts))
             elif signal.side == "SELL" and self.position is not None:
                 in_profit = close > self.position.entry_px
                 if in_profit or signal.confidence > SELL_OVERRIDE_CONFIDENCE:
                     events.append(self._sell(close, ts, "signal"))
 
-        self.journal.mark_equity(ts, self.broker.balance(self.cfg.quote_currency),
-                                 self.position.size * close if self.position else 0.0)
+        self.journal.mark_equity(ts, self.cash(), self.position.size * close if self.position else 0.0)
         return events
 
     # ---------------------------------------------------------------- helpers
@@ -154,7 +178,7 @@ class LiveTrader:
 
     def _buy(self, price: float, confidence: float, ts: int) -> str:
         equity = self.equity()
-        decision = check_buy(equity, self.broker.balance(self.cfg.quote_currency),
+        decision = check_buy(equity, self.cash(),
                              1 if self.position else 0, self.day_pnl(), confidence,
                              self.cfg.limits)
         if not decision.allowed:
@@ -178,11 +202,18 @@ class LiveTrader:
     def _sell(self, price: float, ts: int, reason: str = "live_exit") -> str:
         pos = self.position
         client_id = new_client_id("sell")
-        ack = self.broker.market_sell(self.cfg.product, pos.size, client_id)
+        size = pos.size
+        if self.broker.live:
+            # the buy's fill size is estimated (notional / price); never ask to
+            # sell more than the account holds, or the order is rejected
+            held = self.broker.balance(self.base)
+            if 0 < held < size:
+                size = held
+        ack = self.broker.market_sell(self.cfg.product, size, client_id)
         fill_px = ack.filled_px or price
-        exit_fee = ack.fee or fill_px * pos.size * self.cfg.fee
-        pnl = (fill_px - pos.entry_px) * pos.size - pos.entry_fee - exit_fee
+        exit_fee = ack.fee or fill_px * size * self.cfg.fee
+        pnl = (fill_px - pos.entry_px) * size - pos.entry_fee - exit_fee
         self.journal.close_position(pos.id, ts, fill_px, pnl, reason)
         self.position = None
-        return (f"SELL {pos.size:.8f} {self.cfg.product} @ {fill_px:.2f} "
+        return (f"SELL {size:.8f} {self.cfg.product} @ {fill_px:.2f} "
                 f"pnl {pnl:+.2f} ({reason}) [{ack.status}]")

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -50,6 +51,12 @@ def guard(env: Optional[dict] = None) -> str:
     if not key:
         raise TestnetRefused("HL_PRIVATE_KEY is empty: create an API wallet in the testnet UI and put its key in .env")
     return key
+
+
+def account_address(env: dict) -> Optional[str]:
+    """HL_WALLET_ADDRESS when it is a well-formed 0x address, else None."""
+    a = (env.get("HL_WALLET_ADDRESS") or "").strip()
+    return a if re.fullmatch(r"0x[0-9a-fA-F]{40}", a) else None
 
 
 # -------------------------------------------------------------------- rounding
@@ -115,9 +122,14 @@ class TestnetExchange:
             from hyperliquid.exchange import Exchange
             from hyperliquid.info import Info
             wallet = Account.from_key(key)
-            exchange = Exchange(wallet, base_url=TESTNET_URL)
+            env_ = os.environ if env is None else env
+            # an API (agent) wallet signs for the main account: orders, fills and
+            # positions belong to HL_WALLET_ADDRESS, not to the signing key
+            account = address or account_address(env_) or wallet.address
+            exchange = Exchange(wallet, base_url=TESTNET_URL,
+                                account_address=account if account.lower() != wallet.address.lower() else None)
             info = info or Info(base_url=TESTNET_URL, skip_ws=True)
-            address = address or wallet.address
+            address = account
             if getattr(exchange, "base_url", TESTNET_URL) != TESTNET_URL:
                 raise TestnetRefused("exchange is not on the testnet URL; refusing")
         self.ex = exchange
@@ -148,6 +160,16 @@ class TestnetExchange:
         p = parse_order_response(resp)
         return OrderResult(coin, side, sz, px, tif, **p)
 
+    def book(self, coin: str) -> tuple[float, float]:
+        """Best bid and ask on the testnet book. The mirror prices from here,
+        not from mainnet: an ALO order only measures maker fills if it rests
+        at the top of the book it is posted to."""
+        snap = self.info.l2_snapshot(coin)
+        bids, asks = snap["levels"][0], snap["levels"][1]
+        if not bids or not asks:
+            raise ValueError(f"{coin}: empty testnet book")
+        return float(bids[0]["px"]), float(asks[0]["px"])
+
     def cancel(self, coin: str, oid: int) -> bool:
         resp = self.ex.cancel(coin, int(oid))
         return isinstance(resp, dict) and resp.get("status") == "ok"
@@ -176,78 +198,139 @@ CREATE TABLE IF NOT EXISTS testnet_mirror (
     note TEXT
 );
 """
+# added after the first version; created on open when missing
+MIRROR_COLUMNS = {"paper_px": "REAL", "close_done": "REAL DEFAULT 0", "close_tries": "INTEGER DEFAULT 0"}
+CLOSE_TRIES_MAKER = 3      # after this many unfilled ALO closes, cross the spread to flatten
+REPRICE_S = 3000           # a close still resting this long is cancelled and re-placed
 
 
 class TestnetMirror:
-    """Shadow a CarryBook's perp leg on the testnet with ALO orders at the
-    hour's perp price. One row per paper position; statuses are refreshed from
-    the venue's open orders and fills on every sync. The answer it produces is
-    the fill rate of resting orders, the number #12 assumed to be 100%."""
+    """Shadow a CarryBook's perp leg on the testnet with ALO orders priced at
+    the testnet book (sell at the best ask, buy back at the best bid). One row
+    per paper position; statuses are refreshed from the venue on every sync.
+    The answer it produces is the fill rate of resting orders, the number #12
+    assumed to be 100%. Closes are retried until the short is flat: re-priced
+    each sync, and after CLOSE_TRIES_MAKER tries sent as a crossing IOC (noted)."""
 
     def __init__(self, db: sqlite3.Connection, exchange: TestnetExchange):
         self.db = db
         self.ex = exchange
         self.db.executescript(MIRROR_SCHEMA)
+        have = {r[1] for r in self.db.execute("PRAGMA table_info(testnet_mirror)")}
+        for col, kind in MIRROR_COLUMNS.items():
+            if col not in have:
+                self.db.execute(f"ALTER TABLE testnet_mirror ADD COLUMN {col} {kind}")
+        self.db.commit()
 
     def rows(self) -> List[sqlite3.Row]:
         return self.db.execute("SELECT * FROM testnet_mirror ORDER BY position_id").fetchall()
 
+    def _place(self, coin: str, side: str, size: float, price: float, tif: str, reduce_only: bool) -> OrderResult:
+        """Place, and if the call itself failed (timeout after the venue took
+        it), look for the order among the open ones before calling it lost."""
+        try:
+            return self.ex.limit(coin, side, size, price, tif=tif, reduce_only=reduce_only)
+        except Exception as exc:  # noqa: BLE001 - record, do not crash the paper book
+            err = str(exc)[:200]
+        tracked = {r["open_oid"] for r in self.rows()} | {r["close_oid"] for r in self.rows()}
+        want = "A" if side == "sell" else "B"
+        try:
+            for o in self.ex.open_orders():
+                if (o.get("coin") == coin and o.get("side") == want and int(o["oid"]) not in tracked
+                        and abs(float(o.get("sz", 0)) - size) <= 1e-9 * max(1.0, size)):
+                    return OrderResult(coin, side, size, float(o.get("limitPx", price)), tif, "resting",
+                                       int(o["oid"]), 0.0, None, f"recovered after: {err}")
+        except Exception:  # noqa: BLE001
+            pass
+        return OrderResult(coin, side, size, price, tif, "error", None, 0.0, None, err)
+
     def sync(self, positions: List[sqlite3.Row], closed: List[sqlite3.Row], prices: Dict[str, float],
              now: Optional[int] = None) -> List[str]:
+        """`prices` are the paper book's (mainnet) perp prices, kept only to
+        record the gap to the testnet book; orders are priced from the book."""
         now = now or int(time.time())
         out: List[str] = []
+        self.refresh(out, now=now)
         known = {r["position_id"]: r for r in self.rows()}
 
-        # 1. new paper positions -> resting short
+        # 1. new paper positions -> resting short at the testnet best ask
         for p in positions:
             if p["id"] in known:
                 continue
-            px = prices.get(p["coin"])
-            if px is None:
-                continue
             try:
-                r = self.ex.limit(p["coin"], "sell", p["qty_perp"], px, tif="Alo")
-            except Exception as exc:  # noqa: BLE001 - record, do not crash the paper book
-                r = OrderResult(p["coin"], "sell", p["qty_perp"], px, "Alo", "error", None, 0.0, None, str(exc)[:200])
+                _, ask = self.ex.book(p["coin"])
+            except Exception as exc:  # noqa: BLE001 - try again next sync
+                out.append(f"testnet {p['coin']}: no book ({exc}); open retried next hour")
+                continue
+            r = self._place(p["coin"], "sell", p["qty_perp"], ask, "Alo", False)
             self.db.execute(
                 "INSERT INTO testnet_mirror (position_id, coin, open_oid, open_px, open_size, open_status, "
-                "open_filled, open_ts, note) VALUES (?,?,?,?,?,?,?,?,?)",
-                (p["id"], p["coin"], r.oid, r.price, r.size, r.status, r.filled, now, r.error))
+                "open_filled, open_ts, note, paper_px) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (p["id"], p["coin"], r.oid, r.price, r.size, r.status, r.filled, now, r.error,
+                 prices.get(p["coin"])))
             out.append(f"testnet {p['coin']}: short {r.size} @ {r.price} ALO -> {r.status}"
                        + (f" ({r.error})" if r.error else ""))
 
-        # 2. paper closes -> reduce-only buy (only if the open ever filled)
+        # 2. paper closes -> stop the open, buy back what filled until flat
         for c in closed:
             m = known.get(c["id"])
-            if m is None or m["close_oid"] is not None or m["close_status"] is not None:
+            if m is None or m["close_status"] in ("filled", "unfilled_open"):
                 continue
-            px = prices.get(c["coin"])
-            if px is None:
-                continue
-            if m["open_status"] not in ("filled", "part"):
-                # nothing on the venue to close; cancel the resting open if any
-                if m["open_oid"] and m["open_status"] == "resting":
-                    try:
-                        self.ex.cancel(c["coin"], m["open_oid"])
-                    except Exception:  # noqa: BLE001
-                        pass
+            if m["open_oid"] and m["open_status"] in ("resting", "part"):
+                # the paper hedge is gone: no more of the open may fill
+                try:
+                    self.ex.cancel(c["coin"], m["open_oid"])
+                except Exception:  # noqa: BLE001
+                    pass
+                self.db.execute("UPDATE testnet_mirror SET open_status=? WHERE position_id=?",
+                                ("part" if (m["open_filled"] or 0) > 0 else "cancelled", c["id"]))
+            filled = float(m["open_filled"] or 0)
+            if filled <= 0:
                 self.db.execute("UPDATE testnet_mirror SET close_status='unfilled_open', close_ts=? "
                                 "WHERE position_id=?", (now, c["id"]))
                 out.append(f"testnet {c['coin']}: paper closed, open never filled -> cancelled")
                 continue
-            try:
-                r = self.ex.limit(c["coin"], "buy", m["open_filled"], px, tif="Alo", reduce_only=True)
-            except Exception as exc:  # noqa: BLE001
-                r = OrderResult(c["coin"], "buy", m["open_filled"], px, "Alo", "error", None, 0.0, None, str(exc)[:200])
-            self.db.execute("UPDATE testnet_mirror SET close_oid=?, close_px=?, close_status=?, close_filled=?, "
-                            "close_ts=?, note=COALESCE(note,'') || ? WHERE position_id=?",
-                            (r.oid, r.price, r.status, r.filled, now, r.error or "", c["id"]))
-            out.append(f"testnet {c['coin']}: close buy {r.size} @ {r.price} ALO -> {r.status}")
+            self._close(m, filled, now, out)
 
-        # 3. refresh resting orders from the venue
-        self.refresh(out, now=now)
         self.db.commit()
         return out
+
+    def _close(self, m: sqlite3.Row, filled: float, now: int, out: List[str]) -> None:
+        coin = m["coin"]
+        done = float(m["close_done"] or 0) + (float(m["close_filled"] or 0) if m["close_oid"] else 0.0)
+        remaining = filled - done
+        if remaining <= filled * 1e-3:
+            self.db.execute("UPDATE testnet_mirror SET close_status='filled' WHERE position_id=?",
+                            (m["position_id"],))
+            return
+        if m["close_oid"] and m["close_status"] in ("resting", "part"):
+            if now - (m["close_ts"] or 0) < REPRICE_S:
+                return                                   # give the resting close time
+            try:
+                self.ex.cancel(coin, m["close_oid"])
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            bid, ask = self.ex.book(coin)
+        except Exception as exc:  # noqa: BLE001
+            out.append(f"testnet {coin}: no book ({exc}); close retried next hour")
+            return
+        tries = int(m["close_tries"] or 0) + 1
+        if tries > CLOSE_TRIES_MAKER:
+            r = self._place(coin, "buy", remaining, ask, "Ioc", True)     # cross: flatten
+            tag = "IOC (maker closes did not fill)"
+        else:
+            r = self._place(coin, "buy", remaining, bid, "Alo", True)
+            tag = "ALO"
+        self.db.execute(
+            "UPDATE testnet_mirror SET close_oid=?, close_px=?, close_status=?, close_filled=?, close_ts=?, "
+            "close_done=?, close_tries=?, note=COALESCE(note,'') || ? WHERE position_id=?",
+            (r.oid, r.price, r.status, r.filled, now, done, tries,
+             f" close#{tries} {tag}" + (f": {r.error}" if r.error else ""), m["position_id"]))
+        if r.status == "filled" and done + r.filled >= filled * 0.999:
+            self.db.execute("UPDATE testnet_mirror SET close_status='filled' WHERE position_id=?",
+                            (m["position_id"],))
+        out.append(f"testnet {coin}: close buy {r.size} @ {r.price} {tag} -> {r.status}")
 
     def refresh(self, out: Optional[List[str]] = None, now: Optional[int] = None, grace: int = 60) -> None:
         """Pull statuses from the venue. An order placed less than `grace`
@@ -270,7 +353,8 @@ class TestnetMirror:
                 if not oid or status in ("filled", "cancelled", "error", "unfilled_open"):
                     continue
                 got = filled.get(oid, 0.0)
-                size = m["open_size"] if leg == "open" else m["open_filled"]
+                size = (m["open_size"] if leg == "open"
+                        else (m["open_filled"] or 0) - (m["close_done"] or 0))
                 fresh = (m[f"{leg}_ts"] or 0) > now - grace
                 new = ("filled" if size and got >= size * 0.999 else
                        "part" if got > 0 else

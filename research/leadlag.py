@@ -35,6 +35,8 @@ MIN_DOLLAR_VOLUME = 50_000  # per hour, trailing 7-day mean
 VOLUME_WINDOW = 168
 EMBARGO = 24
 N_SPLITS = 4
+# Kept as run (research/ERRATA.md, 2026-10-28): defined but never passed to fe.evaluate,
+# so the published run used its default min_train=180 hours, not the pre-registered 30 days.
 MIN_TRAIN = 720
 SPREAD_HURDLE = 0.0010     # 10 bps per 3h
 HIT_HURDLE = 0.52

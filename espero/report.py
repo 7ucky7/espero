@@ -22,8 +22,10 @@ CASES = [
 
 
 def buy_and_hold(df: pd.DataFrame) -> dict:
+    from .backtest import bars_per_day
     first, last = df["close"].iloc[0], df["close"].iloc[-1]
-    years = len(df) / 365.25
+    per_day = bars_per_day(df["dt"]) if "dt" in df else bars_per_day(pd.to_datetime(df.get("time", [])))
+    years = max(len(df) / per_day / 365.25, 1e-9)
     return {
         "total_return_pct": 100 * (last / first - 1),
         "cagr_pct": 100 * ((last / first) ** (1 / years) - 1),

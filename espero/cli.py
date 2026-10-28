@@ -407,19 +407,33 @@ def _carry_loop(args: argparse.Namespace) -> int:
 
 
 def _cmd_carry_status(args: argparse.Namespace) -> int:
+    import sqlite3
+
+    from . import carry
     from . import carry_paper as cp
 
-    book = cp.CarryBook(args.state, costs=args.costs) if args.costs else None
-    if book is None:
-        import sqlite3
-        costs = sqlite3.connect(args.state).execute("SELECT value FROM meta WHERE key='costs'").fetchone()
-        book = cp.CarryBook(args.state, costs=costs[0] if costs else "maker")
+    if not Path(args.state).exists():
+        print(f"no carry book at {args.state} (status never creates one)")
+        return 2
+    with sqlite3.connect(args.state) as probe:
+        costs = probe.execute("SELECT value FROM meta WHERE key='costs'").fetchone()
+    try:
+        book = cp.CarryBook(args.state, costs=args.costs or (costs[0] if costs else "maker"))
+    except ValueError as exc:
+        print(f"refused: {exc}")
+        return 2
     s = book.summary()
     span = f"{cp.stamp(s['first_ts'])} -> {cp.stamp(s['last_ts'])}" if s["first_ts"] else "no hours yet"
     print(f"{args.state}  ({s['costs']} costs)  {span}  {s['hours']} hours")
     print(f"equity {s['equity']:.2f}  pnl {s['pnl']:+.2f} ({s['pnl'] / s['initial']:+.2%})  max dd {s['max_dd']:.2%}  "
           f"funding {s['funding']:+.2f}  basis {s['basis']:+.2f}  fees {s['fees']:.2f}  "
           f"open {s['open']}  closed {s['closed']}")
+    curve = book.equity_curve()
+    if len(curve) > 2:
+        eq = pd.Series([r["equity"] for r in curve],
+                       index=pd.to_datetime([r["ts"] for r in curve], unit="s", utc=True))
+        print(f"sharpe {carry.sharpe_of(eq, carry.HOURS_PER_YEAR):.2f} hourly (the #12 criterion)  "
+              f"{carry.daily_sharpe(eq):.2f} on daily closes (info)")
     try:
         from .hl_exchange import MIRROR_SCHEMA  # noqa: F401
         rows = book.db.execute("SELECT * FROM testnet_mirror").fetchall()
@@ -603,6 +617,17 @@ def _degen_loop(args: argparse.Namespace) -> int:
 
 
 def _cmd_live(args: argparse.Namespace) -> int:
+    from .lock import JournalBusy, JournalLock
+
+    try:
+        with JournalLock(args.state):
+            return _live_loop(args)
+    except JournalBusy as exc:
+        print(f"refusing to start: {exc}")
+        return 3
+
+
+def _live_loop(args: argparse.Namespace) -> int:
     from .data import recent_closed_bars
 
     try:

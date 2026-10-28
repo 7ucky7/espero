@@ -59,6 +59,8 @@ def run(frames: dict, start: str, end: str, cost: float = COST):
                 ret = {}
                 for c, s in hist.items():
                     if len(s) > LOOKBACK and len(s) >= MIN_HISTORY:
+                        # Kept as run (research/ERRATA.md, 2026-10-28): iloc[-LOOKBACK] is LOOKBACK - 1 bars
+                        # back, one short of the pre-registered window. Changing it would change a published result.
                         ret[c] = s.iloc[-1] / s.iloc[-LOOKBACK] - 1
                 if len(ret) >= TOP:
                     picks = sorted(ret, key=ret.get, reverse=True)[:TOP]

@@ -21,9 +21,11 @@ def snap(ts=0.0, bid=100.0, ask=100.1, trades=()):
     return s
 
 
-def book(tmp, threshold=0.003, cash=1000.0, **limits):
+def book(tmp, threshold=0.003, cash=1000.0, check_feed_age=False, **limits):
+    # the snapshots here carry made-up timestamps, like a replay: no wall-clock feed age
     fb = fast.FastBook("X-USD", PaperExchange(cash=cash), venue="binanceus", threshold=threshold,
-                       order_notional=50.0, journal_path=Path(tmp) / "fast.db")
+                       order_notional=50.0, journal_path=Path(tmp) / "fast.db",
+                       check_feed_age=check_feed_age)
     for k, v in limits.items():
         setattr(fb.limits, k, v)
     return fb

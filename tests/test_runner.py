@@ -37,7 +37,9 @@ class TestDryRun(RunnerCase):
         self.assertTrue(res.steps["tsmom"].skipped)
         health = json.loads((self.state / "health.json").read_text())
         self.assertTrue(health["ok"])
-        self.assertIsNotNone(health["last_success"])
+        self.assertTrue(health["dry_run"])
+        # a dry run skips the real steps, so it is not a success of the real job
+        self.assertIsNone(health["last_success"])
         self.assertTrue((self.state / "dashboard.html").exists())
         self.assertTrue((self.logs / "daily.log").exists())
 

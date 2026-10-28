@@ -14,6 +14,11 @@ The rules, each chosen to under-fill rather than over-fill:
   filled.
 * **gaps fill at the order price**, not better. Price improvement is a gift
   the simulator does not hand out.
+* **a print fills us once**: our own resting orders share each snapshot's
+  printed volume, best price first, and a snapshot no newer than the last
+  one (a feed retry) is ignored rather than matched again.
+* **no over-commitment**: a new order must fit in the cash (fee included) or
+  inventory not already promised to other resting orders.
 
 Every fill carries the TCA fields: the mid when the decision was made, the
 fill price, the delay, the fee. `tca.py` already knows how to read them.
@@ -81,6 +86,7 @@ class PaperExchange:
         self.orders: Dict[str, LimitOrder] = {}
         self.fills: List[Fill] = []
         self.last: Optional[BookSnapshot] = None
+        self.last_mid: Optional[float] = None
 
     # ----------------------------------------------------------- placement
     def place_post_only(self, snap: BookSnapshot, side: str, price: float, size: float,
@@ -93,10 +99,13 @@ class PaperExchange:
         if crosses:
             order.status = "rejected"
             return order
-        if side == "buy" and price * size > self.cash:
+        committed_cash = sum(o.remaining * o.price * (1 + self.maker_fee)
+                             for o in self.orders.values() if o.side == "buy")
+        committed_inv = sum(o.remaining for o in self.orders.values() if o.side == "sell")
+        if side == "buy" and price * size * (1 + self.maker_fee) > self.cash - committed_cash + 1e-9:
             order.status = "rejected"
             return order
-        if side == "sell" and size > self.inventory + 1e-12:
+        if side == "sell" and size > self.inventory - committed_inv + 1e-12:
             order.status = "rejected"
             return order
         self.orders[oid] = order
@@ -115,13 +124,22 @@ class PaperExchange:
     def on_snapshot(self, snap: BookSnapshot) -> List[Fill]:
         """Advance every resting order by the trades in this snapshot."""
         new: List[Fill] = []
-        for oid in list(self.orders):
+        if self.last is not None and snap.ts <= self.last.ts:
+            return new                       # the same prints again (a feed retry): no new volume
+        if snap.mid:
+            self.last_mid = snap.mid
+        used = {"buy": 0.0, "sell": 0.0}     # printed volume our own orders already took
+        order = sorted(self.orders, key=lambda k: (self.orders[k].side,
+                                                   -self.orders[k].price if self.orders[k].side == "buy"
+                                                   else self.orders[k].price, self.orders[k].placed_ts))
+        for oid in order:
             o = self.orders[oid]
             # volume that printed at or through our price, i.e. would have hit us
             if o.side == "buy":
                 through = sum(t.size for t in snap.trades if t.price <= o.price)
             else:
                 through = sum(t.size for t in snap.trades if t.price >= o.price)
+            through -= used[o.side]
             if through <= 0:
                 continue
             eaten = min(through, o.queue_ahead)
@@ -130,6 +148,7 @@ class PaperExchange:
             if available <= 0:
                 continue
             qty = min(available, o.remaining)
+            used[o.side] += qty
             fee = qty * o.price * self.maker_fee
             f = Fill(o.id, snap.ts, o.side, o.price, qty, fee, o.decision_mid, snap.ts - o.placed_ts)
             o.fills.append(f)
@@ -152,7 +171,7 @@ class PaperExchange:
     # -------------------------------------------------------------- marks
     def equity(self, snap: Optional[BookSnapshot] = None) -> float:
         snap = snap or self.last
-        mid = snap.mid if snap and snap.mid else 0.0
+        mid = snap.mid if snap and snap.mid else (self.last_mid or 0.0)   # a one-sided book keeps the last mid
         return self.cash + self.inventory * mid
 
     def resting(self) -> List[LimitOrder]:

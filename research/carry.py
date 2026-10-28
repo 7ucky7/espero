@@ -117,6 +117,7 @@ def report(coins: dict, brief: bool = False, **kw) -> None:
     for r, a, f in zip(rows, actual, fmt):
         print(f"{r['criterion']:<42}{r['required']:>10}{f.format(a):>10}  {'yes' if r['met'] else 'NO'}")
     print(f"\nVerdict: {'PASS' if all(r['met'] for r in rows) else 'FAIL'}")
+    print(f"(info, not a criterion) Sharpe on daily closes: {m.get('sharpe_daily', float('nan')):.2f}")
     if brief:
         t = pd.DataFrame(res.trades)
         print("exit reasons:", t["reason"].value_counts().to_dict() if len(t) else {})

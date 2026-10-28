@@ -62,6 +62,8 @@ def simulate(cal, opens, closes, start, end, use_signal: bool = True,
             if len(prev) >= LOOKBACK + 1:
                 decision = prev[-1]
                 hist = closes.loc[:decision]
+                # Kept as run (research/ERRATA.md, 2026-10-28): iloc[-LOOKBACK] is LOOKBACK - 1 bars
+                # back, one short of the pre-registered window. Changing it would change a published result.
                 ret = hist.iloc[-1] / hist.iloc[-LOOKBACK] - 1
                 available = hist.notna().sum()
                 eligible = [a for a in ASSETS if available[a] >= LOOKBACK]

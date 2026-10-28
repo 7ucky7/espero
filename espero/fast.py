@@ -83,6 +83,7 @@ class CandleSignal:
             b = self.fetch(self.leader, 3600, 300).set_index("ts")["close"]
         except Exception as exc:  # noqa: BLE001 - the screen shows the error, keeps running
             self.state.error = f"{type(exc).__name__}: {exc}"
+            self.state.value = None      # an hours-old gap must not keep proposing trades
             return self.state
         self.state = compute_signal(a, b, self.window)
         self.state.updated = now
@@ -104,6 +105,12 @@ def compute_signal(coin: pd.Series, leader: pd.Series, window: int = 168,
     beta = cov / var.replace(0, np.nan)
     sig = beta * rl - rc
     st.value = float(sig.iloc[-1])
+    if not np.isfinite(st.value):
+        # a flat leader (zero variance) gives NaN: no signal, said plainly, so the
+        # scan sorts it last instead of somewhere arbitrary
+        st.value = None
+        st.error = "no beta: the leader did not move over the window"
+        return st
     st.beta = float(beta.iloc[-1])
     st.r_leader = float(rl.iloc[-1])
     st.r_coin = float(rc.iloc[-1])
@@ -256,6 +263,8 @@ class FastBook:
     why_by_order: Dict[str, dict] = field(default_factory=dict)   # evidence as it stood at Enter
     mids: List[float] = field(default_factory=list)                 # last few minutes of mid prints
     prints: List[tuple] = field(default_factory=list)               # (snapshot ts, trades in it)
+    declined: Optional[tuple] = None    # (side, signal stamp) the operator said no to
+    check_feed_age: bool = True         # off in replay, where snapshot times are history
 
     def prints_per_min(self) -> Optional[float]:
         """Trades per minute over the last minute of snapshots. The public trades
@@ -320,6 +329,12 @@ class FastBook:
         s = self.signal
         if s.value is None or snap.best_bid is None or snap.best_ask is None:
             return None
+        p = self._proposal_for(s, snap)
+        if p is not None and self.declined == (p.side, s.updated):
+            return None                 # declined: not again until the signal updates
+        return p
+
+    def _proposal_for(self, s: SignalState, snap: BookSnapshot) -> Optional[Proposal]:
         inv = self.exchange.inventory
         mid = snap.mid
         # exit at the horizon regardless of signal
@@ -358,6 +373,17 @@ class FastBook:
         p, snap = self.proposal, self.snap
         if p is None or snap is None or self.halted:
             return None
+        age = time.time() - snap.ts
+        if self.check_feed_age and age > self.limits.stale_feed_s:
+            self.say(f"refused: the book is {age:.0f}s old (limit {self.limits.stale_feed_s:.0f}s)")
+            return "stale feed"
+        if p.side == "buy" and snap.mid:
+            pending = sum(o.remaining for o in self.exchange.resting() if o.side == "buy")
+            after = (self.exchange.inventory + pending + p.size) * snap.mid
+            if after > self.limits.max_inventory_notional:
+                self.say(f"refused: inventory would be ${after:.2f} "
+                         f"(limit ${self.limits.max_inventory_notional:.0f})")
+                return "inventory limit"
         if len([t for t in self.placed_times if snap.ts - t < 3600]) >= self.limits.max_orders_per_hour:
             self.halted = "max orders per hour"
             return self.halted
@@ -374,6 +400,7 @@ class FastBook:
     def decline(self) -> None:
         if self.proposal:
             self.say(f"declined {self.proposal.side} ({self.proposal.reason})")
+            self.declined = (self.proposal.side, self.signal.updated)
         self.proposal = None
 
     def reprice(self) -> None:
@@ -721,7 +748,7 @@ def run(product: str, cash: float = 500.0, venue: str = "coinbase", record: bool
     console = Console()
     ex = PaperExchange(cash=cash)
     fb = FastBook(product, ex, venue=venue, threshold=threshold, order_notional=order_notional,
-                  journal_path=Path(state_dir) / "fast.db")
+                  journal_path=Path(state_dir) / "fast.db", check_feed_age=replay_path is None)
     mode = f"PAPER · {VENUES[venue].name} maker {VENUES[venue].maker_bps:.0f} bps"
     rec = None
     if replay_path:
@@ -751,7 +778,7 @@ def run(product: str, cash: float = 500.0, venue: str = "coinbase", record: bool
                     break
                 except Exception as exc:  # noqa: BLE001
                     fb.say(f"feed error: {type(exc).__name__}: {exc}")
-                    snap = fb.snap
+                    snap = None         # never re-feed the last snapshot: its prints already filled us
                 if snap is not None:
                     if rec:
                         rec.write(snap)

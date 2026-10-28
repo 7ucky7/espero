@@ -75,7 +75,7 @@ class TCA:
 
 def _estimate_traded(prev: Optional[dict], row: dict) -> float:
     if prev is None:
-        return sum(json.loads(row.get("positions") or "{}").values())
+        return sum(abs(v) for v in json.loads(row.get("positions") or "{}").values())
     a = json.loads(prev.get("positions") or "{}")
     b = json.loads(row.get("positions") or "{}")
     return sum(abs(b.get(k, 0.0) - a.get(k, 0.0)) for k in set(a) | set(b))
@@ -85,7 +85,7 @@ def account_tca(db_path: Path, table: str, cost_rate: float) -> TCA:
     db_path = Path(db_path)
     if not db_path.exists():
         return TCA(cost_rate=cost_rate)
-    con = sqlite3.connect(db_path)
+    con = sqlite3.connect(f"file:{Path(db_path).resolve()}?mode=ro", uri=True)   # read-only
     con.row_factory = sqlite3.Row
     try:
         rows = [dict(r) for r in con.execute(f"SELECT * FROM {table} ORDER BY ts, id")]

@@ -162,6 +162,7 @@ espero backtest --fee-bps 60       # one configuration, honest fills
 espero chart                       # docs/equity.png
 espero paper                       # one step of paper trading on live candles
 espero paper --loop --interval 60  # keep it running (ctrl-c to stop)
+# without --venue (or --fee-bps) the paper book charges no fees at all; pass --venue binanceus etc.
 espero tsmom --cash 100            # cross-asset trend paper account
 espero dashboard --open            # one self-contained HTML page with the accounts
 

@@ -68,13 +68,14 @@ class Result:
     def metrics(self) -> dict:
         eq = self.equity
         ret = eq.iloc[-1] / eq.iloc[0] - 1
-        years = max(len(eq) / 365.25, 1e-9)
+        per_day = bars_per_day(eq.index)
+        years = max(len(eq) / per_day / 365.25, 1e-9)
         dr = (eq / eq.shift(1) - 1).dropna()
         wins = [t for t in self.trades if t.pnl > 0]
         return {
             "total_return_pct": 100 * ret,
             "cagr_pct": 100 * ((1 + ret) ** (1 / years) - 1),
-            "sharpe": float(np.sqrt(365) * dr.mean() / dr.std()) if dr.std() > 0 else 0.0,
+            "sharpe": float(np.sqrt(365 * per_day) * dr.mean() / dr.std()) if dr.std() > 0 else 0.0,
             "max_drawdown_pct": 100 * float((eq / eq.cummax() - 1).min()),
             "trades": len(self.trades),
             "win_rate_pct": 100 * len(wins) / len(self.trades) if self.trades else 0.0,
@@ -148,6 +149,21 @@ def _notional(cfg: Config, cash: float, confidence: float) -> float:
         return max(cash * 0.98, 0.0)
     conf_factor = (confidence - MIN_CONFIDENCE) / (1 - MIN_CONFIDENCE)
     return max(cash * cfg.risk_per_trade * conf_factor, 0.0)
+
+
+def bars_per_day(index) -> float:
+    """Bars per day from the median spacing of a datetime index (1.0 for daily
+    bars, 24.0 for hourly). Anything else, or too short, is taken as daily, which
+    is what the metrics assumed before they looked."""
+    try:
+        idx = pd.DatetimeIndex(index)
+    except (TypeError, ValueError):
+        return 1.0
+    if len(idx) < 3:
+        return 1.0
+    step = pd.Series(idx).diff().dropna().median()
+    secs = step.total_seconds() if hasattr(step, "total_seconds") else 0.0
+    return 86400.0 / secs if secs > 0 else 1.0
 
 
 def _equity(cash: float, pos: Optional[dict], price: float) -> float:

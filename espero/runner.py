@@ -55,6 +55,7 @@ class DailyResult:
     started: str
     steps: Dict[str, StepResult] = field(default_factory=dict)
     paused: bool = False
+    dry_run: bool = False
 
     @property
     def ok(self) -> bool:
@@ -109,8 +110,14 @@ class Lock:
             if pid and _pid_alive(pid):
                 raise RuntimeError(f"another run holds {self.path} (pid {pid})")
             log.warning("removing stale lock %s (pid %s is gone)", self.path, pid)
-            self.path.unlink()
-        self.path.write_text(str(os.getpid()))
+            self.path.unlink(missing_ok=True)
+        try:
+            # O_EXCL: of two runs racing here, exactly one creates the file
+            fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        except FileExistsError:
+            raise RuntimeError(f"another run took {self.path} at the same moment") from None
+        with os.fdopen(fd, "w") as fh:
+            fh.write(str(os.getpid()))
         return self
 
     def __exit__(self, *exc):
@@ -154,9 +161,11 @@ def write_health(state_dir: Path, result: DailyResult) -> Path:
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     doc = {
         "last_run": now,
-        "last_success": now if result.ok else prev.get("last_success"),
+        # a dry run or preflight skips the real steps: it proves nothing about them
+        "last_success": now if result.ok and not result.dry_run else prev.get("last_success"),
         "ok": result.ok,
         "paused": result.paused,
+        "dry_run": result.dry_run,
         "steps": {k: {"ok": v.ok, "seconds": round(v.seconds, 1), "note": v.note,
                       "equity": v.equity, "error": v.error, "skipped": v.skipped}
                   for k, v in result.steps.items()},
@@ -173,7 +182,9 @@ def run_daily(state_dir: Path = Path("."), cash_tsmom: float = 100.0, cash_xs: f
     state_dir = Path(state_dir)
     state_dir.mkdir(parents=True, exist_ok=True)
     log_path = setup_logging(log_dir)
-    result = DailyResult(started=datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    from .broker import load_env
+    load_env()      # launchd starts in the repo, where .env lives: the webhook needs it
+    result = DailyResult(started=datetime.now(timezone.utc).isoformat(timespec="seconds"), dry_run=dry_run)
     log.info("daily run start (state=%s, log=%s, dry_run=%s)", state_dir.resolve(), log_path, dry_run)
 
     if (state_dir / "KILL").exists():
@@ -197,7 +208,7 @@ def run_daily(state_dir: Path = Path("."), cash_tsmom: float = 100.0, cash_xs: f
 
         def render():
             out = dash.write(state_dir / "dashboard.html", tsmom_db=tsmom_db, paper_db=paper_db,
-                             live_db=live_db, xs_db=xs_db)
+                             live_db=live_db, xs_db=xs_db, offline=dry_run)
             return {"note": f"wrote {out}"}
 
         _step("dashboard", render, result, notify)

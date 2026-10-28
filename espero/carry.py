@@ -156,6 +156,9 @@ def simulate(coins: Dict[str, CoinData], spot_fee: float = SPOT_FEES["binanceus"
                 reason = "no_data"
             elif a < exit_:
                 reason = "funding_low"
+            # As run and as pre-registered in code (research/ERRATA.md, 2026-10-28): the time stop
+            # exits even when the coin still qualifies, then the same hour may re-enter it. The
+            # PREREGISTRATION text says "without re-qualifying"; the forward books keep this rule.
             elif i - pos.entry_i >= max_hold:
                 reason = "time"
             if reason:
@@ -205,19 +208,36 @@ def simulate(coins: Dict[str, CoinData], spot_fee: float = SPOT_FEES["binanceus"
     return res
 
 
+def sharpe_of(eq: pd.Series, periods_per_year: float) -> float:
+    r = eq.pct_change().dropna()
+    return float(r.mean() / r.std() * np.sqrt(periods_per_year)) if len(r) > 1 and r.std() > 0 else 0.0
+
+
+def daily_sharpe(eq: pd.Series) -> float:
+    """Sharpe of the end-of-day equity, annualised by 365. Reported beside the
+    pre-registered hourly Sharpe: hourly marks of a hedge carry two-venue basis
+    noise that mean-reverts within hours (lag-1 autocorrelation about -0.5), so
+    the hourly figure is far below the daily one. The criterion stays hourly."""
+    eq = eq.dropna()
+    if len(eq) < 3 or not isinstance(eq.index, pd.DatetimeIndex):
+        return 0.0
+    return sharpe_of(eq.resample("1D").last().dropna(), 365.0)
+
+
 def metrics(res: Result) -> dict:
     eq = res.equity.dropna()
     if len(eq) < 2:
-        return {"ann_return": 0.0, "max_dd": 0.0, "sharpe": 0.0, "paid_ratio": 0.0, "hours": 0}
+        return {"ann_return": 0.0, "max_dd": 0.0, "sharpe": 0.0, "sharpe_daily": 0.0, "paid_ratio": 0.0,
+                "hours": 0}
     years = len(eq) / HOURS_PER_YEAR
-    r = eq.pct_change().dropna()
-    sharpe = float(r.mean() / r.std() * np.sqrt(HOURS_PER_YEAR)) if r.std() > 0 else 0.0
+    sharpe = sharpe_of(eq, HOURS_PER_YEAR)
     dd = (eq / eq.cummax() - 1).min()
     paid_ratio = res.funding_paid / res.funding_received if res.funding_received else float("inf")
     return {
         "ann_return": float((eq.iloc[-1] / eq.iloc[0]) ** (1 / years) - 1),
         "max_dd": float(-dd),
         "sharpe": sharpe,
+        "sharpe_daily": daily_sharpe(eq),
         "paid_ratio": float(paid_ratio),
         "hours": len(eq),
         "trades": len(res.trades),

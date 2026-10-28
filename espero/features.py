@@ -85,7 +85,7 @@ def hyperliquid_funding(pages: int = 70, coin: str = "BTC",
 
 
 def deribit_funding(start_ms: int = 1_546_300_800_000,
-                    end_ms: int = 1_793_059_200_000) -> pd.DataFrame:
+                    end_ms: int = 1_793_059_200_000) -> pd.DataFrame:   # pinned: 2026-10-27, reproducible
     """Hourly funding history, long enough to cover several market regimes.
 
     Deribit is used here because it is the only free source reachable from this

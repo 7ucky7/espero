@@ -58,20 +58,41 @@ class ICSummary:
     icir: float
     t: float
     hit: float          # fraction of dates with IC > 0
+    t_nw: float = float("nan")   # Newey-West t: corrects for overlapping forward returns
 
     def as_dict(self) -> dict:
         return {"n": self.n, "ic": self.mean, "ic_std": self.std, "icir": self.icir,
-                "t": self.t, "hit": self.hit}
+                "t": self.t, "hit": self.hit, "t_nw": self.t_nw}
 
 
-def summarize(ic: pd.Series) -> ICSummary:
+def newey_west_t(x: pd.Series, lags: int) -> float:
+    """t-statistic of the mean of `x` with a Newey-West (Bartlett) long-run
+    variance over `lags` lags. Daily ICs of h-day forward returns overlap, so
+    neighbours share h-1 days of the label and are positively autocorrelated:
+    the plain t = ICIR * sqrt(n) then overstates significance (about 2x at
+    h = 5 for a persistent factor). Use lags >= h - 1; with Bartlett weights
+    2 * (h - 1) gets a null's t close to unit variance."""
+    v = np.asarray(x, dtype=float)
+    n = v.size
+    if n < 3:
+        return float("nan")
+    d = v - v.mean()
+    lr = float(d @ d) / n
+    for lag in range(1, min(lags, n - 1) + 1):
+        lr += 2 * (1 - lag / (lags + 1)) * float(d[lag:] @ d[:-lag]) / n
+    return float(v.mean() / math.sqrt(lr / n)) if lr > 0 else float("nan")
+
+
+def summarize(ic: pd.Series, lags: int = 0) -> ICSummary:
+    """`t` is the plain ICIR * sqrt(n) (what the pre-registrations use);
+    `t_nw` the Newey-West t over `lags` lags (evaluate uses 2 * (horizon - 1))."""
     n = int(ic.size)
     if n < 2:
         return ICSummary(n, float("nan"), float("nan"), float("nan"), float("nan"), float("nan"))
     m, s = float(ic.mean()), float(ic.std(ddof=1))
     icir = m / s if s > 0 else float("nan")
     return ICSummary(n, m, s, icir, icir * math.sqrt(n) if s > 0 else float("nan"),
-                     float((ic > 0).mean()))
+                     float((ic > 0).mean()), newey_west_t(ic, lags))
 
 
 def ic_decay(factor: pd.DataFrame, close: pd.DataFrame,
@@ -189,16 +210,20 @@ def evaluate(p: MarketPanel, names: Iterable[str] = None, horizon: int = 5, q: i
     for name in names:
         f = ops.where_valid(factors[name](p), mask)
         ic = ic_series(f, fwd)
-        ins, oos = summarize(ic.reindex(train_dates).dropna()), summarize(ic.reindex(test_dates).dropna())
+        lags = 2 * max(0, horizon - 1)    # Bartlett weights under-correct at h - 1 lags
+        ins = summarize(ic.reindex(train_dates).dropna(), lags)
+        oos = summarize(ic.reindex(test_dates).dropna(), lags)
         qr = quantile_returns(f.reindex(test_dates), fwd.reindex(test_dates), q)
         sp = spread(qr) if not qr.empty else pd.Series(dtype=float)
         rows.append({
             "factor": name, "horizon": horizon,
             "ic_is": ins.mean, "t_is": ins.t,
-            "ic_oos": oos.mean, "icir_oos": oos.icir, "t_oos": oos.t, "hit_oos": oos.hit,
+            "ic_oos": oos.mean, "icir_oos": oos.icir, "t_oos": oos.t, "t_oos_nw": oos.t_nw,
+            "hit_oos": oos.hit,
             "n_oos": oos.n,
             "spread_oos": float(sp.mean()) if sp.size else float("nan"),
             "turnover": top_quantile_turnover(f.reindex(test_dates), q),
+            # the pre-registered rule is the plain t; t_oos_nw is reported beside it
             "pass": bool(oos.t > T_HURDLE),
         })
     out = pd.DataFrame(rows).set_index("factor")
@@ -210,16 +235,21 @@ def evaluate(p: MarketPanel, names: Iterable[str] = None, horizon: int = 5, q: i
 
 def format_table(t: pd.DataFrame) -> str:
     lines = [f"{'factor':14s} {'IC is':>7s} {'t is':>6s} {'IC oos':>7s} {'ICIR':>6s} {'t oos':>6s} "
-             f"{'hit':>5s} {'Q5-Q1':>7s} {'churn':>6s}  pass"]
+             f"{'t NW':>6s} {'hit':>5s} {'Q5-Q1':>7s} {'churn':>6s}  pass"]
     for name, r in t.iterrows():
         lines.append(f"{name:14s} {r['ic_is']:+7.3f} {r['t_is']:6.2f} {r['ic_oos']:+7.3f} "
-                     f"{r['icir_oos']:6.2f} {r['t_oos']:6.2f} {r['hit_oos']:5.2f} "
+                     f"{r['icir_oos']:6.2f} {r['t_oos']:6.2f} {r.get('t_oos_nw', float('nan')):6.2f} "
+                     f"{r['hit_oos']:5.2f} "
                      f"{100 * r['spread_oos']:+6.2f}% {r['turnover']:6.2f}  {'YES' if r['pass'] else '-'}")
     n = t.attrs.get("n_trials", len(t))
     lines.append("")
     lines.append(f"{n} factors tried; pass = OOS t > {T_HURDLE:.0f} (Harvey-Liu-Zhu hurdle). "
                  f"Expected best t among {n} null factors over {int(t['n_oos'].max())} dates "
-                 f"≈ {expected_max_sharpe(n, 1.0):.2f}.")
+                 f"≈ {expected_max_sharpe(n, 1.0):.2f}, if dates were independent.")
+    h = int(t["horizon"].iloc[0]) if "horizon" in t and len(t) else 1
+    if h > 1:
+        lines.append(f"t NW: Newey-West with {2 * (h - 1)} lags. Daily ICs of {h}-period returns overlap, so the "
+                     f"plain t overstates; read the pass column against t NW as well.")
     for tr0, tr1, te0, te1 in t.attrs.get("splits", []):
         lines.append(f"  train {tr0}..{tr1}  test {te0}..{te1}")
     return "\n".join(lines)

@@ -36,12 +36,21 @@ def webhook(title: str, message: str, url: str = "") -> bool:
     from .data import FetchError, http_get
     body = json.dumps({"text": f"*{title}*\n{message}"}).encode()
     try:
+        # one attempt: a POST that timed out may still have been delivered, and a
+        # retry would send the alert twice
         http_get(url, headers={"Content-Type": "application/json", "User-Agent": "espero/0.2"},
-                 data=body, retries=2)
+                 data=body, retries=1)
         return True
     except FetchError as exc:
-        log.warning("webhook failed: %s", exc)
+        log.warning("webhook failed: %s", str(exc).replace(url, redact(url)))
         return False
+
+
+def redact(url: str) -> str:
+    """A webhook URL is a bearer secret: keep scheme and host, hide the rest."""
+    scheme, _, rest = url.partition("://")
+    host = rest.split("/", 1)[0]
+    return f"{scheme}://{host}/…" if rest else "…"
 
 
 def notify(title: str, message: str) -> None:

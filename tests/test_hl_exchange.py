@@ -79,6 +79,11 @@ class FakeExchange:
 class FakeInfo:
     def __init__(self):
         self.open, self.fills_ = [], []
+        self.books = {"ETH": (1999.0, 2001.0), "BTC": (79990.0, 80010.0)}
+
+    def l2_snapshot(self, coin):
+        bid, ask = self.books[coin]
+        return {"levels": [[{"px": str(bid), "sz": "1"}], [{"px": str(ask), "sz": "1"}]]}
 
     def meta(self):
         return {"universe": [{"name": "ETH", "szDecimals": 4}, {"name": "BTC", "szDecimals": 5}]}
@@ -203,6 +208,104 @@ class TestMirror(unittest.TestCase):
         again = hx.TestnetMirror(db, exchange())
         self.assertEqual(len(again.rows()), 1)
         db.close()
+
+
+
+class TestMirrorAudit(unittest.TestCase):
+    """2026-10-27 audit, section C."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.book = cp.CarryBook(Path(self.tmp.name) / "b.db", costs="maker", initial=500.0, max_coins=1)
+        self.ex = exchange()
+        self.mirror = hx.TestnetMirror(self.book.db, self.ex)
+
+    def tearDown(self):
+        self.book.close()
+        self.tmp.cleanup()
+
+    def rows(self, f_ann=0.2):
+        return {"ETH": cp.Row(funding=1e-5, f_ann=f_ann, perp=2000.0, spot=1999.0)}
+
+    def open_and_close(self, fill_part=None):
+        self.book.on_hour(3600, self.rows())
+        self.mirror.sync(self.book.open_positions(), self.book.closed_positions(), {"ETH": 2000.0}, now=3600)
+        if fill_part is not None:
+            self.ex.info.fills_ = [{"oid": 1, "sz": str(fill_part), "time": 3700_000}]
+        self.book.on_hour(7200, self.rows(f_ann=0.01))
+        return self.mirror.sync(self.book.open_positions(), self.book.closed_positions(),
+                                {"ETH": 2000.0}, now=7200)
+
+    def test_orders_are_priced_from_the_testnet_book_not_mainnet(self):
+        self.book.on_hour(3600, self.rows())
+        self.mirror.sync(self.book.open_positions(), self.book.closed_positions(), {"ETH": 2500.0}, now=3600)
+        self.assertEqual(self.ex.ex.orders[0][3], 2001.0)               # the testnet ask
+        self.assertEqual(self.mirror.rows()[0]["paper_px"], 2500.0)     # the gap is recorded
+
+    def test_part_filled_open_is_cancelled_and_only_the_fill_bought_back(self):
+        self.open_and_close(fill_part=0.05)
+        self.assertIn(("ETH", 1), self.ex.ex.cancels)
+        name, side, sz, px, tif, ro = self.ex.ex.orders[-1]
+        self.assertEqual((side, sz, px, tif, ro), ("buy", 0.05, 1999.0, "Alo", True))
+
+    def test_unfilled_close_is_repriced_then_crosses_after_three_tries(self):
+        self.open_and_close(fill_part=0.05)
+        ex, now = self.ex.ex, 7200
+        for k in range(3):
+            now += hx.REPRICE_S + 1
+            self.ex.info.open = [{"oid": len(ex.orders)}]               # the close still rests
+            self.mirror.sync(self.book.open_positions(), self.book.closed_positions(), {"ETH": 2000.0}, now=now)
+        tifs = [o[4] for o in ex.orders[1:]]
+        self.assertEqual(tifs, ["Alo", "Alo", "Alo", "Ioc"])
+        self.assertEqual(ex.orders[-1][3], 2001.0)                     # crosses at the ask
+        self.assertTrue(all(o[5] for o in ex.orders[1:]))               # all reduce-only
+
+    def test_a_close_that_filled_is_not_placed_again(self):
+        self.ex.ex.fill = True
+        self.open_and_close()
+        n = len(self.ex.ex.orders)
+        self.mirror.sync(self.book.open_positions(), self.book.closed_positions(), {"ETH": 2000.0},
+                         now=7200 + hx.REPRICE_S + 1)
+        self.assertEqual(len(self.ex.ex.orders), n)
+        self.assertEqual(self.mirror.rows()[0]["close_status"], "filled")
+
+    def test_order_lost_to_a_timeout_is_recovered_from_open_orders(self):
+        def timeout(name, is_buy, sz, px, order_type, reduce_only=False, **kw):
+            self.ex.info.open.append({"oid": 77, "coin": name, "side": "B" if is_buy else "A",
+                                      "sz": str(sz), "limitPx": str(px)})
+            raise TimeoutError("read timed out")
+        self.ex.ex.order = timeout
+        self.book.on_hour(3600, self.rows())
+        self.mirror.sync(self.book.open_positions(), self.book.closed_positions(), {"ETH": 2000.0}, now=3600)
+        row = self.mirror.rows()[0]
+        self.assertEqual((row["open_oid"], row["open_status"]), (77, "resting"))
+        self.assertIn("recovered", row["note"])
+
+    def test_old_mirror_table_gains_the_new_columns(self):
+        db = sqlite3.connect(":memory:")
+        db.executescript(hx.MIRROR_SCHEMA)
+        hx.TestnetMirror(db, exchange())
+        cols = {r[1] for r in db.execute("PRAGMA table_info(testnet_mirror)")}
+        self.assertTrue(set(hx.MIRROR_COLUMNS) <= cols)
+
+
+class TestAccountAddress(unittest.TestCase):
+    def test_wallet_address_must_be_well_formed(self):
+        good = "0x" + "ab" * 20
+        self.assertEqual(hx.account_address({"HL_WALLET_ADDRESS": good}), good)
+        for bad in ("", "0x123", "not an address", "0x" + "g" * 40):
+            self.assertIsNone(hx.account_address({"HL_WALLET_ADDRESS": bad}))
+
+    def test_api_wallet_signs_for_the_main_account(self):
+        if __import__("importlib").util.find_spec("hyperliquid") is None:
+            self.skipTest("hyperliquid SDK not installed")
+        from unittest import mock
+        main = "0x" + "cd" * 20
+        with mock.patch("hyperliquid.exchange.Info"), mock.patch("hyperliquid.info.Info"):   # no network
+            ex = hx.TestnetExchange(env={**GOOD, "HL_WALLET_ADDRESS": main})
+        self.assertEqual(ex.address, main)
+        self.assertEqual(ex.ex.account_address, main)
+        self.assertEqual(ex.ex.base_url, hx.TESTNET_URL)
 
 
 if __name__ == "__main__":

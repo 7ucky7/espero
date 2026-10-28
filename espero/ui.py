@@ -68,7 +68,7 @@ def _latest(db: Path, table: str) -> Optional[dict]:
 def _history(db: Path, table: str, limit: int = 15) -> List[dict]:
     if not db.exists():
         return []
-    con = sqlite3.connect(db)
+    con = sqlite3.connect(f"file:{Path(db).resolve()}?mode=ro", uri=True)   # read-only
     con.row_factory = sqlite3.Row
     try:
         rows = con.execute(f"SELECT * FROM {table} ORDER BY ts DESC, id DESC LIMIT ?", (limit,)).fetchall()
@@ -209,8 +209,8 @@ def header(state: Path) -> Panel:
         if bad:
             line2.append(f"  ·  failing: {', '.join(bad)}", style="red")
     else:
-        line2.append("no run recorded yet  ·  launchd runs daily at 07:30", style=MUTED)
-    line2.append("  ·  next run 07:30 local", style=MUTED)
+        line2.append(f"no run recorded yet  ·  launchd runs daily at {daily_time()}", style=MUTED)
+    line2.append(f"  ·  next run {daily_time()} local", style=MUTED)
 
     try:
         nxt = next_rebalance(state)
@@ -462,6 +462,19 @@ def act_fast(console, state):
     _run(console, ["fast", "--product", product, "--venue", venue, "--state-dir", str(state)], state)
 
 
+def daily_time(plist: Path = Path.home() / "Library" / "LaunchAgents" / "com.espero.daily.plist") -> str:
+    """HH:MM of the installed daily job (its StartCalendarInterval), 07:30 if unreadable."""
+    try:
+        import plistlib
+        with open(plist, "rb") as fh:
+            cal = plistlib.load(fh).get("StartCalendarInterval") or {}
+        if isinstance(cal, list):
+            cal = cal[0] if cal else {}
+        return f"{int(cal.get('Hour', 7)):02d}:{int(cal.get('Minute', 30)):02d}"
+    except (OSError, ValueError, TypeError, AttributeError):
+        return "07:30"
+
+
 def act_degen(console, state):
     what = questionary.select("打板 — altcoins breaking out on volume (paper, hypothesis #10)",
                               choices=["scan: who is moving right now", "paper: run the 5m loop",
@@ -474,8 +487,10 @@ def act_degen(console, state):
     if what.startswith("scan"):
         _run(console, ["degen", "scan", "--venue", venue], state)
     elif what.startswith("paper"):
-        console.print(Text("ctrl-c returns to the menu; state is kept in degen.db here", style=MUTED))
-        _run(console, ["degen", "paper", "--venue", venue, "--state", str(state / "degen.db"), "--loop"], state)
+        # degen.db is the #10 forward test on Binance.US fees; another venue gets its own book
+        db = "degen.db" if venue == "binanceus" else f"degen-{venue}.db"
+        console.print(Text(f"ctrl-c returns to the menu; state is kept in {db} here", style=MUTED))
+        _run(console, ["degen", "paper", "--venue", venue, "--state", str(state / db), "--loop"], state)
     else:
         console.print(Text("fetches 30 days of 5m candles for 60 coins the first time (about ten minutes)",
                            style=MUTED))
@@ -489,7 +504,7 @@ def act_factors(console, state):
 
 def act_tests(console, state):
     console.print(Text("$ python -m unittest discover -s tests -t .", style=MUTED))
-    subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", "tests"], cwd=state)
+    subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", "tests", "-t", "."], cwd=state)
 
 
 def act_logs(console, state):

@@ -68,12 +68,20 @@ class TestRender(unittest.TestCase):
         self.assertIn("init", out)
 
     def test_status_action_does_not_write(self):
-        before = (self.state / "tsmom.db").read_bytes(), (self.state / "xs.db").read_bytes()
+        # compare contents, not bytes: SQLite folds a WAL file into the main file
+        # whenever the last connection closes, which changes bytes but no data
+        def dump(name):
+            import sqlite3
+            con = sqlite3.connect(f"file:{self.state / name}?mode=ro", uri=True)
+            try:
+                return list(con.iterdump())
+            finally:
+                con.close()
+        before = dump("tsmom.db"), dump("xs.db")
         c = Console(file=io.StringIO(), width=120)
         ui.act_status(c, self.state)
         ui.act_logs(c, self.state)
-        after = (self.state / "tsmom.db").read_bytes(), (self.state / "xs.db").read_bytes()
-        self.assertEqual(before, after)
+        self.assertEqual(before, (dump("tsmom.db"), dump("xs.db")))
 
     def test_sparkline_and_pnl_curve(self):
         self.assertEqual(ui.sparkline([]), "")

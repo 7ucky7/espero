@@ -47,12 +47,14 @@ VENUES: Dict[str, Venue] = {
                   symbol="{base}-PERP", min_notional=5.0, api="",
                   kind="perp", funding_bps_8h=1.0),
     # Hyperliquid base tier (no staking discount, no volume tier). Funding settles
-    # hourly and the live rate is quoted per hour by the `info` endpoint; 3 bps per
-    # 8h is the venue's idle-market baseline (0.01% per 8h ≈ 0.00125% per hour).
+    # hourly and the live rate is quoted per hour by the `info` endpoint; 1 bp per
+    # 8h is the venue's idle-market baseline (0.01% per 8h ≈ 0.00125% per hour,
+    # about 10.95% a year, the rate seen on idle coins). This row said 3.0 until
+    # 2026-10-28; no running loop or published result used it.
     # Hyperliquid excludes US persons from trading; this row exists for paper books.
     "hyperliquid": Venue("Hyperliquid (base tier)", maker_bps=1.5, taker_bps=4.5,
                          symbol="{base}", min_notional=10.0, api="",
-                         kind="perp", funding_bps_8h=3.0, funding_period_s=3600),
+                         kind="perp", funding_bps_8h=1.0, funding_period_s=3600),
 }
 
 

@@ -140,7 +140,10 @@ def fetch(product: str, days: int, granularity: int = 86400) -> pd.DataFrame:
         rows.extend(fetch_page(product, granularity, cursor, chunk_end))
         cursor = chunk_end
         time.sleep(0.34)  # public limit is 10 req/s; do not hammer it
-    dedup = {int(r[0]): r for r in rows}
+    # Coinbase's `end` is inclusive: the candle opening at `end` is still in
+    # progress and would be cached as if it were closed
+    now = int(time.time())
+    dedup = {int(r[0]): r for r in rows if int(r[0]) + granularity <= now}
     ordered = [dedup[k] for k in sorted(dedup)]
     return pd.DataFrame(
         [

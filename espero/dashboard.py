@@ -9,6 +9,7 @@ a browser and it works offline.
 """
 from __future__ import annotations
 
+import html
 import json
 import sqlite3
 from datetime import datetime, timezone
@@ -70,8 +71,15 @@ def _positions(latest: dict) -> dict:
     return {a: u * float(px[a]) for a, u in units.items() if a in px}
 
 
+def esc(v) -> str:
+    """Text from a database or the network goes into HTML escaped."""
+    return html.escape(str(v), quote=True)
+
+
 def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
-           live_db: Path = Path("live.db"), xs_db: Path = Path("xs.db")) -> str:
+           live_db: Path = Path("live.db"), xs_db: Path = Path("xs.db"), offline: bool = False) -> str:
+    """`offline=True` (the daily job's dry run) skips the live-signal preview,
+    the only network call here."""
     rows = _read_account(tsmom_db)
     cards = []
     total = 0.0
@@ -94,6 +102,8 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
         # live signals power the "what would I do now" preview; the stored snapshot
         # powers the audited decision. They are deliberately different numbers.
         try:
+            if offline:
+                raise RuntimeError("offline")
             live_sig = {k: float(v) for k, v in tsm.signals(tsm.load_series("2y")).items()}
         except Exception:  # noqa: BLE001
             live_sig = {}
@@ -101,7 +111,7 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
         # prefer the snapshot taken at decision time; live signals are a fallback
         sig = {k: float(v) for k, v in json.loads(latest.get("signals") or "{}").items()}
         sig_note = "as of the last decision"
-        if not sig:
+        if not sig and not offline:
             try:
                 sig = tsm.signals(tsm.load_series("2y"))
                 sig_note = "live (no decision snapshot stored)"
@@ -121,7 +131,7 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
         def class_card(title, assets):
             rs = class_rows(assets)
             body = "".join(
-                f"<tr><td>{a}</td>"
+                f"<tr><td>{esc(a)}</td>"
                 f"<td class='num'>{('' if r is None else f'{100*r:+.1f}%')}</td>"
                 f"<td class='num'>{100*w:.0f}%</td>"
                 f"<td class='num'>{cur:,.2f}</td>"
@@ -155,10 +165,10 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
           <div class="big">${equity:,.2f}</div>
           <div class="sub">as of {as_of} · cash ${cash:,.2f} ·
             {sum(1 for v in positions.values() if v > 0)} positions
-            · {sig_note}</div>
+            · {esc(sig_note)}</div>
           <div class="sub">deposited ${deposited:,.2f} · P&amp;L
             <span class="{'pos' if pnl >= 0 else 'neg'}">{pnl:+,.2f} ({pnl_pct:+.2f}%)</span>
-            · cash in <b>{vehicle}</b> {100 * apy:.2f}% · carry ${carry_total:,.2f}</div>
+            · cash in <b>{esc(vehicle)}</b> {100 * apy:.2f}% · carry ${carry_total:,.2f}</div>
           {_sparkline(curve)}
           <div class="sub">{len(rows)} journal entries · last action: {latest.get('note', '')}</div>
         </section>""")
@@ -177,7 +187,7 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
             preview.sort(key=lambda x: -abs(x[3]))
             if preview:
                 rows_html = "".join(
-                    f"<tr><td>{a}</td><td class='num'>{100*r:+.1f}%</td>"
+                    f"<tr><td>{esc(a)}</td><td class='num'>{100*r:+.1f}%</td>"
                     f"<td class='num'>{tgt:,.2f}</td>"
                     f"<td class='num {('pos' if d > 0 else 'neg')}'>"
                     f"{'buy' if d > 0 else 'sell'} {abs(d):,.2f}</td></tr>"
@@ -199,9 +209,9 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
 
         cards.append(f"""
         <section class="card">
-          <h2>Cash <span class="pill">{vehicle}</span></h2>
+          <h2>Cash <span class="pill">{esc(vehicle)}</span></h2>
           <div class="big">${cash:,.2f}</div>
-          <div class="sub">10% kept liquid · remainder swept to {vehicle} at {100 * apy:.2f}%
+          <div class="sub">10% kept liquid · remainder swept to {esc(vehicle)} at {100 * apy:.2f}%
             · carry to date ${carry_total:,.2f}</div>
         </section>""")
 
@@ -228,7 +238,7 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
                 curve.append(float(r["equity"]) - cum)
             top = sorted(pos.items(), key=lambda kv: -kv[1])[:10]
             body = "".join(
-                f"<tr><td>{c}</td><td class='num'>{100*sig.get(c, 0):+.1f}%</td>"
+                f"<tr><td>{esc(c)}</td><td class='num'>{100*sig.get(c, 0):+.1f}%</td>"
                 f"<td class='num'>{100*w.get(c, 0):.0f}%</td>"
                 f"<td class='num'>{v:,.2f}</td></tr>"
                 for c, v in top
@@ -270,7 +280,7 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
         as_of = datetime.fromtimestamp(int(eq[-1][0]), timezone.utc).date()
         cards.append(f"""
         <section class="card">
-          <h2>{name} <span class="pill">{label}</span></h2>
+          <h2>{esc(name)} <span class="pill">{esc(label)}</span></h2>
           <div class="big">${values[-1]:,.2f}</div>
           <div class="sub">as of {as_of} · {len(values)} marks</div>
           {_sparkline(values)}

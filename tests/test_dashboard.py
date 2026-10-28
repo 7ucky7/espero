@@ -34,7 +34,7 @@ class TestDashboard(unittest.TestCase):
                  positions={"SPY": acc.units["SPY"] * 100.0},
                  signals={"SPY": 0.139})
 
-        html = dashboard.render(path, self.dir / "p.db", self.dir / "l.db", self.dir / "x.db")
+        html = dashboard.render(path, self.dir / "p.db", self.dir / "l.db", self.dir / "x.db", offline=True)
         self.assertIn("Cross-asset trend", html)
         self.assertIn(f"${eq:,.2f}", html)   # net of the 10 bps cost
         self.assertIn("SPY", html)
@@ -49,7 +49,7 @@ class TestDashboard(unittest.TestCase):
         eq = acc.equity(pd.Series({"SPY": 100.0}))
         acc.save(1_793_059_200, eq, {"SPY": 1 / 6}, "init",
                  positions={"SPY": acc.units["SPY"] * 100.0}, signals={"SPY": 0.1})
-        html = dashboard.render(path, self.dir / "p.db", self.dir / "l.db", self.dir / "x.db")
+        html = dashboard.render(path, self.dir / "p.db", self.dir / "l.db", self.dir / "x.db", offline=True)
         for title in ("Equities", "Bonds", "Commodities", "Crypto", "Cash"):
             self.assertIn(title, html)
         self.assertIn("plan", html)          # the move column exists
@@ -62,7 +62,7 @@ class TestDashboard(unittest.TestCase):
         eq = acc.equity(pd.Series({"SPY": 50.0}))
         acc.save(1_793_059_200, eq, {"SPY": 1 / 6}, "init",
                  positions={"SPY": acc.units["SPY"] * 50.0})
-        html = dashboard.render(path, self.dir / "p.db", self.dir / "l.db", self.dir / "x.db")
+        html = dashboard.render(path, self.dir / "p.db", self.dir / "l.db", self.dir / "x.db", offline=True)
         self.assertIn(f"${eq:,.2f}", html)
 
 

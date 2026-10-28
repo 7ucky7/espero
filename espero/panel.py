@@ -138,8 +138,11 @@ def eligible(p: MarketPanel, min_history: int = 365, min_dollar_volume: float = 
     """True where a coin may be ranked on that date, using only that date's past.
 
     * at least `min_history` closes so far (the pre-registered 365)
-    * trailing-median dollar volume above `min_dollar_volume`, so the top of a
-      ranking cannot be a coin nobody can buy
+    * trailing-mean dollar volume over `volume_window` days (it says mean
+      because it is one; an earlier docstring said median) above
+      `min_dollar_volume`, so the top of a ranking cannot be a coin nobody can
+      buy. The window needs every day: one missing day keeps a coin out for
+      `volume_window` days. As run in the published results.
     """
     history = p.close.notna().cumsum()
     liquid = ops.ts_mean(p.dollar_volume, volume_window) >= min_dollar_volume

@@ -10,7 +10,7 @@ Rules that are not negotiable here:
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import List
 
@@ -131,9 +131,10 @@ class PaperTrader:
                     equity=equity,
                     cash=self.cash,
                     open_positions=0,
-                    day_pnl=self._day_pnl(equity),
+                    day_pnl=self._day_pnl(equity, ts),
                     confidence=signal.confidence,
-                    limits=self.cfg.limits,
+                    # size against the stop the position will actually get
+                    limits=replace(self.cfg.limits, stop_pct=self.cfg.stop_pct),
                 )
                 if decision.allowed:
                     size = decision.notional / close
@@ -241,8 +242,10 @@ class PaperTrader:
     def _equity(self, price: float) -> float:
         return self.cash + self._position_value(price)
 
-    def _day_pnl(self, equity: float) -> float:
-        day = datetime.now(timezone.utc).date().isoformat()
+    def _day_pnl(self, equity: float, ts: int) -> float:
+        """P&L since the first mark of the bar's UTC day (the bar's, not the
+        wall clock's: a replay must apply the same daily cap as the live loop)."""
+        day = datetime.fromtimestamp(ts, timezone.utc).date().isoformat()
         row = self.journal.db.execute(
             "SELECT cash, position_value FROM equity WHERE date(ts,'unixepoch')=? "
             "ORDER BY ts LIMIT 1", (day,),
@@ -254,7 +257,7 @@ class PaperTrader:
 
 def compare_venues(bars: List[dict], venues: List[str], product: str = "BTC-USD",
                    granularity: int = 3600, initial: float = 500.0,
-                   state_dir=None) -> List[dict]:
+                   state_dir=None, limits: RiskLimits = None) -> List[dict]:
     """Replay the same closed bars through a fresh paper book per venue.
 
     Same bars, same signals, same fills; only the fee and funding differ. This
@@ -267,8 +270,10 @@ def compare_venues(bars: List[dict], venues: List[str], product: str = "BTC-USD"
     with tempfile.TemporaryDirectory(dir=state_dir) as d:
         for v in venues:
             j = Journal(Path(d) / f"{v}.db")
-            t = PaperTrader(j, PaperConfig.for_venue(v, product=product,
-                                                     granularity=granularity, initial=initial))
+            cfg = PaperConfig.for_venue(v, product=product, granularity=granularity, initial=initial)
+            if limits is not None:
+                cfg.limits = limits
+            t = PaperTrader(j, cfg)
             funding = 0.0
             for b in bars:
                 for e in t.on_bar(b):
@@ -276,8 +281,12 @@ def compare_venues(bars: List[dict], venues: List[str], product: str = "BTC-USD"
                         funding += float(e.split()[-1])
             last = float(bars[-1]["close"]) if bars else 0.0
             closed = j.closed_positions()
-            fees = sum((r["fee"] or 0.0) for r in j.db.execute(
-                "SELECT fee FROM orders WHERE status='filled'").fetchall())
+            # every fee paid: entry and exit of closed trades (gross minus net, less
+            # the funding that is also booked against them) and the open entry's
+            gross = sum((r["exit_px"] - r["entry_px"]) * r["size"] for r in closed)
+            fees = gross - sum(r["pnl"] for r in closed) - funding
+            if t.position is not None:
+                fees += t.position.entry_fee
             out.append({
                 "venue": v, "name": VENUES[v].name, "trades": len(closed),
                 "wins": sum(1 for r in closed if (r["pnl"] or 0) > 0),

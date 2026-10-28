@@ -181,9 +181,12 @@ class DegenTrader:
         self.pending: Dict[str, PendingOrder] = {o.product: o for o in journal.pending_orders()}
         self.high_water: Dict[str, float] = {}
         for p in self.positions.values():
-            row = journal.db.execute("SELECT MAX(high) AS h FROM bars WHERE product=? AND ts>=?",
+            # the same rule as a running book: start at the fill, then every later bar's
+            # high (the fill bar is skipped there, so it is skipped here)
+            row = journal.db.execute("SELECT MAX(high) AS h FROM bars WHERE product=? AND ts>?",
                                      (p.product, p.entry_ts)).fetchone()
-            self.high_water[p.product] = float(row["h"]) if row and row["h"] is not None else p.entry_px
+            h = float(row["h"]) if row and row["h"] is not None else p.entry_px
+            self.high_water[p.product] = max(h, p.entry_px)
 
     # ------------------------------------------------------------------ api
     def held(self) -> List[str]:
@@ -273,7 +276,7 @@ class DegenTrader:
             limits = replace(self.cfg.limits, stop_pct=STOP_ATR * a / close, max_open_positions=MAX_OPEN)
             held = len(self.positions) + sum(1 for o in self.pending.values() if o.side == "BUY")
             d = check_buy(equity=equity, cash=self.cash, open_positions=held,
-                          day_pnl=self._day_pnl(equity), confidence=float(r["score"]), limits=limits)
+                          day_pnl=self._day_pnl(equity, ts), confidence=float(r["score"]), limits=limits)
             if not d.allowed:
                 events.append(f"{p}: breakout blocked, {d.reason}")
                 continue
@@ -339,8 +342,9 @@ class DegenTrader:
     def equity(self) -> float:
         return self.cash + self.position_value()
 
-    def _day_pnl(self, equity: float) -> float:
-        day = datetime.now(timezone.utc).date().isoformat()
+    def _day_pnl(self, equity: float, ts: int) -> float:
+        """Since the first mark of the bar's UTC day, so replay and live agree."""
+        day = datetime.fromtimestamp(ts, timezone.utc).date().isoformat()
         row = self.journal.db.execute(
             "SELECT cash, position_value FROM equity WHERE date(ts,'unixepoch')=? ORDER BY ts LIMIT 1", (day,),
         ).fetchone()

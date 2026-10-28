@@ -16,9 +16,13 @@ liquidity, hourly price history for 30 days, $500 bankroll, $125 per side.
 
 | half-spread | bid fills | ask fills | rewards | trading P&L | total |
 |---|---|---|---|---|---|
-| 1¢ | 37 | 34 | $12.48 | −$270.80 | **−$245.85 (−49.2%)** |
-| 2¢ | 12 | 10 | $12.48 | −$140.66 | **−$115.71 (−23.1%)** |
-| 4¢ | 5 | 2 | $12.48 | −$92.80 | **−$67.84 (−13.6%)** |
+| 1¢ | 37 | 34 | $12.48 | −$258.32 | **−$245.85 (−49.2%)** |
+| 2¢ | 12 | 10 | $12.48 | −$128.18 | **−$115.71 (−23.1%)** |
+| 4¢ | 5 | 2 | $12.48 | −$80.32 | **−$67.84 (−13.6%)** |
+
+*Erratum 2026-10-28:* the trading P&L column first printed here subtracted the rewards a second
+time (lp_sim.py counted them out of a cash balance they were never added to); each row was $12.48
+too low. The totals were right and are unchanged; the conclusion is unchanged.
 
 Rewards are ~$0.42/day. The inventory loss is $2.3–$9/day. Tightening the spread buys more fills and
 more reward eligibility, and loses faster — the classic adverse-selection shape.

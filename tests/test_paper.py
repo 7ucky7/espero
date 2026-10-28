@@ -206,13 +206,21 @@ class TestVenueCompare(unittest.TestCase):
                 return None
             paper_mod.combine = alternate
             bars = [bar(i, 100.0 + (i % 5)) for i in range(120)]
+            # the daily cap now applies in replay too (bar time, not wall clock); lift
+            # it here so both venues take the same trades and only the bill differs
+            from espero.risk import RiskLimits
             rows = {r["venue"]: r for r in paper_mod.compare_venues(
-                bars, ["coinbase", "perp"], granularity=GRAN)}
+                bars, ["coinbase", "perp"], granularity=GRAN,
+                limits=RiskLimits(daily_loss_cap_pct=1.0))}
         finally:
             paper_mod.combine = orig
         self.assertGreater(rows["coinbase"]["trades"], 0)
         self.assertEqual(rows["coinbase"]["trades"], rows["perp"]["trades"])
         self.assertGreater(rows["coinbase"]["fees"], 10 * rows["perp"]["fees"])
+        # entry and exit fees both count, so the bills scale with the taker rates
+        from espero.venues import VENUES
+        ratio = VENUES["coinbase"].taker_bps / VENUES["perp"].taker_bps
+        self.assertAlmostEqual(rows["coinbase"]["fees"] / rows["perp"]["fees"], ratio, delta=0.05 * ratio)
         self.assertEqual(rows["coinbase"]["funding"], 0.0)
         self.assertGreater(rows["perp"]["pnl"], rows["coinbase"]["pnl"])
 
