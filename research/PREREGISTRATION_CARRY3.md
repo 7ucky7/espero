@@ -31,10 +31,13 @@ top 20 by open interest biases the test *for* positive funding.
 
 ## Data — frozen
 
-- Funding: Kraken Futures public `historicalfundingrates` per symbol, its `relativeFundingRate`
-  (a fraction of notional per settlement). Each settlement's rate is spread evenly over the hours
-  since the previous settlement, giving an hourly series on the same scale as Hyperliquid's,
-  credited hour by hour as #12 credits Hyperliquid's.
+- Funding: Kraken Futures public `historical-funding-rates` per symbol, its `relativeFundingRate`.
+  *(Amended 2026-10-28 before any fetch, see below.)* Kraken's contract specification says the
+  rate is "standardised to a per-hour basis" and paid as rate × position × hours elapsed, and the
+  API's `timestamp` is the start of the period the rate applies to. So each rate is an **hourly**
+  rate, applied unchanged to every hour from its timestamp to the next one (at most 8 hours; a
+  longer gap is left missing, which blocks entry like any missing hour). That is the same scale
+  as Hyperliquid's hourly series, credited hour by hour as #12 credits Hyperliquid's.
 - Perp price: Kraken Futures public hourly trade candles (`charts/v1/trade/{symbol}/1h`), close.
 - Spot price: Coinbase hourly closes, as in #11 and #12.
 
@@ -88,3 +91,13 @@ Hyperliquid only, and #12's forward test still runs to 2026-11-27 and decides #1
 Fifteenth test in the repo, the third on carry, the first on this venue. The venue, the window
 cut and the fee values are written down before the fetch; no rule parameter is chosen at all.
 One run. Any change after the fetch is a new hypothesis with a new number.
+
+## Amendment, 2026-10-28, before any fetch
+
+The first version of the Data section said each settlement's rate would be *spread* over the
+hours since the previous settlement, which treats the rate as a per-settlement amount. Kraken's
+perpetual contract specification (support.kraken.com, "Perpetual Futures Contract
+Specifications", read 2026-10-28) says the rate is standardised per hour. Spreading it would have
+divided funding by the period length and biased the test toward FAIL. Corrected to the venue's
+definition above, before any Kraken number was fetched. No rule parameter, window, universe, cost
+or criterion changed.
