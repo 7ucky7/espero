@@ -222,6 +222,53 @@ def _degen_table(rows: list, venue: str) -> None:
 
 
 
+
+def _testnet_exchange():
+    from .broker import load_env
+    from .hl_exchange import TestnetExchange
+
+    load_env()
+    return TestnetExchange()
+
+
+def _cmd_hl_order(args: argparse.Namespace) -> int:
+    """Place one resting testnet order. ALO by default: rejected rather than crossing."""
+    from .hl_exchange import TestnetRefused
+    try:
+        ex = _testnet_exchange()
+        r = ex.limit(args.coin.upper(), args.side, args.size, args.price, tif=args.tif,
+                     reduce_only=args.reduce_only)
+    except TestnetRefused as exc:
+        print(f"refused: {exc}")
+        return 2
+    print(f"testnet {r.coin} {r.side} {r.size} @ {r.price} {r.tif}{' reduce-only' if args.reduce_only else ''}"
+          f" -> {r.status}" + (f" oid {r.oid}" if r.oid else "") + (f"  {r.error}" if r.error else "")
+          + (f"  filled {r.filled} @ {r.avg_px}" if r.filled else ""))
+    return 0 if r.status != "error" else 1
+
+
+def _cmd_hl_orders(args: argparse.Namespace) -> int:
+    from .hl_exchange import TestnetRefused
+    try:
+        ex = _testnet_exchange()
+    except TestnetRefused as exc:
+        print(f"refused: {exc}")
+        return 2
+    if args.cancel:
+        coin, oid = args.cancel
+        print(f"cancel {coin} {oid}: {'ok' if ex.cancel(coin.upper(), int(oid)) else 'failed'}")
+        return 0
+    orders = ex.open_orders()
+    print(f"testnet {ex.address}: {len(orders)} open orders")
+    for o in orders:
+        print(f"  {o['coin']:<8}{o['side']:<3}{float(o['sz']):>12,.4f} @ {float(o['limitPx']):<12,.6g} oid {o['oid']}")
+    fills = ex.fills(int(time.time()) - args.hours * 3600)
+    print(f"{len(fills)} fills in the last {args.hours}h")
+    for f in fills[-20:]:
+        print(f"  {datetime.fromtimestamp(int(f['time']) // 1000, timezone.utc):%m-%d %H:%M}  {f['coin']:<8}"
+              f"{f['side']:<3}{float(f['sz']):>12,.4f} @ {float(f['px']):<12,.6g} fee {float(f.get('fee', 0)):.4f}")
+    return 0
+
 def _cmd_hl_account(args: argparse.Namespace) -> int:
     """Read-only Hyperliquid account snapshot by public address. Testnet unless
     HL_NETWORK=mainnet or --mainnet; no key is read and nothing is signed."""
@@ -286,6 +333,16 @@ def _carry_loop(args: argparse.Namespace) -> int:
 
     book = cp.CarryBook(args.state, costs=args.costs, initial=args.cash)
     c = book.c
+    mirror = None
+    if getattr(args, "execute_testnet", False):
+        from .hl_exchange import TestnetMirror, TestnetRefused
+        try:
+            ex = _testnet_exchange()
+        except TestnetRefused as exc:
+            print(f"refused: {exc}")
+            return 2
+        mirror = TestnetMirror(book.db, ex)
+        print(f"TESTNET mirror on: perp leg shadowed with ALO orders from {ex.address}; spot leg stays paper")
     print(f"carry paper book ({args.costs}): spot {1e4 * c['spot_fee']:.1f} bps, perp {1e4 * c['perp_fee']:.2f} bps, "
           f"slippage {1e4 * c['slippage']:.1f} bps per leg per side; swap gap {book.swap_gap:.0%}, "
           f"min hold {book.min_hold // 24}d; cash {book.cash:.2f}, {len(book.open_positions())} open -> {args.state}")
@@ -306,6 +363,9 @@ def _carry_loop(args: argparse.Namespace) -> int:
             print(f"hour {cp.stamp(ts)} already booked  ·  next settlement {nxt} UTC")
             return
         events = book.on_hour(ts, rows)
+        if mirror is not None:
+            events += mirror.sync(book.open_positions(), book.closed_positions(),
+                                  {c: r.perp for c, r in rows.items()})
         paying = sum(1 for r in rows.values() if r.f_ann > book.enter)
         print(f"{cp.stamp(ts)} UTC  {len(rows)} coins, {paying} above {book.enter:.0%}  "
               f"cash={book.cash:.2f} equity={book.equity(rows):.2f} open={len(book.open_positions())}")
@@ -342,6 +402,16 @@ def _cmd_carry_status(args: argparse.Namespace) -> int:
     print(f"equity {s['equity']:.2f}  pnl {s['pnl']:+.2f} ({s['pnl'] / s['initial']:+.2%})  max dd {s['max_dd']:.2%}  "
           f"funding {s['funding']:+.2f}  basis {s['basis']:+.2f}  fees {s['fees']:.2f}  "
           f"open {s['open']}  closed {s['closed']}")
+    try:
+        from .hl_exchange import MIRROR_SCHEMA  # noqa: F401
+        rows = book.db.execute("SELECT * FROM testnet_mirror").fetchall()
+    except Exception:  # noqa: BLE001 - no mirror table
+        rows = []
+    if rows:
+        opens = [r for r in rows if r["open_oid"]]
+        st = {k: sum(1 for r in opens if r["open_status"] == k) for k in ("filled", "part", "resting", "cancelled")}
+        print(f"testnet mirror: {len(opens)} resting shorts placed, {st['filled']} filled, {st['part']} partial, "
+              f"{st['resting']} resting, {st['cancelled']} cancelled")
     for p in book.open_positions():
         print(f"  open  {p['coin']:<6} since {cp.stamp(p['entry_ts'])}  {p['qty_spot'] * p['spot_entry']:.2f} a leg  "
               f"funding {p['funding']:+.2f}")
@@ -831,6 +901,8 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--top", type=int, default=20)
     q.add_argument("--loop", action="store_true")
     q.add_argument("--interval", type=int, default=300, help="seconds between checks for a new settled hour")
+    q.add_argument("--execute-testnet", action="store_true",
+                   help="mirror the perp leg with real resting orders on the Hyperliquid TESTNET (spot stays paper)")
     q.set_defaults(func=_cmd_carry_paper)
     q = crs.add_parser("status", help="summary of a carry paper book")
     q.add_argument("--state", required=True)
@@ -845,6 +917,20 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--testnet", action="store_true", help="api.hyperliquid-testnet.xyz (the default)")
     q.add_argument("--mainnet", action="store_true", help="api.hyperliquid.xyz")
     q.set_defaults(func=_cmd_hl_account)
+    q = hps.add_parser("order",
+                       help="place one resting TESTNET order (needs HL_PRIVATE_KEY + ESPERO_ALLOW_HL_TESTNET=1)")
+    q.add_argument("coin")
+    q.add_argument("side", choices=("buy", "sell"))
+    q.add_argument("size", type=float)
+    q.add_argument("price", type=float)
+    q.add_argument("--tif", choices=("Alo", "Gtc", "Ioc"), default="Alo",
+                   help="Alo: maker only, rejected if it would cross (default)")
+    q.add_argument("--reduce-only", action="store_true")
+    q.set_defaults(func=_cmd_hl_order)
+    q = hps.add_parser("orders", help="open testnet orders and recent fills; --cancel COIN OID")
+    q.add_argument("--hours", type=int, default=24)
+    q.add_argument("--cancel", nargs=2, metavar=("COIN", "OID"))
+    q.set_defaults(func=_cmd_hl_orders)
 
     dg = sub.add_parser("degen", help="打板: scan altcoins breaking out on volume, backtest it, paper trade it (#10)")
     dgs = dg.add_subparsers(dest="degen_cmd", required=True)

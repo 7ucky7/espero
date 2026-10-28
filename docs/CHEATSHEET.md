@@ -104,6 +104,9 @@ backtest **failed** before fees (`research/RESULTS_DEGEN.md`): use the scan as a
 .venv/bin/python -m espero carry paper --costs maker --state carry-maker.db --loop   # #12 forward book (and --costs taker on carry-taker.db)
 .venv/bin/python -m espero carry status --state carry-maker.db          # equity, funding, fees, open and closed hedges
 .venv/bin/python -m espero hl account 0xYourAddress                    # testnet account view, read-only (or HL_WALLET_ADDRESS in .env)
+.venv/bin/python -m espero hl order ETH sell 0.01 2400                  # one resting TESTNET order (ALO: maker only)
+.venv/bin/python -m espero hl orders                                    # open testnet orders and fills; --cancel ETH 123
+.venv/bin/python -m espero carry paper --costs maker --state carry-maker.db --loop --execute-testnet   # mirror the perp leg on testnet
 ```
 
 Short the perp, hold the same spot, collect the funding longs pay. Enter above 15% annualised on
@@ -116,7 +119,12 @@ and `carry-maker.db` (same funding, #11 and #12 costs) and ends 2026-11-27; the 
 books is what execution is worth.
 Hyperliquid excludes US persons: paper only, and a pass would mean finding a venue the account can use.
 Development runs against the testnet (`HL_NETWORK=testnet` in `.env`, UI and faucet at
-app.hyperliquid-testnet.xyz); market data always comes from mainnet. Nothing signs orders.
+app.hyperliquid-testnet.xyz); market data always comes from mainnet. The **only** signing code is
+`espero/hl_exchange.py`, testnet-only by construction: it needs `HL_NETWORK=testnet`,
+`ESPERO_ALLOW_HL_TESTNET=1` and `HL_PRIVATE_KEY` (a dedicated testnet API wallet), builds on the
+testnet URL constant and refuses any mainnet URL. `--execute-testnet` shadows the maker book's perp
+leg with real resting (ALO) orders so the fill rate #12 assumed can be measured. Mainnet signing is
+not implemented.
 
 ## Drawer 5: live money. Off.
 
