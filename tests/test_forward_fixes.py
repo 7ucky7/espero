@@ -285,6 +285,24 @@ class TestDegenLoop(unittest.TestCase):
             # bars 70 and 71 come after the last cycle: both coins, together, in order
             self.assertEqual(cycles, [["AAA-USD", "BBB-USD"], ["AAA-USD", "BBB-USD"]])
 
+    def test_a_new_coin_whose_newest_bar_is_not_past_the_last_cycle_is_only_seeded(self):
+        with tempfile.TemporaryDirectory() as d:
+            state = str(Path(d) / "d.db")
+            j = Journal(state)
+            j.mark_equity(T0 + 99 * 300, 1000.0, 0.0)            # last cycle = the fetch's newest bar
+            j.close()
+            args = cli.build_parser().parse_args(["degen", "paper", "--state", state])
+            with mock.patch.object(cli, "_degen_universe",
+                                   return_value=[{"product": "NEW-USD", "dollar_volume": 5e6}]), \
+                    mock.patch.object(cli.data, "recent_closed_bars", side_effect=lambda p, g, n: five_min(100, T0)), \
+                    mock.patch.object(dg.DegenTrader, "on_cycle") as cyc, \
+                    mock.patch("time.sleep"), contextlib.redirect_stdout(io.StringIO()):
+                cli._degen_loop(args)
+            cyc.assert_not_called()
+            j = Journal(state)
+            self.assertEqual(j.last_bar_ts("NEW-USD"), T0 + 99 * 300)   # seeded for next time
+            j.close()
+
     def test_universe_refresh_failure_keeps_trading_held_coins(self):
         with tempfile.TemporaryDirectory() as d:
             state = str(Path(d) / "d.db")

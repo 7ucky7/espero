@@ -554,10 +554,11 @@ def _degen_loop(args: argparse.Namespace) -> int:
             if fresh.empty:
                 continue
             recs = features(df)                     # causal: row i reads bars <= i only
-            if known is None:
-                trade_from = int(fresh["ts"].iloc[-1]) - 1     # first sight: trade only the newest
-            elif p in held:
-                trade_from = known                             # every missed bar gets its exits
+            if p in held:
+                trade_from = known or 0                        # every missed bar gets its exits
+            elif known is None:
+                # first sight: only the newest bar, and only if it is newer than the last cycle
+                trade_from = max(int(fresh["ts"].iloc[-1]) - 1, cycle)
             else:
                 trade_from = max(known, cycle)
             silent = fresh[fresh["ts"] <= trade_from]
