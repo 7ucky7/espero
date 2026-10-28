@@ -87,6 +87,8 @@ Kept because its journal loop is the template for the live path. Not scheduled, 
 .venv/bin/python -m espero degen scan                                   # who is breaking out on volume right now
 .venv/bin/python -m espero degen backtest --days 30                     # replay through every venue's fees, print the verdict
 .venv/bin/python -m espero degen paper --venue binanceus --state degen.db --loop   # the live 5m paper loop
+.venv/bin/espero fees            # your real Coinbase maker/taker rates (Exchange API key with "view", in .env)
+.venv/bin/python -m espero degen paper --venue coinbase --fee-bps 40 --state degen-coinbase.db --loop   # at your own rate
 ```
 
 Top 60 Coinbase altcoins by 24h volume, new 4h high on a 2-sigma volume spike, stop 2 ATR, trail

@@ -115,6 +115,29 @@ def _cmd_paper_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_fees(args: argparse.Namespace) -> int:
+    """Your Coinbase maker/taker rates from the Exchange API (read-only)."""
+    from . import coinbase_fees as cf
+    from .broker import load_env
+
+    load_env()
+    try:
+        f = cf.fetch()
+    except cf.FeesError as exc:
+        print(f"cannot read fees: {exc}")
+        return 2
+    v = VENUES["coinbase"]
+    same = abs(f.maker_bps - v.maker_bps) < 0.05 and abs(f.taker_bps - v.taker_bps) < 0.05
+    print(f"Coinbase fees for this account (30-day volume ${f.usd_volume:,.2f})")
+    print(f"  maker {f.maker:.4%} ({f.maker_bps:.1f} bps)   taker {f.taker:.4%} ({f.taker_bps:.1f} bps)")
+    print(f"  venue table 'coinbase': maker {v.maker_bps:.1f} / taker {v.taker_bps:.1f} bps  "
+          f"[{'matches' if same else 'differs'}]")
+    print(f"  round trip at taker {2 * f.taker_bps:.0f} bps, at maker {2 * f.maker_bps:.0f} bps")
+    print(f"  paper loops fill at the next open (taker): add --fee-bps {f.taker_bps:.1f} "
+          f"to espero paper / espero degen paper")
+    return 0
+
+
 def _cmd_paper(args: argparse.Namespace) -> int:
     from .lock import JournalBusy, JournalLock
 
@@ -529,6 +552,8 @@ def _degen_loop(args: argparse.Namespace) -> int:
 
     journal = Journal(args.state)
     cfg = DegenConfig.for_venue(args.venue, initial=args.cash)
+    if getattr(args, "fee_bps", None) is not None:
+        cfg.fee = args.fee_bps / 1e4        # e.g. your own rate from `espero fees`
     trader = DegenTrader(journal, cfg)
     print(f"打板 paper loop on {args.venue}: fees {1e4 * cfg.fee:.1f} bps per side"
           + (f", funding {1e4 * cfg.funding_8h:.2f} bps per 8h" if cfg.funding_8h else "")
@@ -1018,8 +1043,13 @@ def build_parser() -> argparse.ArgumentParser:
             q.add_argument("-o", "--out", default="", help="write the table and verdict here")
         if name == "paper":
             q.add_argument("--state", default="degen.db")
+            q.add_argument("--fee-bps", type=float, default=None,
+                           help="per side; overrides the venue's taker fee (see `espero fees`)")
             q.add_argument("--loop", action="store_true")
             q.add_argument("--interval", type=float, default=60.0)
+
+    fe_ = sub.add_parser("fees", help="your Coinbase maker/taker rates (Exchange API key, read-only)")
+    fe_.set_defaults(func=_cmd_fees)
 
     dy = sub.add_parser("daily", help="the scheduled run: tsmom -> xs -> dashboard -> health.json")
     dy.add_argument("--state-dir", default=".", help="where the .db files, dashboard and health live")
