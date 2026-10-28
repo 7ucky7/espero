@@ -1,0 +1,129 @@
+"""The home screen renders from the databases alone and never writes to them."""
+from __future__ import annotations
+
+import io
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+import pandas as pd
+
+from espero import tsmom, xs
+
+try:
+    from rich.console import Console
+
+    from espero import ui
+    HAVE_TUI = ui.questionary is not None
+except ImportError:  # the tui extra is optional
+    HAVE_TUI = False
+
+
+@unittest.skipUnless(HAVE_TUI, "tui extra not installed")
+class TestRender(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.state = Path(self.tmp.name)
+        acc = tsmom.Account(self.state / "tsmom.db")
+        acc.cash = 100.0
+        px = pd.Series({"SPY": 10.0})
+        acc.rebalance(px, {"SPY": 1 / 6})
+        acc.save(1_700_000_000, acc.equity(px), {"SPY": 1 / 6}, "init", positions={"SPY": 16.6},
+                 deposit=100.0, traded=16.6)
+        x = xs.XSAccount(self.state / "xs.db")
+        x.cash = 100.0
+        x.rebalance(pd.Series({"A": 1.0, "B": 2.0}), {"A": 0.5, "B": 0.5})
+        x.save(1_700_000_000, 99.9, {"A": 0.5, "B": 0.5}, {}, {"A": 49.95, "B": 49.95}, 100.0, "init")
+        (self.state / "health.json").write_text(json.dumps({
+            "last_run": "2026-10-27T09:45:38+00:00", "last_success": "2026-10-27T09:45:38+00:00",
+            "ok": False, "steps": {"tsmom": {"ok": True, "seconds": 1.0, "note": "init"},
+                                   "xs": {"ok": False, "seconds": 0.1, "error": "RuntimeError: x"}}}))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def render(self, *renderables) -> str:
+        buf = io.StringIO()
+        c = Console(file=buf, width=120, force_terminal=False)
+        for r in renderables:
+            c.print(r)
+        return buf.getvalue()
+
+    def test_header_shows_total_and_failing_step(self):
+        out = self.render(ui.header(self.state))
+        self.assertIn("$199.88", out.replace("\n", ""))
+        self.assertIn("FAILED", out)
+        self.assertIn("failing: xs", out)
+
+    def test_paused_is_loud(self):
+        (self.state / "KILL").write_text("")
+        self.assertIn("PAUSED", self.render(ui.header(self.state)))
+
+    def test_accounts_and_history_tables(self):
+        out = self.render(ui.accounts_table(self.state), ui.history_table(self.state, "tsmom"),
+                          ui.history_table(self.state, "xs"))
+        self.assertIn("SPY", out)
+        self.assertIn("2023-11-14", out)      # 1_700_000_000 as a date, not an epoch
+        self.assertIn("init", out)
+
+    def test_status_action_does_not_write(self):
+        # compare contents, not bytes: SQLite folds a WAL file into the main file
+        # whenever the last connection closes, which changes bytes but no data
+        def dump(name):
+            import sqlite3
+            con = sqlite3.connect(f"file:{self.state / name}?mode=ro", uri=True)
+            try:
+                return list(con.iterdump())
+            finally:
+                con.close()
+        before = dump("tsmom.db"), dump("xs.db")
+        c = Console(file=io.StringIO(), width=120)
+        ui.act_status(c, self.state)
+        ui.act_logs(c, self.state)
+        self.assertEqual(before, (dump("tsmom.db"), dump("xs.db")))
+
+    def test_sparkline_and_pnl_curve(self):
+        self.assertEqual(ui.sparkline([]), "")
+        self.assertEqual(ui.sparkline([5, 5, 5]), "▄▄▄")
+        bars = ui.sparkline([0, 1, 2, 3])
+        self.assertEqual(len(bars), 4)
+        self.assertLess(bars[0], bars[-1])
+        rows = [{"ts": 1, "id": 1, "equity": 100.0, "deposit": 100.0},
+                {"ts": 2, "id": 2, "equity": 101.0, "deposit": 0.0},
+                {"ts": 3, "id": 3, "equity": 601.0, "deposit": 500.0}]
+        self.assertEqual(ui.pnl_curve(rows), [0.0, 1.0, 1.0])   # a deposit is not profit
+
+    def test_next_rebalance_follows_each_calendar(self):
+        from datetime import datetime, timezone
+        now = datetime(2026, 10, 27, 12, tzinfo=timezone.utc)          # Tuesday
+        nxt = ui.next_rebalance(self.state, now)
+        self.assertIn("Nov 2", nxt["xs"])                               # next Monday
+        self.assertIn("in 6 d", nxt["xs"])
+        self.assertIn("Nov 2", nxt["tsmom"])                            # first weekday of November
+        # once November's rebalance is done, the next one is December
+        from espero import tsmom
+        acc = tsmom.Account(self.state / "tsmom.db")
+        acc.save(int(datetime(2026, 11, 2, 12, tzinfo=timezone.utc).timestamp()), 100.0, {}, "rebalance")
+        nxt = ui.next_rebalance(self.state, datetime(2026, 11, 3, 12, tzinfo=timezone.utc))
+        self.assertIn("Dec 1", nxt["tsmom"])
+
+    def test_decision_table_reads_the_stored_row(self):
+        out = self.render(ui.decision_table(self.state, "tsmom"))
+        self.assertIn("SPY", out)
+        self.assertIn("hold", out)
+        self.assertIn("costs", out)
+        out = self.render(ui.decision_table(self.state, "xs"))
+        self.assertIn("A", out)
+        with tempfile.TemporaryDirectory() as d:
+            self.assertIn("no decision stored", self.render(ui.decision_table(Path(d), "xs")))
+
+    def test_empty_state_renders(self):
+        with tempfile.TemporaryDirectory() as d:
+            out = self.render(ui.header(Path(d)), ui.accounts_table(Path(d)))
+        self.assertIn("not started", out)
+        self.assertIn("no run recorded", out)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

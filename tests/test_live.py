@@ -78,6 +78,13 @@ class LiveTestCase(unittest.TestCase):
 
 
 class TestLiveOrders(LiveTestCase):
+    def test_signal_under_the_backtest_floor_is_ignored(self):
+        broker = FakeBroker()
+        trader = LiveTrader(self.journal, broker, self.cfg, kill_file=self.dir / "KILL")
+        live_mod.combine = ScriptedSignal(nth=1, confidence=0.60)
+        self.prime(trader)
+        self.assertEqual(broker.orders, [])
+
     def test_signal_places_a_capped_order_with_a_client_id(self):
         broker = FakeBroker()
         trader = LiveTrader(self.journal, broker, self.cfg, kill_file=self.dir / "KILL")
@@ -116,6 +123,130 @@ class TestLiveOrders(LiveTestCase):
         trader.on_bar(bar(3, 100.0, low=80.0))
         self.assertEqual(broker.orders[-1][0], "sell")
         self.assertIsNone(trader.position)
+
+
+class Script:
+    """Returns the listed signals on successive calls, then None."""
+
+    def __init__(self, *sigs):
+        self.sigs, self.calls = list(sigs), 0
+
+    def __call__(self, _):
+        self.calls += 1
+        i = self.calls - 1
+        return self.sigs[i] if i < len(self.sigs) else None
+
+
+class TestRiskPlumbing(LiveTestCase):
+    def test_daily_loss_limit_resets_at_the_utc_day_boundary(self):
+        broker = FakeBroker()
+        cfg = LiveConfig(granularity=GRAN, warmup=1, max_notional=25.0, max_daily_loss=10.0)
+        trader = LiveTrader(self.journal, broker, cfg, kill_file=self.dir / "KILL")
+        live_mod.combine = ScriptedSignal(nth=1)
+        self.prime(trader)                      # long 0.25 BTC at 100, baseline 500
+        broker._cash = 475.0                    # the fake broker does not debit fills
+        broker._price = 50.0                    # mark-to-market -12.5 on the day
+        events = trader.on_bar(bar(3, 50.0))
+        self.assertIn("halted", events[0])
+        # halted means no new entries, never "no stop": the gap stop fires on this bar
+        self.assertEqual(broker.orders[-1][0], "sell")
+        self.assertIsNone(trader.position)
+        # 100 bars * 1000 s is more than a day later: baseline resets, trading resumes
+        events = trader.on_bar(bar(100, 50.0))
+        self.assertFalse(events and events[0].startswith("halted"))
+
+    def test_risk_gate_sees_the_real_day_pnl(self):
+        broker = FakeBroker(cash=500.0)
+        cfg = LiveConfig(granularity=GRAN, warmup=1, max_daily_loss=1000.0)
+        trader = LiveTrader(self.journal, broker, cfg, kill_file=self.dir / "KILL")
+        live_mod.combine = ScriptedSignal(nth=1)
+        trader.on_bar(bar(0, 100.0))            # sets the day baseline at 500
+        trader.on_bar(bar(1, 100.0))
+        broker._cash = 470.0                    # -6% on the day, over the 3% cap
+        events = trader.on_bar(bar(2, 100.0))
+        self.assertIn("blocked BUY: daily loss cap hit", events)
+        self.assertEqual(broker.orders, [])
+
+    def test_sell_signal_exits_a_profitable_position(self):
+        broker = FakeBroker()
+        trader = LiveTrader(self.journal, broker, self.cfg, kill_file=self.dir / "KILL")
+        live_mod.combine = Script(Signal("BUY", 0.9, "t"), Signal("SELL", 0.7, "t"))
+        self.prime(trader)                      # buy at 100
+        broker._price = 105.0                   # in profit, below the 110 target
+        events = trader.on_bar(bar(3, 105.0))
+        self.assertTrue(any(e.startswith("SELL") and "(signal)" in e for e in events), events)
+        self.assertIsNone(trader.position)
+
+    def test_sell_signal_at_a_loss_needs_high_confidence(self):
+        broker = FakeBroker()
+        trader = LiveTrader(self.journal, broker, self.cfg, kill_file=self.dir / "KILL")
+        live_mod.combine = Script(Signal("BUY", 0.9, "t"), Signal("SELL", 0.7, "t"))
+        self.prime(trader)
+        broker._price = 98.0
+        trader.on_bar(bar(3, 98.0))
+        self.assertIsNotNone(trader.position)   # 0.7 < 0.8 and under water: hold
+
+    def test_exit_fee_is_charged_against_pnl(self):
+        broker = FakeBroker()
+        trader = LiveTrader(self.journal, broker, self.cfg, kill_file=self.dir / "KILL")
+        live_mod.combine = Script(Signal("BUY", 0.9, "t"), Signal("SELL", 0.7, "t"))
+        self.prime(trader)
+        size = trader.position.size
+        broker._price = 105.0
+        trader.on_bar(bar(3, 105.0))
+        closed = self.journal.closed_positions()[-1]
+        expected = (105 - 100) * size - 25.0 * self.cfg.fee - 105 * size * self.cfg.fee
+        self.assertAlmostEqual(float(closed["pnl"]), expected, places=8)
+
+
+class TestHaltAndRestart(LiveTestCase):
+    def test_kill_file_blocks_entries_but_not_the_stop(self):
+        broker = FakeBroker()
+        trader = LiveTrader(self.journal, broker, self.cfg, kill_file=self.dir / "KILL")
+        live_mod.combine = ScriptedSignal(nth=1)
+        self.prime(trader)                                   # long at 100, stop 95
+        (self.dir / "KILL").touch()
+        events = trader.on_bar(bar(3, 100.0, low=90.0))
+        self.assertTrue(events[0].startswith("halted: kill switch"), events)
+        self.assertTrue(any("(stop)" in e for e in events), events)
+        live_mod.combine = ScriptedSignal(nth=1)             # a fresh BUY signal
+        trader.on_bar(bar(4, 100.0))
+        self.assertIsNone(trader.position)                   # no entry while KILL exists
+        self.assertEqual([o[0] for o in broker.orders], ["buy", "sell"])
+
+    def test_day_baseline_survives_a_restart(self):
+        broker = FakeBroker(cash=500.0)
+        cfg = LiveConfig(granularity=GRAN, warmup=1, max_daily_loss=10.0)
+        trader = LiveTrader(self.journal, broker, cfg, kill_file=self.dir / "KILL")
+        trader.on_bar(bar(0, 100.0))                         # baseline 500 marked
+        broker._cash = 480.0                                 # -20 on the day
+        again = LiveTrader(self.journal, broker, cfg, kill_file=self.dir / "KILL")
+        self.assertIn("daily loss limit", again.on_bar(bar(1, 100.0))[0])
+
+    def test_sell_never_exceeds_what_the_account_holds(self):
+        class Short(FakeBroker):
+            def balance(self, currency):
+                return 0.2 if currency == "BTC" else self._cash
+        broker = Short()
+        trader = LiveTrader(self.journal, broker, self.cfg, kill_file=self.dir / "KILL")
+        live_mod.combine = ScriptedSignal(nth=1)
+        self.prime(trader)
+        self.assertGreater(trader.position.size, 0.2)
+        trader.on_bar(bar(3, 100.0, low=90.0))
+        self.assertEqual(broker.orders[-1][:2], ("sell", 0.2))
+
+
+class TestDryRunEquity(LiveTestCase):
+    def test_a_dry_buy_does_not_inflate_equity(self):
+        dry = DryRunBroker(FakeBroker(cash=500.0))
+        trader = LiveTrader(self.journal, dry, self.cfg, kill_file=self.dir / "KILL")
+        live_mod.combine = ScriptedSignal(nth=1)
+        self.prime(trader)
+        pos = trader.position
+        self.assertIsNotNone(pos)
+        self.assertAlmostEqual(trader.equity(), 500.0 - pos.entry_fee, places=6)
+        cash, equity = self.journal.latest_equity()
+        self.assertAlmostEqual(equity, 500.0 - pos.entry_fee, places=6)
 
 
 class TestDryRun(unittest.TestCase):

@@ -26,6 +26,21 @@ def macd(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9):
     return line, sig, line - sig
 
 
+def true_range(df: pd.DataFrame) -> pd.Series:
+    """max(high-low, |high-prev close|, |low-prev close|); the first bar uses its own range."""
+    prev = df["close"].shift(1)
+    a = df["high"] - df["low"]
+    b = (df["high"] - prev).abs()
+    c = (df["low"] - prev).abs()
+    return pd.concat([a, b, c], axis=1).max(axis=1)
+
+
+def atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    """Wilder's average true range: an EWM with alpha=1/period, so a coin's own
+    recent swings set the unit every stop and target is measured in."""
+    return true_range(df).ewm(alpha=1 / period, adjust=False).mean()
+
+
 def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """Attach the columns the bundled strategies read. Never mutates the input."""
     out = df.copy()

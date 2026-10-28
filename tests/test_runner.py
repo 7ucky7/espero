@@ -1,0 +1,107 @@
+"""The daily runner: isolated steps, a lock, a pause switch, and a health file
+that tells the truth."""
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+from espero import runner
+
+
+class RunnerCase(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.state = Path(self.tmp.name) / "state"
+        self.logs = Path(self.tmp.name) / "logs"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_daily(self, **kw):
+        kw.setdefault("notify", False)
+        kw.setdefault("log_dir", self.logs)
+        return runner.run_daily(state_dir=self.state, **kw)
+
+
+class TestDryRun(RunnerCase):
+    def test_dry_run_touches_no_network_and_writes_health(self):
+        with mock.patch.object(runner.tsm, "run", side_effect=AssertionError("network")), \
+             mock.patch.object(runner.xsm, "run", side_effect=AssertionError("network")):
+            res = self.run_daily(dry_run=True)
+        self.assertTrue(res.ok)
+        self.assertEqual(res.exit_code, 0)
+        self.assertTrue(res.steps["tsmom"].skipped)
+        health = json.loads((self.state / "health.json").read_text())
+        self.assertTrue(health["ok"])
+        self.assertTrue(health["dry_run"])
+        # a dry run skips the real steps, so it is not a success of the real job
+        self.assertIsNone(health["last_success"])
+        self.assertTrue((self.state / "dashboard.html").exists())
+        self.assertTrue((self.logs / "daily.log").exists())
+
+
+class TestIsolation(RunnerCase):
+    def test_one_failing_step_does_not_stop_the_others(self):
+        with mock.patch.object(runner.tsm, "run", side_effect=RuntimeError("yahoo down")), \
+             mock.patch.object(runner.xsm, "run", return_value={"note": "mark", "equity": 101.0}):
+            res = self.run_daily()
+        self.assertFalse(res.ok)
+        self.assertEqual(res.exit_code, 1)
+        self.assertFalse(res.steps["tsmom"].ok)
+        self.assertIn("yahoo down", res.steps["tsmom"].error)
+        self.assertTrue(res.steps["xs"].ok)
+        self.assertTrue(res.steps["dashboard"].ok)
+        health = json.loads((self.state / "health.json").read_text())
+        self.assertFalse(health["ok"])
+        self.assertIsNone(health["last_success"])
+
+    def test_last_success_survives_a_later_failure(self):
+        with mock.patch.object(runner.tsm, "run", return_value={"note": "mark", "equity": 1.0}), \
+             mock.patch.object(runner.xsm, "run", return_value={"note": "mark", "equity": 1.0}):
+            self.run_daily()
+        first = json.loads((self.state / "health.json").read_text())["last_success"]
+        with mock.patch.object(runner.tsm, "run", side_effect=RuntimeError("x")), \
+             mock.patch.object(runner.xsm, "run", return_value={"note": "mark", "equity": 1.0}):
+            self.run_daily()
+        health = json.loads((self.state / "health.json").read_text())
+        self.assertEqual(health["last_success"], first)
+        self.assertFalse(health["ok"])
+
+    def test_rebalance_sends_a_notification_and_failure_too(self):
+        sent = []
+        with mock.patch.object(runner.notifier, "notify", side_effect=lambda t, m: sent.append(t)), \
+             mock.patch.object(runner.tsm, "run", return_value={"note": "rebalance", "equity": 1.0}), \
+             mock.patch.object(runner.xsm, "run", side_effect=RuntimeError("x")):
+            self.run_daily(notify=True)
+        self.assertTrue(any("rebalance" in t for t in sent))
+        self.assertTrue(any("failed" in t for t in sent))
+
+
+class TestGuards(RunnerCase):
+    def test_kill_file_pauses_everything(self):
+        self.state.mkdir(parents=True)
+        (self.state / "KILL").write_text("")
+        with mock.patch.object(runner.tsm, "run", side_effect=AssertionError("must not run")):
+            res = self.run_daily()
+        self.assertTrue(res.paused)
+        self.assertEqual(res.exit_code, 0)
+        self.assertEqual(res.steps, {})
+
+    def test_live_lock_aborts_and_stale_lock_is_removed(self):
+        self.state.mkdir(parents=True)
+        lock = self.state / "daily.lock"
+        lock.write_text(str(os.getpid()))         # this very process: alive
+        with self.assertRaises(RuntimeError):
+            self.run_daily(dry_run=True)
+        lock.write_text("999999999")               # nobody: stale
+        res = self.run_daily(dry_run=True)
+        self.assertTrue(res.ok)
+        self.assertFalse(lock.exists())
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

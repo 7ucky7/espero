@@ -1,0 +1,70 @@
+XMR: no Coinbase spot pair, dropped
+LIT: no Coinbase spot pair, dropped
+universe: 18 coins: BTC ETH HYPE ZEC SOL NEAR XRP PUMP ENA DOGE UNI VVV ZRO WLD LINK AAVE XPL BNB
+BTC: funding 29792h  perp 5001h  spot 30375h  (77s)
+ETH: funding 29792h  perp 5001h  spot 30375h  (77s)
+HYPE: funding 16600h  perp 5001h  spot 6338h  (42s)
+ZEC: funding 9372h  perp 5001h  spot 9375h  (25s)
+SOL: funding 29792h  perp 5001h  spot 30375h  (77s)
+NEAR: funding 26192h  perp 5001h  spot 26198h  (66s)
+XRP: funding 29471h  perp 5000h  spot 28844h  (74s)
+PUMP: funding 11398h  perp 5001h  spot 11259h  (29s)
+ENA: funding 22523h  perp 5001h  spot 12216h  (55s)
+DOGE: funding 29792h  perp 5001h  spot 30375h  (76s)
+UNI: funding 28153h  perp 5001h  spot 28167h  (71s)
+VVV: funding 15313h  perp 5001h  spot 15125h  (40s)
+ZRO: funding 27526h  perp 5001h  spot 20613h  (70s)
+fetch failed (HTTP Error 429: Too Many Requests), retry 1/4 in 0.6s
+fetch failed (HTTP Error 429: Too Many Requests), retry 2/4 in 1.0s
+fetch failed (HTTP Error 429: Too Many Requests), retry 1/4 in 0.6s
+WLD: funding 28594h  perp 5001h  spot 13075h  (79s)
+LINK: funding 29773h  perp 5001h  spot 30207h  (77s)
+AAVE: funding 28752h  perp 5000h  spot 28767h  (73s)
+XPL: funding 10360h  perp 5001h  spot 7899h  (26s)
+fetch failed (HTTP Error 429: Too Many Requests), retry 1/4 in 0.7s
+fetch failed (HTTP Error 429: Too Many Requests), retry 1/4 in 0.6s
+fetch failed (HTTP Error 429: Too Many Requests), retry 2/4 in 1.5s
+fetch failed (HTTP Error 429: Too Many Requests), retry 3/4 in 2.8s
+Traceback (most recent call last):
+  File "/Users/fredp/Espero Trading QuantBot/espero/espero/data.py", line 52, in http_get
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.14/Frameworks/Python.framework/Versions/3.12/lib/python3.12/urllib/request.py", line 215, in urlopen
+    return opener.open(url, data, timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.14/Frameworks/Python.framework/Versions/3.12/lib/python3.12/urllib/request.py", line 521, in open
+    response = meth(req, response)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.14/Frameworks/Python.framework/Versions/3.12/lib/python3.12/urllib/request.py", line 630, in http_response
+    response = self.parent.error(
+               ^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.14/Frameworks/Python.framework/Versions/3.12/lib/python3.12/urllib/request.py", line 559, in error
+    return self._call_chain(*args)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.14/Frameworks/Python.framework/Versions/3.12/lib/python3.12/urllib/request.py", line 492, in _call_chain
+    result = func(*args)
+             ^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.12/3.12.14/Frameworks/Python.framework/Versions/3.12/lib/python3.12/urllib/request.py", line 639, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 429: Too Many Requests
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/fredp/Espero Trading QuantBot/espero/research/carry.py", line 123, in <module>
+    {"fetch": fetch, "run": run}[sys.argv[1]]()
+  File "/Users/fredp/Espero Trading QuantBot/espero/research/carry.py", line 49, in fetch
+    f = hl.funding_history(coin, HL_START_MS)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/fredp/Espero Trading QuantBot/espero/espero/hyperliquid.py", line 72, in funding_history
+    page = (fetch or post)(body)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/fredp/Espero Trading QuantBot/espero/espero/hyperliquid.py", line 31, in post
+    raw = http_get(INFO_URL, headers={**UA, "Content-Type": "application/json"},
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/fredp/Espero Trading QuantBot/espero/espero/data.py", line 64, in http_get
+    raise FetchError(f"{url}: {last}") from last
+espero.data.FetchError: https://api.hyperliquid.xyz/info: HTTP Error 429: Too Many Requests
+AAVE: on disk
+XPL: on disk
+BNB: funding 29792h  perp 5001h  spot 8877h  (98s)

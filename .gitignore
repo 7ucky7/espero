@@ -36,3 +36,27 @@ research/data/pead/
 research/data/odds/
 
 xs.db
+
+# every account database, except fixtures that are committed on purpose
+*.db
+!features.db
+*.db-wal
+*.db-shm
+
+# fallback cache for Yahoo/FRED series (rebuilt on demand)
+data/cache/
+
+# runtime state written by `espero daily`
+state/
+KILL
+.venv/
+
+# recorded order books and the fast-screen journal (session data, not code)
+data/book/
+fast.db
+*.db.lock
+
+# secrets: the template is committed, the real file never is
+.env
+.env.*
+!.env.example

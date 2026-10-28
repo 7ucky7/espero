@@ -1,0 +1,82 @@
+== #12 primary: 5-point swap gap, 7-day minimum hold, maker execution (criteria judged here)
+
+18 coins, 2026-04-02 -> 2026-10-28, 4996 hours
+trades 28  hours in position 15509  funding received +0.0600  paid 0.0023  fees 0.0014  final equity 1.0606
+
+criterion                                   required    actual  met
+net annualised return on equity                 > 8%    +10.9%  yes
+max drawdown of equity                          < 5%      1.5%  yes
+Sharpe (hourly, annualised)                    > 1.5      1.77  yes
+funding paid / received                        < 25%        4%  yes
+net annualised return, Kraken spot fees         > 4%     +6.4%  yes
+
+Verdict: PASS
+
+per coin:
+      trades  hours  funding   basis    fees     pnl
+coin                                                
+DOGE       1    712  +0.0007 -0.0001 +0.0000 +0.0006
+ENA        2    660  +0.0009 +0.0000 +0.0001 +0.0009
+HYPE       1    720  +0.0012 +0.0001 +0.0000 +0.0012
+XPL        1    703  +0.0015 -0.0000 +0.0000 +0.0014
+WLD        2   1260  +0.0018 +0.0001 +0.0001 +0.0018
+UNI        1    720  +0.0024 +0.0003 +0.0000 +0.0027
+PUMP       2   1284  +0.0027 +0.0001 +0.0001 +0.0027
+ZEC        3    894  +0.0042 +0.0004 +0.0002 +0.0044
+NEAR       4   2012  +0.0061 +0.0007 +0.0002 +0.0066
+ZRO        6   3714  +0.0175 +0.0001 +0.0004 +0.0172
+VVV        5   2830  +0.0187 +0.0026 +0.0003 +0.0210
+
+exit reasons: {'time': 11, 'funding_low': 8, 'ranked_out': 6, 'end': 2, 'no_data': 1}
+funding / basis / fees over all trades: +0.0577 / +0.0043 / 0.0014
+
+by year:
+2026   +6.1%
+
+
+== ablation A: #12 rule, #11 taker costs (what the gap alone is worth)
+
+18 coins, 2026-04-02 -> 2026-10-28, 4996 hours
+trades 28  hours in position 15509  funding received +0.0596  paid 0.0023  fees 0.0158  final equity 1.0458
+
+criterion                                   required    actual  met
+net annualised return on equity                 > 8%     +8.2%  yes
+max drawdown of equity                          < 5%      1.5%  yes
+Sharpe (hourly, annualised)                    > 1.5      1.35  NO
+funding paid / received                        < 25%        4%  yes
+net annualised return, Kraken spot fees         > 4%     +1.6%  NO
+
+Verdict: FAIL
+exit reasons: {'time': 11, 'funding_low': 8, 'ranked_out': 6, 'end': 2, 'no_data': 1}
+
+
+== ablation B: #11 rule, maker costs (what execution alone is worth)
+
+18 coins, 2026-04-02 -> 2026-10-28, 4996 hours
+trades 75  hours in position 15559  funding received +0.0582  paid 0.0023  fees 0.0029  final equity 1.0585
+
+criterion                                   required    actual  met
+net annualised return on equity                 > 8%    +10.5%  yes
+max drawdown of equity                          < 5%      1.5%  yes
+Sharpe (hourly, annualised)                    > 1.5      1.71  yes
+funding paid / received                        < 25%        4%  yes
+net annualised return, Kraken spot fees         > 4%     +1.8%  NO
+
+Verdict: FAIL
+exit reasons: {'ranked_out': 55, 'time': 9, 'funding_low': 8, 'end': 2, 'no_data': 1}
+
+
+== reference: #11 as recorded
+
+18 coins, 2026-04-02 -> 2026-10-28, 4996 hours
+trades 75  hours in position 15559  funding received +0.0577  paid 0.0023  fees 0.0315  final equity 1.0293
+
+criterion                                   required    actual  met
+net annualised return on equity                 > 8%     +5.2%  NO
+max drawdown of equity                          < 5%      1.5%  yes
+Sharpe (hourly, annualised)                    > 1.5      0.88  NO
+funding paid / received                        < 25%        4%  yes
+net annualised return, Kraken spot fees         > 4%     -7.1%  NO
+
+Verdict: FAIL
+exit reasons: {'ranked_out': 55, 'time': 9, 'funding_low': 8, 'end': 2, 'no_data': 1}

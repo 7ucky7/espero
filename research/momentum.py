@@ -56,6 +56,8 @@ def simulate(idx, opens, closes, start, end) -> tuple[pd.Series, list]:
             pos = idx.get_loc(d)
             if pos >= LOOKBACK:
                 history = closes.iloc[: pos]           # strictly before today
+                # Kept as run (research/ERRATA.md, 2026-10-28): iloc[-LOOKBACK] is LOOKBACK - 1 bars
+                # back, one short of the pre-registered window. Changing it would change a published result.
                 ret30 = history.iloc[-1] / history.iloc[max(0, len(history) - LOOKBACK)] - 1
                 counts = history.notna().sum()
                 eligible = counts[counts >= MIN_HISTORY]

@@ -1,27 +1,45 @@
 """Live (and dry-run) execution on top of the same signal code as the backtest.
 
+STATUS: EXPERIMENTAL. The paper accounts (`tsmom`, `xs`) are the product; this
+module is a dry-run tool that can, with two explicit opt-ins, send real orders.
+It has never been reconciled against a venue and should not hold money you
+would miss.
+
 Differences from paper trading, stated loudly:
 
 * the fill is a real market order at the moment the bar closes, not the next
   bar's open -- the journal records both so the slippage is measurable
 * stops are software stops checked once per bar, not exchange-side orders. If
   the process dies, the stop dies with it. That is why the kill switch exists
-* every order is capped in notional and gated by a daily loss limit
+* every order is capped in notional and gated by a daily loss limit that
+  resets at the UTC day boundary, and by the same pre-trade risk gate the
+  paper trader uses, fed with the real day's P&L. The day's baseline is the
+  first equity mark of that UTC day in the journal, so a restart keeps it
+* the KILL file and the daily loss limit stop new entries, never exits: an
+  open position keeps its stop and target exactly when things are going wrong
+* a dry run never moves money, so its cash is the venue balance adjusted by
+  what the journal says the dry trades would have done
+* a SELL signal exits the position under the same rule the backtest and the
+  paper trader use (in profit, or confidence above 0.8). The first version
+  only exited on stop/target, which was a different strategy from the one
+  that was tested
 """
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
 import pandas as pd
 
-from .broker import Ack, Broker, BrokerError, new_client_id
+from .broker import Broker, new_client_id
 from .indicators import add_indicators
 from .journal import Journal, Position
 from .risk import RiskLimits, check_buy
 from .signals import MIN_CONFIDENCE, combine, signals_at
+
+SELL_OVERRIDE_CONFIDENCE = 0.8   # a SELL at a loss needs this much conviction
 
 
 @dataclass
@@ -49,24 +67,52 @@ class LiveTrader:
         self.kill_file = Path(kill_file)
         self.position: Optional[Position] = journal.current_position(cfg.product)
         self.day_start_equity: Optional[float] = None
+        self.day: Optional[str] = None
+        base, _, quote = cfg.product.partition("-")
+        self.base, self.quote = base, quote or cfg.quote_currency
 
     # ------------------------------------------------------------------ safety
+    def _roll_day(self, ts: int) -> None:
+        """Reset the daily loss baseline when the bar belongs to a new UTC day.
+        The baseline is that day's first equity mark in the journal, so a
+        restart mid-day does not forgive the day's losses."""
+        day = datetime.fromtimestamp(ts, timezone.utc).date().isoformat()
+        if day != self.day:
+            self.day = day
+            row = self.journal.db.execute(
+                "SELECT equity FROM equity WHERE date(ts,'unixepoch')=? ORDER BY ts LIMIT 1", (day,),
+            ).fetchone()
+            self.day_start_equity = float(row["equity"]) if row else self.equity()
+
+    def day_pnl(self) -> float:
+        if self.day_start_equity is None:
+            return 0.0
+        return self.equity() - self.day_start_equity
+
+    def cash(self) -> float:
+        """Venue balance; in a dry run, plus what the dry trades would have done
+        (realised P&L of closed positions, minus the cost of the open one)."""
+        cash = self.broker.balance(self.quote)
+        if not self.broker.live:
+            realised = self.journal.db.execute(
+                "SELECT COALESCE(SUM(pnl), 0) AS p FROM positions WHERE product=? AND exit_ts IS NOT NULL",
+                (self.cfg.product,)).fetchone()["p"]
+            cash += float(realised)
+            if self.position is not None:
+                cash -= self.position.size * self.position.entry_px + self.position.entry_fee
+        return cash
+
     def halted(self) -> Optional[str]:
         if self.kill_file.exists():
             return f"kill switch present ({self.kill_file})"
-        if not self.broker.live:
-            return None
-        equity = self.equity()
-        if self.day_start_equity is None:
-            self.day_start_equity = equity
-        if equity - self.day_start_equity <= -self.cfg.max_daily_loss:
-            return f"daily loss limit ({equity - self.day_start_equity:+.2f})"
+        pnl = self.day_pnl()
+        if pnl <= -self.cfg.max_daily_loss:
+            return f"daily loss limit ({pnl:+.2f})"
         return None
 
     def equity(self) -> float:
-        cash = self.broker.balance(self.cfg.quote_currency)
         size = self.position.size if self.position else 0.0
-        return cash + size * self.broker.price(self.cfg.product)
+        return self.cash() + size * self.broker.price(self.cfg.product)
 
     # --------------------------------------------------------------------- run
     def on_bar(self, bar: dict) -> List[str]:
@@ -76,23 +122,32 @@ class LiveTrader:
         if not self.journal.add_bar(self.cfg.product, bar):
             return ["duplicate bar ignored"]
 
+        self._roll_day(ts)
         stop_reason = self.halted()
         if stop_reason:
-            return [f"halted: {stop_reason}"]
+            # exits only: no new entry, but the stop and target still run
+            events.append(f"halted: {stop_reason} (exits only)")
 
         if self.position is not None and self.position.entry_ts != ts:
-            exit_px = self._exit_trigger(bar)
+            exit_px, reason = self._exit_trigger(bar)
             if exit_px is not None:
-                events.append(self._sell(exit_px, ts))
+                events.append(self._sell(exit_px, ts, reason))
 
         signal = self._signal_at_close()
+        if signal is not None and signal.confidence < MIN_CONFIDENCE:
+            # the backtest ignores anything under the floor; so must we, or the
+            # paper and live books run a different strategy from the tested one
+            signal = None
         if signal is not None:
             self.journal.add_signal(self.cfg.product, ts, signal)
-            if signal.side == "BUY" and self.position is None:
+            if signal.side == "BUY" and self.position is None and not stop_reason:
                 events.append(self._buy(close, signal.confidence, ts))
+            elif signal.side == "SELL" and self.position is not None:
+                in_profit = close > self.position.entry_px
+                if in_profit or signal.confidence > SELL_OVERRIDE_CONFIDENCE:
+                    events.append(self._sell(close, ts, "signal"))
 
-        self.journal.mark_equity(ts, self.broker.balance(self.cfg.quote_currency),
-                                 self.position.size * close if self.position else 0.0)
+        self.journal.mark_equity(ts, self.cash(), self.position.size * close if self.position else 0.0)
         return events
 
     # ---------------------------------------------------------------- helpers
@@ -109,22 +164,23 @@ class LiveTrader:
         d = add_indicators(df)
         return combine(signals_at(d.iloc[-1], d.iloc[-2]))
 
-    def _exit_trigger(self, bar: dict) -> Optional[float]:
-        pos = self.position
-        if float(bar["open"]) <= pos.stop:
-            return float(bar["open"])
-        if float(bar["open"]) >= pos.target:
-            return float(bar["open"])
+    def _exit_trigger(self, bar: dict):
+        pos, open_px = self.position, float(bar["open"])
+        if open_px <= pos.stop:
+            return open_px, "gap_stop"
+        if open_px >= pos.target:
+            return open_px, "gap_target"
         if float(bar["low"]) <= pos.stop:
-            return pos.stop
+            return pos.stop, "stop"
         if float(bar["high"]) >= pos.target:
-            return pos.target
-        return None
+            return pos.target, "target"
+        return None, ""
 
     def _buy(self, price: float, confidence: float, ts: int) -> str:
         equity = self.equity()
-        decision = check_buy(equity, self.broker.balance(self.cfg.quote_currency),
-                             0, 0.0, confidence, self.cfg.limits)
+        decision = check_buy(equity, self.cash(),
+                             1 if self.position else 0, self.day_pnl(), confidence,
+                             self.cfg.limits)
         if not decision.allowed:
             return f"blocked BUY: {decision.reason}"
         notional = min(decision.notional, self.cfg.max_notional)
@@ -143,12 +199,21 @@ class LiveTrader:
         self.journal.open_position(self.position)
         return f"BUY {notional:.2f} {self.cfg.product} @ {fill_px:.2f} [{ack.status}]"
 
-    def _sell(self, price: float, ts: int) -> str:
+    def _sell(self, price: float, ts: int, reason: str = "live_exit") -> str:
         pos = self.position
         client_id = new_client_id("sell")
-        ack = self.broker.market_sell(self.cfg.product, pos.size, client_id)
+        size = pos.size
+        if self.broker.live:
+            # the buy's fill size is estimated (notional / price); never ask to
+            # sell more than the account holds, or the order is rejected
+            held = self.broker.balance(self.base)
+            if 0 < held < size:
+                size = held
+        ack = self.broker.market_sell(self.cfg.product, size, client_id)
         fill_px = ack.filled_px or price
-        pnl = (fill_px - pos.entry_px) * pos.size - pos.entry_fee
-        self.journal.close_position(pos.id, ts, fill_px, pnl, "live_exit")
+        exit_fee = ack.fee or fill_px * size * self.cfg.fee
+        pnl = (fill_px - pos.entry_px) * size - pos.entry_fee - exit_fee
+        self.journal.close_position(pos.id, ts, fill_px, pnl, reason)
         self.position = None
-        return f"SELL {pos.size:.8f} {self.cfg.product} @ {fill_px:.2f} pnl {pnl:+.2f} [{ack.status}]"
+        return (f"SELL {size:.8f} {self.cfg.product} @ {fill_px:.2f} "
+                f"pnl {pnl:+.2f} ({reason}) [{ack.status}]")

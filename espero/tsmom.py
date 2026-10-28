@@ -38,7 +38,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS account (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts INTEGER NOT NULL, cash REAL, units TEXT, equity REAL, weights TEXT, note TEXT,
-    positions TEXT, signals TEXT, deposit REAL, vehicle TEXT, carry REAL,
+    positions TEXT, signals TEXT, deposit REAL, vehicle TEXT, carry REAL, traded REAL,
     UNIQUE(ts, note)   -- one mark per day, but a deposit and a mark can share a day
 );
 """
@@ -98,11 +98,12 @@ class Account:
     carry_total: float = 0.0
 
     def __post_init__(self):
-        self.db = sqlite3.connect(self.path)
+        self.db = sqlite3.connect(self.path, timeout=5.0)
         self.db.row_factory = sqlite3.Row
+        self.db.execute("PRAGMA journal_mode=WAL")
         self.db.executescript(SCHEMA)
         cols = {r["name"] for r in self.db.execute("PRAGMA table_info(account)")}
-        for col in ("positions", "signals", "deposit", "vehicle", "carry"):  # old databases
+        for col in ("positions", "signals", "deposit", "vehicle", "carry", "traded"):  # old databases
             if col not in cols:
                 self.db.execute(f"ALTER TABLE account ADD COLUMN {col} TEXT")
                 self.db.commit()
@@ -121,31 +122,46 @@ class Account:
         return self.cash + sum(u * float(prices[a]) for a, u in self.units.items())
 
     def rebalance(self, prices: pd.Series, weights: Dict[str, float]) -> float:
+        """Two passes: estimate turnover, then size targets on the post-cost budget.
+
+        The one-pass version invested the full equity and then subtracted the
+        fees from cash, so cash went negative by exactly the cost of the trade
+        -- the same bug `xs.py` fixed. Pinned by `test_no_leverage`.
+        """
         total = self.equity(prices)
-        traded = 0.0
-        for a, w in weights.items():
-            if a not in prices or not pd.notna(prices[a]):
-                continue
-            target = total * w
-            current = self.units.get(a, 0.0) * float(prices[a])
-            traded += abs(target - current)
-            self.units[a] = target / float(prices[a])
+        tradable = {a: w for a, w in weights.items() if a in prices and pd.notna(prices[a])}
+        traded = sum(abs(total * w - self.units.get(a, 0.0) * float(prices[a]))
+                     for a, w in tradable.items())
+        budget = max(total - traded * COST, 0.0)
+        for a, w in tradable.items():
+            self.units[a] = (budget * w) / float(prices[a])
         invested = sum(u * float(prices[a]) for a, u in self.units.items())
-        self.cash = total - invested - traded * COST
+        self.cash = budget - invested
         return traded
+
+    def rebalanced_in_month(self, year: int, month: int) -> bool:
+        """True when a rebalance (or the opening trade) already happened this month."""
+        for row in self.db.execute(
+            "SELECT ts FROM account WHERE note IN ('init', 'rebalance', 'deposit')"
+            " ORDER BY ts DESC LIMIT 12"
+        ):
+            d = datetime.fromtimestamp(int(row["ts"]), timezone.utc)
+            if (d.year, d.month) == (year, month):
+                return True
+        return False
 
     def save(self, ts: int, equity: float, weights: Dict[str, float], note: str,
              positions: Optional[Dict[str, float]] = None,
              signals: Optional[Dict[str, float]] = None,
-             deposit: float = 0.0, carry_this: float = 0.0) -> None:
+             deposit: float = 0.0, carry_this: float = 0.0, traded: float = 0.0) -> None:
         """`signals` is what the bot SAW when it decided, kept separately from the
         weights so a later viewer can audit the decision instead of re-deriving it."""
         self.db.execute(
             "INSERT OR REPLACE INTO account(ts, cash, units, equity, weights, note, positions,"
-            " signals, deposit, vehicle, carry) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            " signals, deposit, vehicle, carry, traded) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (ts, self.cash, json.dumps(self.units), equity, json.dumps(weights), note,
              json.dumps(positions or {}), json.dumps(signals or {}), deposit,
-             self.vehicle, carry_this),
+             self.vehicle, carry_this, traded),
         )
         self.db.commit()
 
@@ -154,12 +170,20 @@ class Account:
 
 
 def first_trading_day(now: Optional[datetime] = None) -> bool:
+    """A weekday in the first three calendar days: the window in which the
+    monthly rebalance may happen. The account itself makes sure it happens
+    once, via `rebalanced_in_month`, not once per day of the window."""
     now = now or datetime.now(timezone.utc)
     return now.weekday() < 5 and now.day <= 3
 
 
+def rebalance_due(acc: Account, now: Optional[datetime] = None) -> bool:
+    now = now or datetime.now(timezone.utc)
+    return first_trading_day(now) and not acc.rebalanced_in_month(now.year, now.month)
+
+
 def run(state: str, cash: float, force: bool = False, span: str = "2y",
-        deposit: float = 0.0) -> dict:
+        deposit: float = 0.0, now: Optional[datetime] = None) -> dict:
     series = load_series(span)
     px = closes(series)
     latest = px.iloc[-1]
@@ -175,7 +199,7 @@ def run(state: str, cash: float, force: bool = False, span: str = "2y",
     sig = signals(series)
     weights, cash_w = target_weights(sig)
 
-    due = fresh or force or first_trading_day() or deposit > 0
+    due = fresh or force or rebalance_due(acc, now) or deposit > 0
     traded = 0.0
     note = "mark"
     if due:
@@ -207,7 +231,7 @@ def run(state: str, cash: float, force: bool = False, span: str = "2y",
     equity = acc.equity(latest)
     marked = {a: u * float(latest[a]) for a, u in acc.units.items()}
     acc.save(ts, equity, weights, note, positions=marked, signals=sig, deposit=deposit,
-             carry_this=carry_this)
+             carry_this=carry_this, traded=traded)
     return {
         "ts": px.index[-1], "signals": sig, "weights": weights, "cash_weight": cash_w,
         "equity": equity, "traded": traded, "note": note,
@@ -222,7 +246,8 @@ def format_report(res: dict) -> str:
     for a in res["signals"]:
         pos = res["positions"].get(a, 0.0)
         lines.append(f"{a:6s} {100*res['signals'][a]:+10.1f}% {100*res['weights'][a]:7.0f}% {pos:10.2f}")
-    lines.append(f"{'cash':6s} {'':11s} {100*res['cash_weight']:7.0f}% {res['equity'] - sum(res['positions'].values()):10.2f}")
+    idle = res['equity'] - sum(res['positions'].values())
+    lines.append(f"{'cash':6s} {'':11s} {100*res['cash_weight']:7.0f}% {idle:10.2f}")
     d = res.get("cash_decision")
     if d:
         lines.append(f"\ncash ${d.amount + d.reserve:,.2f}: keep ${d.reserve:,.2f} liquid, "

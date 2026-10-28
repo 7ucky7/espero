@@ -1,0 +1,81 @@
+== primary: hours where funding, perp and spot all exist (the criteria are judged here)
+
+18 coins, 2026-04-02 -> 2026-10-28, 4996 hours
+trades 75  hours in position 15559  funding received +0.0577  paid 0.0023  fees 0.0315  final equity 1.0293
+
+criterion                                   required    actual  met
+net annualised return on equity                 > 8%     +5.2%  NO
+max drawdown of equity                          < 5%      1.5%  yes
+Sharpe (hourly, annualised)                    > 1.5      0.88  NO
+funding paid / received                        < 25%        4%  yes
+net annualised return, Kraken spot fees         > 4%     -7.1%  NO
+
+Verdict: FAIL
+
+per coin:
+      trades  hours  funding   basis    fees     pnl
+coin                                                
+ENA        4    227  +0.0006 +0.0000 +0.0014 -0.0008
+XPL        7   1294  +0.0016 -0.0001 +0.0023 -0.0008
+DOGE       2     36  +0.0001 +0.0000 +0.0007 -0.0006
+PUMP       9   1255  +0.0021 +0.0006 +0.0031 -0.0004
+UNI        4    461  +0.0011 +0.0001 +0.0014 -0.0002
+AAVE       2    167  +0.0005 +0.0002 +0.0007 +0.0001
+HYPE       2    724  +0.0012 +0.0001 +0.0007 +0.0005
+NEAR      13   1865  +0.0056 +0.0005 +0.0051 +0.0009
+WLD        4   1295  +0.0019 +0.0005 +0.0014 +0.0010
+ZEC        5    875  +0.0037 +0.0003 +0.0028 +0.0012
+ZRO       15   4305  +0.0186 +0.0001 +0.0075 +0.0112
+VVV        8   3055  +0.0185 +0.0030 +0.0043 +0.0172
+
+exit reasons: {'ranked_out': 55, 'time': 9, 'funding_low': 8, 'end': 2, 'no_data': 1}
+funding / basis / fees over all trades: +0.0554 / +0.0054 / 0.0315
+
+by year:
+2026   +2.9%
+
+
+== extended, for information only: full funding history, basis unmarked before the
+== venue's hourly candles begin (perp price taken as spot there). Not a criterion.
+
+18 coins, 2023-05-12 -> 2026-10-28, 29766 hours
+trades 369  hours in position 90857  funding received +0.5361  paid 0.0206  fees 0.1851  final equity 1.3385
+
+criterion                                   required    actual  met
+net annualised return on equity                 > 8%     +9.0%  yes
+max drawdown of equity                          < 5%      1.6%  yes
+Sharpe (hourly, annualised)                    > 1.5      3.46  yes
+funding paid / received                        < 25%        4%  yes
+net annualised return, Kraken spot fees         > 4%     -1.7%  NO
+
+Verdict: FAIL
+
+per coin:
+      trades  hours  funding   basis    fees     pnl
+coin                                                
+ENA       12   1563  +0.0041 +0.0000 +0.0052 -0.0011
+HYPE       2    724  +0.0016 +0.0001 +0.0010 +0.0007
+XPL        8   2006  +0.0055 -0.0001 +0.0045 +0.0009
+ZEC        7   1490  +0.0069 +0.0004 +0.0053 +0.0020
+WLD        9   2553  +0.0064 +0.0007 +0.0045 +0.0026
+PUMP      14   3787  +0.0124 +0.0008 +0.0068 +0.0064
+XRP       21   3911  +0.0216 +0.0000 +0.0110 +0.0107
+BTC       40   6433  +0.0310 +0.0000 +0.0196 +0.0114
+VVV       19   4089  +0.0216 +0.0039 +0.0138 +0.0118
+ETH       28   5341  +0.0326 +0.0000 +0.0127 +0.0199
+LINK      25   6125  +0.0351 +0.0000 +0.0114 +0.0237
+AAVE      35   9157  +0.0422 +0.0003 +0.0162 +0.0263
+UNI       29   8824  +0.0415 +0.0002 +0.0138 +0.0279
+SOL       35   7962  +0.0503 +0.0000 +0.0164 +0.0339
+ZRO       28  10122  +0.0514 +0.0012 +0.0166 +0.0359
+NEAR      34   8140  +0.0595 +0.0006 +0.0152 +0.0449
+DOGE      23   8630  +0.0917 +0.0000 +0.0110 +0.0807
+
+exit reasons: {'ranked_out': 271, 'time': 56, 'funding_low': 38, 'no_data': 2, 'end': 2}
+funding / basis / fees over all trades: +0.5155 / +0.0080 / 0.1851
+
+by year:
+2023    +8.8%
+2024   +16.5%
+2025    +2.2%
+2026    +3.3%

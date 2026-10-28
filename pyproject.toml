@@ -4,23 +4,27 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "espero"
-version = "0.1.0"
+version = "0.2.0"
 description = "A small, honest crypto research harness: causal indicators, next-bar fills, tests that fail when you cheat."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [{ name = "7ucky7" }]
-keywords = ["trading", "backtesting", "crypto", "research"]
+keywords = ["trading", "backtesting", "crypto", "research", "factor-research"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
     "Topic :: Office/Business :: Financial :: Investment",
 ]
-dependencies = ["numpy>=1.24", "pandas>=2.0"]
+# Upper bounds are deliberate: tests/test_reference.py pins results to four
+# decimals, and a silent numpy/pandas major bump is how those numbers drift.
+dependencies = ["numpy>=1.24,<3", "pandas>=2.0,<4"]
 
 [project.optional-dependencies]
 chart = ["Pillow>=10"]
-dev = ["pytest>=8"]
+tui = ["rich>=13", "questionary>=2"]
+dev = ["pytest>=8", "ruff>=0.6"]
+hl = ["hyperliquid-python-sdk>=0.24"]   # testnet order signing only (espero/hl_exchange.py)
 
 [project.scripts]
 espero = "espero.cli:main"
@@ -30,3 +34,19 @@ Homepage = "https://github.com/7ucky7/espero"
 
 [tool.setuptools]
 packages = ["espero"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+extend-exclude = ["research/data", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "I"]
+ignore = ["E741", "B008", "B905", "B023", "B007"]
+
+[tool.ruff.lint.per-file-ignores]
+# research scripts are frozen pre-registered artifacts; style is not re-litigated
+"research/*" = ["E501", "F841"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

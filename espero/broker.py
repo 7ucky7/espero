@@ -10,6 +10,8 @@ Live orders are the only code in this repo that can lose money, so:
 from __future__ import annotations
 
 import os
+import re
+import sys
 import uuid
 from dataclasses import dataclass
 from typing import Optional, Protocol
@@ -142,17 +144,80 @@ class DryRunBroker:
         return []
 
 
+# Opt-ins that must come from the shell, never from a file: a line uncommented
+# once in .env would otherwise leave --confirm-live as the only gate.
+NEVER_FROM_FILE = frozenset({"ESPERO_ALLOW_LIVE"})
+# upper case only, like every key in .env.example: a stray base64 line ending in
+# "=" padding is mixed case, so it can never become a variable named after key material
+_KEY = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+
+
+def parse_env(text: str) -> tuple[dict, list]:
+    """Parse .env text. Returns (values, warnings); warnings never quote a value.
+
+    Accepts `KEY=value`, `export KEY=value`, single or double quotes (a quoted
+    value may span lines, for a PEM), an unquoted PEM from `-----BEGIN` to
+    `-----END`, and `#` comments, including after an unquoted value. Keys are
+    upper case. A line that is not `KEY=value` is skipped with a warning naming
+    only its number, so a stray secret line can never become a variable."""
+    values: dict = {}
+    warnings: list = []
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        n, line = i + 1, lines[i].strip()
+        i += 1
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):].lstrip()
+        key, eq, value = line.partition("=")
+        key = key.strip()
+        if not eq or not _KEY.match(key):
+            warnings.append(f".env line {n}: not KEY=value, ignored")
+            continue
+        value = value.strip()
+        if value[:1] in ("'", '"'):
+            q, body = value[0], value[1:]
+            while q not in body and i < len(lines):
+                body += "\n" + lines[i].rstrip("\r")
+                i += 1
+            if q not in body:
+                warnings.append(f".env line {n}: {key} has an unclosed quote, ignored")
+                continue
+            value = body[:body.index(q)]
+            if "\n" in value and not value.startswith("-----BEGIN"):
+                warnings.append(f".env line {n}: {key} spans several lines; check its closing quote")
+        elif value.startswith("-----BEGIN") and "-----END" not in value:
+            parts = [value]
+            while i < len(lines) and "-----END" not in parts[-1]:
+                parts.append(lines[i].strip())
+                i += 1
+            value = "\n".join(parts)
+            warnings.append(f".env line {n}: {key} is an unquoted multi-line value; quote it")
+        else:
+            value = re.split(r"\s+#", value, maxsplit=1)[0].strip()
+        values[key] = value
+    return values, warnings
+
+
 def load_env(path: str = ".env") -> None:
-    """Minimal .env loader (no dependency). Existing env vars win."""
-    p = os.path.join(os.getcwd(), path)
+    """Load .env into the environment (no dependency). Existing variables win.
+    A relative path is taken from the current directory. Opt-ins listed in
+    NEVER_FROM_FILE are refused: they must be set in the shell."""
+    p = path if os.path.isabs(path) else os.path.join(os.getcwd(), path)
     if not os.path.exists(p):
         return
-    for line in open(p, encoding="utf-8"):
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
+    with open(p, encoding="utf-8") as fh:
+        values, warnings = parse_env(fh.read())
+    for key, value in values.items():
+        if key in NEVER_FROM_FILE:
+            if value:
+                warnings.append(f".env: {key} is ignored in a file; set it in the shell for one run")
             continue
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+        os.environ.setdefault(key, value)
+    for w in warnings:
+        print(f"warning: {w}", file=sys.stderr)
 
 
 def _secret() -> str:

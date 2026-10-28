@@ -6,7 +6,6 @@ has not been allowed to decide size, and cannot bypass any of these checks.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(frozen=True)
