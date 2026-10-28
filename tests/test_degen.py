@@ -288,6 +288,53 @@ class TestTrader(unittest.TestCase):
         self.assertAlmostEqual(third.cash, again.cash)
 
 
+class TestRule13(unittest.TestCase):
+    """#13: 1-hour bars, at most one entry per bar, and the coin must beat BTC."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.journal = Journal(Path(self.tmp.name) / "degen-1h.db")
+        cfg = dg.DegenConfig.for_venue("binanceus", rule="13", initial=1000.0)
+        cfg.fee = cfg.slippage = 0.0
+        self.t = dg.DegenTrader(self.journal, cfg)
+
+    def tearDown(self):
+        self.journal.close()
+        self.tmp.cleanup()
+
+    def btc(self, ts: int, burst: float = 0.0) -> dict:
+        return dict(quiet(dg.BENCHMARK, ts), burst=burst)
+
+    def test_rule_table_sets_the_hour_and_both_filters(self):
+        self.assertEqual(self.t.cfg.granularity, 3600)
+        self.assertTrue(self.t.cfg.one_entry_per_bar and self.t.cfg.beat_benchmark)
+        ten = dg.DegenConfig.for_venue("binanceus")
+        self.assertEqual((ten.granularity, ten.one_entry_per_bar, ten.beat_benchmark), (300, False, False))
+
+    def test_three_breakouts_on_one_bar_are_one_trade_the_best_scored(self):
+        coins = {c: dict(signal(c, T0), burst=b) for c, b in (("A-USD", 0.01), ("B-USD", 0.05), ("C-USD", 0.03))}
+        ev = self.t.on_cycle(coins, self.btc(T0))
+        self.assertEqual(sum("queued BUY" in e for e in ev), 1)
+        self.assertEqual(list(self.t.pending), ["B-USD"])
+
+    def test_a_breakout_that_lags_btc_is_not_bought(self):
+        ev = self.t.on_cycle({"A-USD": signal("A-USD", T0)}, self.btc(T0, burst=0.03))   # 0.02 < 0.03
+        self.assertFalse(any("queued BUY" in e for e in ev))
+        ev = self.t.on_cycle({"A-USD": signal("A-USD", T0 + 3600)}, self.btc(T0 + 3600, burst=0.01))
+        self.assertTrue(any("queued BUY" in e for e in ev))
+
+    def test_no_btc_bar_for_this_hour_means_no_entry(self):
+        self.assertEqual(self.t.on_cycle({"A-USD": signal("A-USD", T0)}, None), [])
+        stale = self.btc(T0 - 3600)
+        self.assertEqual(self.t.on_cycle({"A-USD": signal("A-USD", T0 + 3600)}, stale), [])
+
+    def test_control_rule_has_neither_filter(self):
+        cfg = dg.DegenConfig.for_venue("binanceus", rule="13-control", initial=1000.0)
+        t = dg.DegenTrader(self.journal, cfg)
+        ev = t.on_cycle({c: signal(c, T0 + 7200) for c in ("A-USD", "B-USD")})
+        self.assertEqual(sum("queued BUY" in e for e in ev), 2)
+
+
 class TestReplay(unittest.TestCase):
     def frames(self):
         return {"AAA-USD": plant_breakout(bars(300, seed=11, noise=0.002), at=150, jump=0.06),
@@ -300,6 +347,13 @@ class TestReplay(unittest.TestCase):
         self.assertEqual(rows[0]["trades"], rows[1]["trades"])
         self.assertGreater(rows[1]["entry_fees"], rows[0]["entry_fees"])
         self.assertLess(rows[1]["pnl"], rows[0]["pnl"])
+
+    def test_rule_13_replay_needs_the_benchmark(self):
+        flat = bars(300, seed=13, noise=0.0005)
+        with_btc = dg.replay(self.frames(), "binanceus", 1000.0, rule="13", benchmark=flat)
+        without = dg.replay(self.frames(), "binanceus", 1000.0, rule="13")
+        self.assertGreaterEqual(with_btc["trades"], 1)
+        self.assertEqual(without["trades"], 0)
 
     def test_verdict_needs_all_five(self):
         good = {"venue": "binanceus", "trades": 40, "profit_factor": 1.5, "pnl": 10.0, "max_dd_pct": 0.05}

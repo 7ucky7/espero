@@ -2,7 +2,10 @@
 
 The Chinese retail quant playbook, written down as rules so it can be tested
 instead of felt. Hypothesis #10; the parameters below are frozen in
-research/PREREGISTRATION_DEGEN.md and are not to be tuned here.
+research/PREREGISTRATION_DEGEN.md and are not to be tuned here. #13
+(research/PREREGISTRATION_DEGEN2.md) is the same rule in bar counts on 1-hour
+bars, with at most one entry per bar and the coin's burst above BTC's: the
+`RULES` table below, selected with `DegenConfig.for_venue(..., rule="13")`.
 
 Three pieces, in the order money flows through them:
 
@@ -56,6 +59,16 @@ MAX_OPEN = 3
 TOP = 60
 MIN_DOLLAR_VOLUME = 2e6
 WARMUP = max(VOL_WINDOW, HIGH_WINDOW) + 2
+BENCHMARK = "BTC-USD"         # #13: fetched to compare against, never ranked or bought
+
+# each rule's differences from #10; the control is #13's bar without its two filters
+RULES = {
+    "10": dict(granularity=300),
+    "13": dict(granularity=3600, one_entry_per_bar=True, beat_benchmark=True),
+    "13-control": dict(granularity=3600),
+}
+PREREG = {"10": "research/PREREGISTRATION_DEGEN.md", "13": "research/PREREGISTRATION_DEGEN2.md",
+          "13-control": "research/PREREGISTRATION_DEGEN2.md (control, not a criterion)"}
 FEATURE_COLS = ("burst", "vol_z", "atr", "range_x", "breakout", "near")
 
 
@@ -148,13 +161,15 @@ class DegenConfig:
     slippage: float = 0.0005
     granularity: int = GRANULARITY
     min_dollar_volume: float = MIN_DOLLAR_VOLUME
+    one_entry_per_bar: bool = False
+    beat_benchmark: bool = False
     limits: RiskLimits = field(default_factory=lambda: RiskLimits(max_open_positions=MAX_OPEN))
 
     @classmethod
-    def for_venue(cls, venue: str, **kw) -> "DegenConfig":
+    def for_venue(cls, venue: str, rule: str = "10", **kw) -> "DegenConfig":
         v = VENUES[venue]
         return cls(venue=venue, fee=v.taker_bps / 1e4, funding_8h=v.funding_bps_8h / 1e4,
-                   funding_period=v.funding_period_s, **kw)
+                   funding_period=v.funding_period_s, **{**RULES[rule], **kw})
 
 
 class DegenTrader:
@@ -193,19 +208,20 @@ class DegenTrader:
         """Products the book must keep watching: open positions and queued orders."""
         return sorted(set(self.positions) | set(self.pending))
 
-    def on_cycle(self, rows: Dict[str, dict]) -> List[str]:
+    def on_cycle(self, rows: Dict[str, dict], benchmark: Optional[dict] = None) -> List[str]:
         """`rows`: product -> the newest closed bar with features. Bars already in
-        the journal are skipped, so a repeated cycle is harmless. One cycle is
-        one transaction: on any error it is rolled back, memory is reloaded and
-        the error propagates."""
+        the journal are skipped, so a repeated cycle is harmless. `benchmark` is
+        BTC's feature row for the same bar, read only when the rule beats it.
+        One cycle is one transaction: on any error it is rolled back, memory is
+        reloaded and the error propagates."""
         try:
             with self.journal.transaction():
-                return self._on_cycle(rows)
+                return self._on_cycle(rows, benchmark)
         except Exception:
             self._load()
             raise
 
-    def _on_cycle(self, rows: Dict[str, dict]) -> List[str]:
+    def _on_cycle(self, rows: Dict[str, dict], benchmark: Optional[dict] = None) -> List[str]:
         events: List[str] = []
         fresh: Dict[str, dict] = {}
         for product, bar in rows.items():
@@ -262,10 +278,17 @@ class DegenTrader:
         # a held coin fetched only to manage its exit is not part of the frozen
         # universe, so it neither enters the cross-sectional rank nor gets bought
         ranked = rank_rows([dict(b, product=p) for p, b in fresh.items() if b.get("in_universe", True)])
+        bench = None
+        if self.cfg.beat_benchmark:
+            # no BTC candle for this very bar: no entry, rather than a stale comparison
+            ok = benchmark is not None and int(benchmark["ts"]) == ts and not pd.isna(benchmark["burst"])
+            bench = float(benchmark["burst"]) if ok else None
         for r in ranked:
             if r["status"] != "BREAKOUT":
                 continue
             p = r["product"]
+            if self.cfg.beat_benchmark and (bench is None or not float(r["burst"]) > bench):
+                continue
             if p in self.positions or p in self.pending:
                 continue
             if len(self.positions) + sum(1 for o in self.pending.values() if o.side == "BUY") >= MAX_OPEN:
@@ -287,6 +310,8 @@ class DegenTrader:
             self.journal.add_order(o)
             events.append(f"{p}: BREAKOUT score {r['score']:.2f} vol_z {r['vol_z']:.1f}, "
                           f"queued BUY {d.notional:.2f} for next open")
+            if self.cfg.one_entry_per_bar:
+                break                       # one market move, one trade
 
         self.journal.mark_equity(ts, self.cash, self.position_value())
         return events
@@ -353,11 +378,17 @@ class DegenTrader:
 
 # ---------------------------------------------------------------------- replay
 def replay(frames: Dict[str, pd.DataFrame], venue: str, initial: float = 500.0,
-           dollar_volume: Optional[Dict[str, float]] = None, state: Optional[Path] = None) -> dict:
+           dollar_volume: Optional[Dict[str, float]] = None, state: Optional[Path] = None,
+           rule: str = "10", benchmark: Optional[pd.DataFrame] = None) -> dict:
     """Drive `DegenTrader` over history: `frames` is product -> OHLCV bars with
     a `ts` column. Features are computed once per coin, causally, then the bars
-    are fed in timestamp order exactly as the live loop would see them."""
+    are fed in timestamp order exactly as the live loop would see them.
+    `benchmark` is BTC's bars, for a rule that must beat it."""
     dollar_volume = dollar_volume or {}
+    bench: Dict[int, dict] = {}
+    if benchmark is not None:
+        for rec in features(benchmark.sort_values("ts").reset_index(drop=True)).to_dict("records"):
+            bench[int(rec["ts"])] = rec
     feats = {p: features(df.sort_values("ts").reset_index(drop=True)) for p, df in frames.items()}
     by_ts: Dict[int, Dict[str, dict]] = {}
     for p, f in feats.items():
@@ -372,9 +403,9 @@ def replay(frames: Dict[str, pd.DataFrame], venue: str, initial: float = 500.0,
         state = Path(tmp.name) / f"degen-{venue}.db"
     journal = Journal(state)
     try:
-        trader = DegenTrader(journal, DegenConfig.for_venue(venue, initial=initial))
+        trader = DegenTrader(journal, DegenConfig.for_venue(venue, rule=rule, initial=initial))
         for ts in sorted(by_ts):
-            trader.on_cycle(by_ts[ts])
+            trader.on_cycle(by_ts[ts], bench.get(ts))
         return summarize(journal, trader, venue, initial)
     finally:
         journal.close()
@@ -411,8 +442,9 @@ def summarize(journal: Journal, trader: DegenTrader, venue: str, initial: float)
 
 
 def compare_venues(frames: Dict[str, pd.DataFrame], venues: List[str], initial: float = 500.0,
-                   dollar_volume: Optional[Dict[str, float]] = None) -> List[dict]:
-    return [replay(frames, v, initial, dollar_volume) for v in venues]
+                   dollar_volume: Optional[Dict[str, float]] = None, rule: str = "10",
+                   benchmark: Optional[pd.DataFrame] = None) -> List[dict]:
+    return [replay(frames, v, initial, dollar_volume, rule=rule, benchmark=benchmark) for v in venues]
 
 
 # -------------------------------------------------------------------- verdict

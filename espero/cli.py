@@ -486,8 +486,47 @@ def _cmd_degen_scan(args: argparse.Namespace) -> int:
     return 0
 
 
+def _degen_window(args: argparse.Namespace, gran: int) -> tuple:
+    """(days to fetch, first ts kept, ts cut-off). With --start/--end the window
+    is fixed in the pre-registration: fetch back far enough to cover it plus the
+    warm-up, then keep only [start - warm-up, end). Without them, the last --days."""
+    from .degen import WARMUP
+
+    if not args.start:
+        return args.days, None, None
+    start = int(datetime.fromisoformat(args.start).replace(tzinfo=timezone.utc).timestamp())
+    end = int(datetime.fromisoformat(args.end).replace(tzinfo=timezone.utc).timestamp()) if args.end \
+        else int(time.time())
+    first = start - WARMUP * gran
+    days = int((time.time() - first) // 86400) + 2
+    return days, first, end
+
+
+def _degen_frame(p: str, days: int, gran: int, cache: Path, label: str) -> pd.DataFrame:
+    path = cache / f"{p.replace('-', '')}_{gran}s_{days}d.csv"
+    if path.exists():
+        df = data.load(path)
+    else:
+        print(f"{label} fetching {p} {days}d of {gran // 60}m candles ...", flush=True)
+        df = data.fetch(p, days, gran)
+        data.save(df, path)
+    if "ts" not in df:
+        df["ts"] = (pd.to_datetime(df["time"], utc=True).astype("int64") // 10**9)
+    return df
+
+
 def _cmd_degen_backtest(args: argparse.Namespace) -> int:
-    from .degen import compare_venues, verdict
+    from .degen import BENCHMARK, PREREG, RULES, compare_venues, verdict
+
+    if args.end and not args.start:
+        print("--end needs --start")
+        return 2
+    gran = RULES[args.rule]["granularity"]
+    days, first, end = _degen_window(args, gran)
+
+    def cut(df: pd.DataFrame) -> pd.DataFrame:
+        # bars after the window are dropped before anything reads them
+        return df if first is None else df[(df["ts"] >= first) & (df["ts"] < end)].reset_index(drop=True)
 
     uni = _degen_universe(args)
     if not uni:
@@ -496,27 +535,26 @@ def _cmd_degen_backtest(args: argparse.Namespace) -> int:
     frames, dv = {}, {}
     for i, u in enumerate(uni, 1):
         p = u["product"]
-        path = cache / f"{p.replace('-', '')}_300s_{args.days}d.csv"
         try:
-            if path.exists():
-                df = data.load(path)
-            else:
-                print(f"[{i}/{len(uni)}] fetching {p} {args.days}d of 5m candles ...", flush=True)
-                df = data.fetch(p, args.days, 300)
-                data.save(df, path)
+            df = cut(_degen_frame(p, days, gran, cache, f"[{i}/{len(uni)}]"))
         except Exception as exc:  # noqa: BLE001 - one coin missing is reported, not fatal
             print(f"   {p}: {type(exc).__name__}: {exc}")
             continue
-        if "ts" not in df:
-            df["ts"] = (pd.to_datetime(df["time"], utc=True).astype("int64") // 10**9)
+        if df.empty:
+            print(f"   {p}: no bars in the window")
+            continue
         frames[p] = df
         dv[p] = float(u["dollar_volume"])
     if not frames:
         print("nothing to replay")
         return 2
+    bench = None
+    if RULES[args.rule].get("beat_benchmark"):
+        bench = cut(_degen_frame(BENCHMARK, days, gran, cache, "[benchmark]"))
     venues = [v.strip() for v in args.venues.split(",") if v.strip()]
-    print(f"replaying {len(frames)} coins x {args.days}d through {', '.join(venues)} ...", flush=True)
-    rows = compare_venues(frames, venues, initial=args.cash, dollar_volume=dv)
+    span = f"{args.start} -> {args.end or 'now'}" if args.start else f"{args.days}d"
+    print(f"rule {args.rule}: replaying {len(frames)} coins x {span} through {', '.join(venues)} ...", flush=True)
+    rows = compare_venues(frames, venues, initial=args.cash, dollar_volume=dv, rule=args.rule, benchmark=bench)
     lines = [f"{'venue':<28}{'trades':>7}{'hit':>6}{'PF':>7}{'fees':>8}{'maxDD%':>8}{'P&L':>9}{'equity':>9}  exits"]
     for r in rows:
         ex = " ".join(f"{k}={v}" for k, v in sorted(r["reasons"].items()))
@@ -527,7 +565,7 @@ def _cmd_degen_backtest(args: argparse.Namespace) -> int:
     for c in crit:
         lines.append(f"  [{'x' if c['met'] else ' '}] {c['criterion']}")
     passed = all(c["met"] for c in crit)
-    lines.append(f"\nverdict: {'PASS' if passed else 'FAIL'} (pre-registered, research/PREREGISTRATION_DEGEN.md)")
+    lines.append(f"\nverdict: {'PASS' if passed else 'FAIL'} (rule {args.rule}, pre-registered, {PREREG[args.rule]})")
     text = "\n".join(lines)
     print(text)
     if args.out:
@@ -548,14 +586,17 @@ def _cmd_degen_paper(args: argparse.Namespace) -> int:
 
 
 def _degen_loop(args: argparse.Namespace) -> int:
-    from .degen import GRANULARITY, WARMUP, DegenConfig, DegenTrader, features
+    from .degen import BENCHMARK, WARMUP, DegenConfig, DegenTrader, features
 
     journal = Journal(args.state)
-    cfg = DegenConfig.for_venue(args.venue, initial=args.cash)
+    rule = getattr(args, "rule", "10")
+    cfg = DegenConfig.for_venue(args.venue, rule=rule, initial=args.cash)
+    gran = cfg.granularity
     if getattr(args, "fee_bps", None) is not None:
         cfg.fee = args.fee_bps / 1e4        # e.g. your own rate from `espero fees`
     trader = DegenTrader(journal, cfg)
-    print(f"打板 paper loop on {args.venue}: fees {1e4 * cfg.fee:.1f} bps per side"
+    print(f"打板 paper loop, rule {rule} ({gran // 60}m bars) on {args.venue}: "
+          f"fees {1e4 * cfg.fee:.1f} bps per side"
           + (f", funding {1e4 * cfg.funding_8h:.2f} bps per 8h" if cfg.funding_8h else "")
           + f"; cash {trader.cash:.2f}, {len(trader.positions)} open -> {args.state}")
     state = {"universe": [], "refreshed": 0.0}
@@ -581,7 +622,7 @@ def _degen_loop(args: argparse.Namespace) -> int:
         errors = 0
         for p in products:
             try:
-                df = data.recent_closed_bars(p, GRANULARITY, 300)
+                df = data.recent_closed_bars(p, gran, 300)
             except Exception as exc:  # noqa: BLE001 - skip the coin this cycle
                 errors += 1
                 print(f"   {p}: {type(exc).__name__}: {exc}")
@@ -613,14 +654,21 @@ def _degen_loop(args: argparse.Namespace) -> int:
                     rec, product=p, dollar_volume=volume.get(p, float("nan")), in_universe=p in volume)
             time.sleep(0.12)
         if not by_ts:
-            print(_waiting(GRANULARITY))
+            print(_waiting(gran))
             return
+        bench: dict = {}
+        if cfg.beat_benchmark:
+            try:
+                b = features(data.recent_closed_bars(BENCHMARK, gran, 300))
+                bench = {int(r["ts"]): r for r in b.to_dict("records")}
+            except Exception as exc:  # noqa: BLE001 - no benchmark means no entries this cycle
+                print(f"   {BENCHMARK}: {type(exc).__name__}: {exc} (no entries this cycle)")
         if len(by_ts) > 1:
             print(f"catching up {len(by_ts)} bar times")
         for ts in sorted(by_ts):
             rows = by_ts[ts]
             stamp = datetime.fromtimestamp(ts, timezone.utc).strftime("%H:%M")
-            events = trader.on_cycle(rows)
+            events = trader.on_cycle(rows, bench.get(ts))
             quiet = [e for e in events if "no slot" not in e and "blocked" not in e]
             print(f"{stamp} UTC  {len(rows)} coins{f', {errors} errors' if errors else ''}  "
                   f"cash={trader.cash:.2f} equity={trader.equity():.2f} open={len(trader.positions)}")
@@ -1036,10 +1084,15 @@ def build_parser() -> argparse.ArgumentParser:
         q.add_argument("--venue", choices=sorted(VENUES), default="binanceus")
         q.add_argument("--cash", type=float, default=500.0)
         q.set_defaults(func=fn)
+        if name != "scan":
+            q.add_argument("--rule", choices=("10", "13", "13-control"), default="10",
+                           help="10: 5m bars (default); 13: 1h bars, one entry per bar, must beat BTC")
         if name == "backtest":
             q.add_argument("--days", type=int, default=30)
+            q.add_argument("--start", default="", help="fixed window start, UTC date (as pre-registered)")
+            q.add_argument("--end", default="", help="fixed window end, exclusive")
             q.add_argument("--venues", default="binanceus,kraken,coinbase,perp")
-            q.add_argument("--cache", default="data/degen", help="where the fetched 5m candles are kept")
+            q.add_argument("--cache", default="data/degen", help="where the fetched candles are kept")
             q.add_argument("-o", "--out", default="", help="write the table and verdict here")
         if name == "paper":
             q.add_argument("--state", default="degen.db")

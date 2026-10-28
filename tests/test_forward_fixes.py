@@ -271,9 +271,9 @@ class TestDegenLoop(unittest.TestCase):
             cycles = []
             real = dg.DegenTrader.on_cycle
 
-            def spy(self, rows):
+            def spy(self, rows, benchmark=None):
                 cycles.append(sorted(rows))
-                return real(self, rows)
+                return real(self, rows, benchmark)
 
             uni = [{"product": "AAA-USD", "dollar_volume": 5e6}, {"product": "BBB-USD", "dollar_volume": 5e6}]
             with mock.patch.object(cli, "_degen_universe", return_value=uni), \
