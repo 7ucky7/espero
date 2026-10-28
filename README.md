@@ -256,9 +256,15 @@ what shorts are being paid today; development against Hyperliquid runs on its te
 (`HL_NETWORK=testnet`, UI at app.hyperliquid-testnet.xyz), market data from mainnet, and nothing
 in the repo signs an order there.
 
-Scoreboard: twelve tests, two passes, both risk-construction results. No alpha has been found;
-holding less when volatility rises is the only thing that has reliably helped, and the one
-structural income tested (carry) is positive but under the bar at retail fees.
+The twelfth is #11 with the two fixes its post-mortem named, pre-registered as post-hoc: swap a
+held coin only for one paying 5 points more and only after a week, and rest maker orders on both
+legs. Swaps fall from 55 to 6, fees from 3.15% to 0.14% of equity, and the rule clears all five
+criteria: +10.9% annualised, Sharpe 1.77, +6.4% on Kraken maker fees. The pass is provisional on
+its own terms (post-hoc, and maker fills assumed at the close) and earns a 30-day forward paper
+test, not a conclusion: [research/RESULTS_CARRY2.md](research/RESULTS_CARRY2.md).
+
+Scoreboard: thirteen tests, three passes. Two are risk construction; the third is income (carry at
+maker fees) with a forward test still attached. No predictive edge has been found at any horizon.
 
 ## The numbers
 

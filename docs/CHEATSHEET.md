@@ -99,14 +99,17 @@ backtest **failed** before fees (`research/RESULTS_DEGEN.md`): use the scan as a
 ```bash
 .venv/bin/python -m espero carry scan                                   # what perp shorts are being paid right now, top 20 by OI
 .venv/bin/python research/carry.py fetch                                # funding since 2023, perp and spot candles -> research/data/carry
-.venv/bin/python research/carry.py run                                  # one replay, the five criteria, the verdict
+.venv/bin/python research/carry.py run                                  # #11: one replay, the five criteria, the verdict
+.venv/bin/python research/carry.py run2                                 # #12: swap gap + maker execution, with ablations
 .venv/bin/python -m espero hl account 0xYourAddress                    # testnet account view, read-only (or HL_WALLET_ADDRESS in .env)
 ```
 
 Short the perp, hold the same spot, collect the funding longs pay. Enter above 15% annualised on
 the trailing week, exit below 5% or after 30 days, five coins at most, 1x, half the capital on each
 leg. Rules and criteria are frozen in `research/PREREGISTRATION_CARRY.md`; the result is in
-`research/RESULTS_CARRY.md` (**FAIL**: hedge clean, fees took half the funding, regime faded after 2024).
+`research/RESULTS_CARRY.md` (**#11 FAIL**: hedge clean, fees took half the funding). #12 adds a 5-point
+swap gap, a 7-day minimum hold and maker fees and **passes, provisionally**, pending a 30-day forward
+test (`research/RESULTS_CARRY2.md`).
 Hyperliquid excludes US persons: paper only, and a pass would mean finding a venue the account can use.
 Development runs against the testnet (`HL_NETWORK=testnet` in `.env`, UI and faucet at
 app.hyperliquid-testnet.xyz); market data always comes from mainnet. Nothing signs orders.
