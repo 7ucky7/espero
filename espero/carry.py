@@ -239,9 +239,17 @@ def scan(ctxs: List[dict], top: int = 20) -> pd.DataFrame:
     return df[["coin", "mark", "funding_ann", "open_interest_m", "day_volume_m"]].reset_index(drop=True)
 
 
-def from_frames(funding: pd.DataFrame, perp: pd.DataFrame, spot: pd.DataFrame) -> Optional[CoinData]:
+def from_frames(funding: pd.DataFrame, perp: pd.DataFrame, spot: pd.DataFrame,
+                perp_from_spot_before_candles: bool = False) -> Optional[CoinData]:
     """Build CoinData from the CSV frames the fetch stage writes. Returns None
-    when the coin has less than the minimum funding history."""
+    when the coin has less than the minimum funding history.
+
+    Hyperliquid serves only its last 5000 candles per interval, so hourly perp
+    closes cover about 200 days while funding goes back to 2023. By default the
+    simulation runs only where all three series exist. With
+    `perp_from_spot_before_candles` the perp close is taken as the spot close
+    before the candles begin, which marks the basis at zero there: an
+    information-only view of the funding income, not a test of the basis risk."""
     if len(funding) < MIN_HISTORY_H:
         return None
     f = pd.Series(funding["funding"].to_numpy(),
@@ -252,4 +260,11 @@ def from_frames(funding: pd.DataFrame, perp: pd.DataFrame, spot: pd.DataFrame) -
         s = pd.Series(df["close"].to_numpy(), index=pd.to_datetime(df["time"], utc=True)).sort_index()
         return s[~s.index.duplicated()]
 
-    return CoinData(funding=f, perp=closes(perp), spot=closes(spot))
+    s = closes(spot)
+    p = closes(perp) if len(perp) else pd.Series(dtype=float)
+    if perp_from_spot_before_candles:
+        before = s[s.index < p.index.min()] if len(p) else s
+        p = pd.concat([before, p]).sort_index()
+    # the simulation only trusts hours where every series has a value
+    common = f.index.intersection(p.index).intersection(s.index)
+    return CoinData(funding=f.reindex(common), perp=p.reindex(common), spot=s.reindex(common))

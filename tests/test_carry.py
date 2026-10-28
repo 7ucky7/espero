@@ -129,6 +129,20 @@ class TestVerdict(unittest.TestCase):
         self.assertEqual(list(df["coin"]), ["A"])
         self.assertAlmostEqual(df["funding_ann"].iloc[0], 1e-5 * 8760)
 
+    def test_from_frames_trims_to_common_hours_unless_extended(self):
+        n = carry.MIN_HISTORY_H + 100
+        ts = [1_700_000_000 + 3600 * k for k in range(n)]
+        iso = [pd.Timestamp(t, unit="s", tz="UTC").isoformat() for t in ts]
+        f = pd.DataFrame({"ts": ts, "funding": 1e-5})
+        spot = pd.DataFrame({"time": iso, "close": 100.0})
+        perp = pd.DataFrame({"time": iso[-50:], "close": 101.0})
+        strict = carry.from_frames(f, perp, spot)
+        self.assertEqual(len(strict.funding), 50)
+        ext = carry.from_frames(f, perp, spot, perp_from_spot_before_candles=True)
+        self.assertEqual(len(ext.funding), n)
+        self.assertEqual(ext.perp.iloc[0], 100.0)       # basis zero before the candles
+        self.assertEqual(ext.perp.iloc[-1], 101.0)
+
     def test_from_frames_needs_ninety_days(self):
         f = pd.DataFrame({"ts": range(0, 3600 * 100, 3600), "funding": 0.0})
         self.assertIsNone(carry.from_frames(f, pd.DataFrame(), pd.DataFrame()))

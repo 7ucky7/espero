@@ -24,6 +24,7 @@ from espero import hyperliquid as hl  # noqa: E402
 DATA = ROOT / "research" / "data" / "carry"
 TOP = 20
 HL_START_MS = 1_683_000_000_000      # May 2023, when Hyperliquid funding history begins
+CANDLE_HOURS = hl.CANDLE_LIMIT       # the venue serves at most the last 5000 hourly candles
 
 
 def fetch() -> None:
@@ -51,7 +52,7 @@ def fetch() -> None:
             print(f"{coin}: no funding history")
             continue
         start_ms = int(f["ts"].iloc[0]) * 1000
-        p = hl.candles(coin, "1h", start_ms)
+        p = hl.candles(coin, "1h", max(start_ms, int(now.timestamp() * 1000) - CANDLE_HOURS * 3600_000))
         p.to_csv(DATA / f"perp_{coin}.csv", index=False)
         days = (now - dt.datetime.fromtimestamp(start_ms // 1000, dt.timezone.utc)).days + 1
         s = data.fetch(f"{coin}-USD", days, 3600)
@@ -59,14 +60,15 @@ def fetch() -> None:
         print(f"{coin}: funding {len(f)}h  perp {len(p)}h  spot {len(s)}h  ({time.time() - t0:.0f}s)")
 
 
-def load() -> dict:
+def load(extended: bool = False) -> dict:
     uni = json.loads((DATA / "universe.json").read_text())["coins"]
     coins = {}
     for coin in uni:
         try:
             cd = carry.from_frames(pd.read_csv(DATA / f"funding_{coin}.csv"),
                                    pd.read_csv(DATA / f"perp_{coin}.csv"),
-                                   pd.read_csv(DATA / f"spot_{coin}.csv"))
+                                   pd.read_csv(DATA / f"spot_{coin}.csv"),
+                                   perp_from_spot_before_candles=extended)
         except FileNotFoundError:
             cd = None
         if cd is None:
@@ -77,7 +79,14 @@ def load() -> dict:
 
 
 def run() -> None:
-    coins = load()
+    print("== primary: hours where funding, perp and spot all exist (the criteria are judged here)")
+    report(load())
+    print("\n\n== extended, for information only: full funding history, basis unmarked before the\n"
+          "== venue's hourly candles begin (perp price taken as spot there). Not a criterion.")
+    report(load(extended=True))
+
+
+def report(coins: dict) -> None:
     m = carry.evaluate(coins, initial=1.0)
     res = m["result"]
     idx = res.equity.dropna().index
