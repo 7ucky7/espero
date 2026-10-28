@@ -1,0 +1,66 @@
+HYPE: excluded (under 90 days with funding, perp and spot)
+== #14 primary: before 2026-04-02, #12's rule, maker costs, Kraken perp 2 bps (criteria judged here)
+
+17 coins, 2025-10-15 -> 2026-04-01, 4043 hours
+trades 6  hours in position 909  funding received +0.0083  paid 0.0030  fees 0.0006  final equity 1.0000
+
+criterion                                   required    actual  met
+net annualised return on equity                 > 8%     -0.0%  NO
+max drawdown of equity                          < 5%      2.5%  yes
+Sharpe (hourly, annualised)                    > 1.5      0.02  NO
+funding paid / received                        < 25%       36%  NO
+net annualised return, Kraken spot fees         > 4%     -1.7%  NO
+
+Verdict: FAIL
+(info, not a criterion) Sharpe on daily closes: -0.01
+
+per coin:
+      trades  hours  funding   basis    fees     pnl
+coin                                                
+NEAR       1    170  +0.0009 -0.0022 +0.0001 -0.0013
+SUI        1    173  +0.0037 -0.0043 +0.0002 -0.0008
+BNB        1    131  +0.0001 -0.0000 +0.0000 -0.0000
+UNI        1    170  +0.0010 -0.0009 +0.0001 +0.0000
+AAVE       1    169  +0.0003 +0.0005 +0.0000 +0.0007
+ZEC        1     96  -0.0007 +0.0022 +0.0002 +0.0014
+
+exit reasons: {'funding_low': 6}
+funding / basis / fees over all trades: +0.0053 / -0.0047 / 0.0006
+
+by year:
+2025   -0.0%
+2026   +0.0%
+
+
+== reported: same window, taker costs (Kraken perp 5 bps + 5 bps slippage)
+
+17 coins, 2025-10-15 -> 2026-04-01, 4043 hours
+trades 6  hours in position 909  funding received +0.0083  paid 0.0030  fees 0.0053  final equity 0.9953
+
+criterion                                   required    actual  met
+net annualised return on equity                 > 8%     -1.0%  NO
+max drawdown of equity                          < 5%      2.5%  yes
+Sharpe (hourly, annualised)                    > 1.5     -0.17  NO
+funding paid / received                        < 25%       36%  NO
+net annualised return, Kraken spot fees         > 4%     -3.6%  NO
+
+Verdict: FAIL
+(info, not a criterion) Sharpe on daily closes: -1.50
+exit reasons: {'funding_low': 6}
+
+
+== reported, not a criterion: 2026-04-02 -> fetch, the months #12 ran on, maker costs
+
+18 coins, 2026-04-02 -> 2026-10-28, 5017 hours
+trades 26  hours in position 6989  funding received +0.0497  paid 0.0196  fees 0.0028  final equity 1.0288
+
+criterion                                   required    actual  met
+net annualised return on equity                 > 8%     +5.1%  NO
+max drawdown of equity                          < 5%      0.7%  yes
+Sharpe (hourly, annualised)                    > 1.5      0.99  NO
+funding paid / received                        < 25%       40%  NO
+net annualised return, Kraken spot fees         > 4%     -1.2%  NO
+
+Verdict: FAIL
+(info, not a criterion) Sharpe on daily closes: 3.51
+exit reasons: {'funding_low': 20, 'time': 3, 'end': 3}

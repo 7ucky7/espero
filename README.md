@@ -273,7 +273,13 @@ did no better. FAIL: [research/RESULTS_DEGEN2.md](research/RESULTS_DEGEN2.md). T
 replay-clock bug was found in #10's backtest; its FAIL stands, but its gross was about break-even,
 not negative ([research/ERRATA.md](research/ERRATA.md)).
 
-Scoreboard: fourteen tests, three passes. Two are risk construction; the third is income (carry at
+The fourteenth ran #12's carry rule, unchanged, on a second venue, Kraken Futures, over the
+months before #12's window (2025-10 → 2026-04): six trades, flat, FAIL on four criteria. Kraken's
+funding rarely reaches the 15% bar, and when it did the basis took the funding back. In #12's own
+months it makes +5.1% a year against #12's +10.9% on Hyperliquid. #12's edge is recorded as
+Hyperliquid-only, pending its forward test: [research/RESULTS_CARRY3.md](research/RESULTS_CARRY3.md).
+
+Scoreboard: fifteen tests, three passes. Two are risk construction; the third is income (carry at
 maker fees) with a forward test still attached. No predictive edge has been found at any horizon.
 
 ## The numbers
