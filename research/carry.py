@@ -1,7 +1,8 @@
-"""Hypothesis #11 — perp funding carry, as pre-registered.
+"""Hypotheses #11 and #12 — perp funding carry, as pre-registered.
 
     python research/carry.py fetch     # universe, funding, perp and spot candles -> research/data/carry
-    python research/carry.py run       # one replay, prints the table and the verdict
+    python research/carry.py run       # #11: one replay, prints the table and the verdict
+    python research/carry.py run2      # #12: swap gap + maker execution, with the two ablations
 
 Rule and criteria: research/PREREGISTRATION_CARRY.md. Engine: espero/carry.py.
 """
@@ -89,8 +90,20 @@ def run() -> None:
     report(load(extended=True))
 
 
-def report(coins: dict) -> None:
-    m = carry.evaluate(coins, initial=1.0)
+def run2() -> None:
+    coins = load()
+    print("== #12 primary: 5-point swap gap, 7-day minimum hold, maker execution (criteria judged here)")
+    report(coins, maker=True, swap_gap=carry.SWAP_GAP, min_hold=carry.MIN_HOLD_H)
+    print("\n\n== ablation A: #12 rule, #11 taker costs (what the gap alone is worth)")
+    report(coins, maker=False, swap_gap=carry.SWAP_GAP, min_hold=carry.MIN_HOLD_H, brief=True)
+    print("\n\n== ablation B: #11 rule, maker costs (what execution alone is worth)")
+    report(coins, maker=True, brief=True)
+    print("\n\n== reference: #11 as recorded")
+    report(coins, brief=True)
+
+
+def report(coins: dict, brief: bool = False, **kw) -> None:
+    m = carry.evaluate(coins, initial=1.0, **kw)
     res = m["result"]
     idx = res.equity.dropna().index
     print(f"\n{len(coins)} coins, {idx[0]:%Y-%m-%d} -> {idx[-1]:%Y-%m-%d}, {m['hours']} hours")
@@ -104,6 +117,10 @@ def report(coins: dict) -> None:
     for r, a, f in zip(rows, actual, fmt):
         print(f"{r['criterion']:<42}{r['required']:>10}{f.format(a):>10}  {'yes' if r['met'] else 'NO'}")
     print(f"\nVerdict: {'PASS' if all(r['met'] for r in rows) else 'FAIL'}")
+    if brief:
+        t = pd.DataFrame(res.trades)
+        print("exit reasons:", t["reason"].value_counts().to_dict() if len(t) else {})
+        return
 
     if res.trades:
         t = pd.DataFrame(res.trades)
@@ -123,4 +140,4 @@ def report(coins: dict) -> None:
 
 
 if __name__ == "__main__":
-    {"fetch": fetch, "run": run}[sys.argv[1]]()
+    {"fetch": fetch, "run": run, "run2": run2}[sys.argv[1]]()

@@ -70,6 +70,52 @@ class TestRule(unittest.TestCase):
         self.assertEqual(opened, {"C3", "C4", "C5", "C6", "C7"})
 
 
+class TestSwapHysteresis(unittest.TestCase):
+    """#12: a held coin is swapped only for a candidate paying `swap_gap` more, after `min_hold`."""
+
+    def two_coins(self, late_rate: float):
+        idx = hours(1200)
+        a = pd.Series(HOURLY_20PCT, index=idx)                 # 20% from the start
+        b = pd.Series(0.0, index=idx)
+        b.iloc[400:] = late_rate                               # B starts paying later
+        flat = pd.Series(100.0, index=idx)
+        return {"A": carry.CoinData(a, flat, flat), "B": carry.CoinData(b, flat, flat)}
+
+    def test_eleven_swaps_for_any_higher_rate(self):
+        res = carry.simulate(self.two_coins(0.22 / carry.HOURS_PER_YEAR), max_coins=1)
+        self.assertIn("ranked_out", [t["reason"] for t in res.trades])
+
+    def test_twelve_needs_the_gap(self):
+        # B pays 22%: 2 points above A, under the 5-point gap -> A is kept
+        res = carry.simulate(self.two_coins(0.22 / carry.HOURS_PER_YEAR), max_coins=1,
+                             swap_gap=carry.SWAP_GAP, min_hold=carry.MIN_HOLD_H)
+        self.assertNotIn("ranked_out", [t["reason"] for t in res.trades])
+        # B pays 40%: clears the gap -> swap, but not before A is a week old
+        res = carry.simulate(self.two_coins(0.40 / carry.HOURS_PER_YEAR), max_coins=1,
+                             swap_gap=carry.SWAP_GAP, min_hold=carry.MIN_HOLD_H)
+        out = [t for t in res.trades if t["reason"] == "ranked_out"]
+        self.assertEqual(len(out), 1)
+        self.assertGreaterEqual(out[0]["hours"], carry.MIN_HOLD_H)
+
+    def test_min_hold_alone_delays_the_swap(self):
+        coins = self.two_coins(0.40 / carry.HOURS_PER_YEAR)
+        fast = carry.simulate(coins, max_coins=1)
+        slow = carry.simulate(coins, max_coins=1, min_hold=1000)
+        self.assertEqual([t["reason"] for t in fast.trades][0], "ranked_out")
+        self.assertNotIn("ranked_out", [t["reason"] for t in slow.trades])
+
+    def test_free_slot_needs_no_gap(self):
+        res = carry.simulate(self.two_coins(0.16 / carry.HOURS_PER_YEAR), max_coins=2,
+                             swap_gap=carry.SWAP_GAP, min_hold=carry.MIN_HOLD_H)
+        self.assertEqual({t["coin"] for t in res.trades}, {"A", "B"})
+
+    def test_maker_costs_are_three_bps_a_round_trip(self):
+        coins = {"A": coin(600, HOURLY_20PCT)}
+        m = carry.evaluate(coins, maker=True)
+        self.assertAlmostEqual(m["fees"], 0.5 * 2 * (0.0 + carry.MAKER["perp"]), places=9)
+        self.assertLess(m["fees"], carry.evaluate(coins)["fees"])
+
+
 class TestMoney(unittest.TestCase):
     def test_hedged_position_earns_funding_minus_costs_only(self):
         # flat prices, constant 20% funding, one coin, held once (under the 30-day stop)

@@ -28,6 +28,12 @@ SPOT_FEES = {"binanceus": 0.0002, "kraken": 0.0040}
 PERP_FEE = 0.00045          # Hyperliquid base-tier taker
 SLIPPAGE = 0.0005           # per leg per side
 
+# #12 (research/PREREGISTRATION_CARRY2.md): swap hysteresis and maker execution.
+# Defaults of 0 reproduce #11 exactly.
+SWAP_GAP = 0.05             # candidate must pay 5 points more than the weakest held coin
+MIN_HOLD_H = 7 * 24         # and the held coin must be at least a week old to be swapped
+MAKER = {"spot": {"binanceus": 0.0, "kraken": 0.0025}, "perp": 0.00015, "slippage": 0.0}
+
 CRITERIA = (
     ("net annualised return on equity", "> 8%", lambda m: m["ann_return"] > 0.08),
     ("max drawdown of equity", "< 5%", lambda m: m["max_dd"] < 0.05),
@@ -91,7 +97,7 @@ def align(coins: Dict[str, CoinData]):
 def simulate(coins: Dict[str, CoinData], spot_fee: float = SPOT_FEES["binanceus"],
              perp_fee: float = PERP_FEE, slippage: float = SLIPPAGE, initial: float = 1.0,
              enter: float = ENTER_ANN, exit_: float = EXIT_ANN, max_coins: int = MAX_COINS,
-             max_hold: int = MAX_HOLD_H) -> Result:
+             max_hold: int = MAX_HOLD_H, swap_gap: float = 0.0, min_hold: int = 0) -> Result:
     idx, fund, perp, spot = align(coins)
     f_ann = annualised(fund)
     names = list(coins)
@@ -160,11 +166,22 @@ def simulate(coins: Dict[str, CoinData], spot_fee: float = SPOT_FEES["binanceus"
         cands = [n for n in names if n not in held and not np.isnan(A[i, col[n]])
                  and A[i, col[n]] > enter and not np.isnan(P[i, col[n]]) and not np.isnan(S[i, col[n]])]
         if cands:
-            ranked = sorted(list(held) + cands, key=lambda n: -A[i, col[n]])[:max_coins]
-            for name in list(held):
-                if name not in ranked:
-                    close(held[name], i, "ranked_out")
-                    del held[name]
+            cands.sort(key=lambda n: -A[i, col[n]])
+            ranked = list(held)
+            free = max_coins - len(ranked)
+            ranked += cands[:free]          # a free slot takes any qualifying candidate
+            # swaps: the weakest held coin goes only if the candidate clears the gap and
+            # the held coin has been held long enough (#12; gap 0 / hold 0 is #11)
+            for cand in cands[free:]:
+                swappable = [n for n in ranked if n in held and i - held[n].entry_i >= min_hold]
+                if not swappable:
+                    break
+                weakest = min(swappable, key=lambda n: A[i, col[n]])
+                if A[i, col[cand]] - A[i, col[weakest]] < max(swap_gap, 1e-12):
+                    break
+                close(held[weakest], i, "ranked_out")
+                del held[weakest]
+                ranked[ranked.index(weakest)] = cand
             equity_now = mark(i)
             n_slots = len(ranked)
             for name in ranked:
@@ -212,10 +229,16 @@ def metrics(res: Result) -> dict:
     }
 
 
-def evaluate(coins: Dict[str, CoinData], initial: float = 1.0) -> dict:
-    """Both runs the criteria need: Binance.US spot fees and Kraken spot fees."""
-    base = simulate(coins, spot_fee=SPOT_FEES["binanceus"], initial=initial)
-    kraken = simulate(coins, spot_fee=SPOT_FEES["kraken"], initial=initial)
+def evaluate(coins: Dict[str, CoinData], initial: float = 1.0, maker: bool = False,
+             swap_gap: float = 0.0, min_hold: int = 0) -> dict:
+    """Both runs the criteria need: Binance.US spot fees and Kraken spot fees.
+    `maker=True` is #12's execution assumption (filled at the close, no slippage)."""
+    costs = (dict(perp_fee=MAKER["perp"], slippage=MAKER["slippage"]) if maker
+             else dict(perp_fee=PERP_FEE, slippage=SLIPPAGE))
+    spot = MAKER["spot"] if maker else SPOT_FEES
+    rule = dict(swap_gap=swap_gap, min_hold=min_hold, initial=initial)
+    base = simulate(coins, spot_fee=spot["binanceus"], **costs, **rule)
+    kraken = simulate(coins, spot_fee=spot["kraken"], **costs, **rule)
     m = metrics(base)
     m["ann_return_kraken"] = metrics(kraken)["ann_return"]
     m["result"] = base
