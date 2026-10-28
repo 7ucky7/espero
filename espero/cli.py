@@ -269,6 +269,87 @@ def _cmd_carry_scan(args: argparse.Namespace) -> int:
           "Idle market = 10.95%.")
     return 0
 
+
+def _cmd_carry_paper(args: argparse.Namespace) -> int:
+    """#12 forward paper book on live Hyperliquid funding. One loop per journal."""
+    from .lock import JournalBusy, JournalLock
+    try:
+        with JournalLock(args.state):
+            return _carry_loop(args)
+    except JournalBusy as exc:
+        print(exc)
+        return 3
+
+
+def _carry_loop(args: argparse.Namespace) -> int:
+    from . import carry_paper as cp
+
+    book = cp.CarryBook(args.state, costs=args.costs, initial=args.cash)
+    c = book.c
+    print(f"carry paper book ({args.costs}): spot {1e4 * c['spot_fee']:.1f} bps, perp {1e4 * c['perp_fee']:.2f} bps, "
+          f"slippage {1e4 * c['slippage']:.1f} bps per leg per side; swap gap {book.swap_gap:.0%}, "
+          f"min hold {book.min_hold // 24}d; cash {book.cash:.2f}, {len(book.open_positions())} open -> {args.state}")
+    state = {"universe": [], "refreshed": 0.0}
+
+    def step() -> None:
+        if time.time() - state["refreshed"] > 86400:
+            state["universe"] = cp.universe(args.top)
+            state["refreshed"] = time.time()
+            print(f"universe ({len(state['universe'])}): {' '.join(state['universe'])}")
+        ts, rows = cp.settled_rows(state["universe"])
+        if ts is None:
+            print("no settled hour from any coin; retrying")
+            return
+        last = book.last_ts()
+        if last is not None and ts <= last:
+            nxt = datetime.fromtimestamp(ts + 3600, timezone.utc).strftime("%H:%M")
+            print(f"hour {cp.stamp(ts)} already booked  ·  next settlement {nxt} UTC")
+            return
+        events = book.on_hour(ts, rows)
+        paying = sum(1 for r in rows.values() if r.f_ann > book.enter)
+        print(f"{cp.stamp(ts)} UTC  {len(rows)} coins, {paying} above {book.enter:.0%}  "
+              f"cash={book.cash:.2f} equity={book.equity(rows):.2f} open={len(book.open_positions())}")
+        for e in events:
+            print("  ", e)
+
+    if args.loop:
+        print("ctrl-c to stop; a restart resumes the open hedges")
+        try:
+            while True:
+                step()
+                time.sleep(args.interval)
+        except KeyboardInterrupt:
+            print("stopped")
+        finally:
+            book.close()
+        return 0
+    step()
+    book.close()
+    return 0
+
+
+def _cmd_carry_status(args: argparse.Namespace) -> int:
+    from . import carry_paper as cp
+
+    book = cp.CarryBook(args.state, costs=args.costs) if args.costs else None
+    if book is None:
+        import sqlite3
+        costs = sqlite3.connect(args.state).execute("SELECT value FROM meta WHERE key='costs'").fetchone()
+        book = cp.CarryBook(args.state, costs=costs[0] if costs else "maker")
+    s = book.summary()
+    span = f"{cp.stamp(s['first_ts'])} -> {cp.stamp(s['last_ts'])}" if s["first_ts"] else "no hours yet"
+    print(f"{args.state}  ({s['costs']} costs)  {span}  {s['hours']} hours")
+    print(f"equity {s['equity']:.2f}  pnl {s['pnl']:+.2f} ({s['pnl'] / s['initial']:+.2%})  max dd {s['max_dd']:.2%}  "
+          f"funding {s['funding']:+.2f}  basis {s['basis']:+.2f}  fees {s['fees']:.2f}  "
+          f"open {s['open']}  closed {s['closed']}")
+    for p in book.open_positions():
+        print(f"  open  {p['coin']:<6} since {cp.stamp(p['entry_ts'])}  {p['qty_spot'] * p['spot_entry']:.2f} a leg  "
+              f"funding {p['funding']:+.2f}")
+    for r in book.closed_positions()[-args.last:]:
+        print(f"  closed {r['coin']:<6} {cp.stamp(r['entry_ts'])} -> {cp.stamp(r['exit_ts'])}  {r['reason']:<12}"
+              f"pnl {r['pnl']:+.2f}")
+    book.close()
+    return 0
 def _cmd_degen_scan(args: argparse.Namespace) -> int:
     from .degen import scan
 
@@ -743,6 +824,19 @@ def build_parser() -> argparse.ArgumentParser:
     q = crs.add_parser("scan", help="top perps by open interest with annualised hourly funding (no writes)")
     q.add_argument("--top", type=int, default=20)
     q.set_defaults(func=_cmd_carry_scan)
+    q = crs.add_parser("paper", help="#12 forward paper book on live hourly funding (one loop per journal)")
+    q.add_argument("--costs", choices=("taker", "maker"), required=True)
+    q.add_argument("--state", required=True, help="e.g. carry-maker.db")
+    q.add_argument("--cash", type=float, default=500.0)
+    q.add_argument("--top", type=int, default=20)
+    q.add_argument("--loop", action="store_true")
+    q.add_argument("--interval", type=int, default=300, help="seconds between checks for a new settled hour")
+    q.set_defaults(func=_cmd_carry_paper)
+    q = crs.add_parser("status", help="summary of a carry paper book")
+    q.add_argument("--state", required=True)
+    q.add_argument("--costs", choices=("taker", "maker"))
+    q.add_argument("--last", type=int, default=10)
+    q.set_defaults(func=_cmd_carry_status)
 
     hp = sub.add_parser("hl", help="Hyperliquid: read-only account view (testnet by default; nothing is signed)")
     hps = hp.add_subparsers(dest="hl_cmd", required=True)
