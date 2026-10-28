@@ -220,6 +220,24 @@ def _degen_table(rows: list, venue: str) -> None:
             f"so the ATR column is the edge budget each stop risks[/grey58]")
 
 
+
+def _cmd_carry_scan(args: argparse.Namespace) -> int:
+    """What Hyperliquid perps are paying shorts right now (#11). Read-only, no key."""
+    from . import carry
+    from . import hyperliquid as hl
+
+    df = carry.scan(hl.asset_contexts(), top=args.top)
+    print(f"{'coin':<8}{'mark':>12}{'funding ann':>13}{'OI $M':>9}{'24h $M':>9}  state")
+    for r in df.itertuples():
+        state = ("ENTER" if r.funding_ann > carry.ENTER_ANN else
+                 "hold" if r.funding_ann >= carry.EXIT_ANN else "exit")
+        print(f"{r.coin:<8}{r.mark:>12,.4g}{r.funding_ann:>+12.1%}{r.open_interest_m:>9,.0f}"
+              f"{r.day_volume_m:>9,.0f}  {state}")
+    print(f"\nhourly funding x 8760; the rule enters above {carry.ENTER_ANN:.0%} on the trailing-week mean "
+          f"and exits below {carry.EXIT_ANN:.0%}. This is the spot rate, not the trailing mean. "
+          "Idle market = 10.95%.")
+    return 0
+
 def _cmd_degen_scan(args: argparse.Namespace) -> int:
     from .degen import scan
 
@@ -688,6 +706,12 @@ def build_parser() -> argparse.ArgumentParser:
     sc.add_argument("--state-dir", default=".")
     sc.add_argument("--once", action="store_true", help="print the table and exit")
     sc.set_defaults(func=_cmd_scan)
+
+    cr = sub.add_parser("carry", help="perp funding carry: what shorts are being paid on Hyperliquid (#11)")
+    crs = cr.add_subparsers(dest="carry_cmd", required=True)
+    q = crs.add_parser("scan", help="top perps by open interest with annualised hourly funding (no writes)")
+    q.add_argument("--top", type=int, default=20)
+    q.set_defaults(func=_cmd_carry_scan)
 
     dg = sub.add_parser("degen", help="打板: scan altcoins breaking out on volume, backtest it, paper trade it (#10)")
     dgs = dg.add_subparsers(dest="degen_cmd", required=True)

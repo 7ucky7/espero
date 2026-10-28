@@ -30,6 +30,7 @@ class PaperConfig:
     initial: float = 500.0
     fee: float = 0.0          # per side; 0.0002 hyperliquid-ish, 0.006 coinbase
     funding_8h: float = 0.0   # perps: fraction of notional a long pays per 8h period
+    funding_period: int = FUNDING_PERIOD_S   # how often it settles
     slippage: float = 0.0005  # per side
     warmup: int = 50
     stop_pct: float = 0.05
@@ -41,18 +42,22 @@ class PaperConfig:
         """Taker fee and funding from the venue table. The paper loop fills at the
         next open, which is a market order, so it pays the taker side."""
         v = VENUES[venue]
-        return cls(fee=v.taker_bps / 1e4, funding_8h=v.funding_bps_8h / 1e4, **kw)
+        return cls(fee=v.taker_bps / 1e4, funding_8h=v.funding_bps_8h / 1e4,
+                   funding_period=v.funding_period_s, **kw)
 
 
-def funding_due(prev_ts: int, ts: int, entry_ts: int, notional: float, rate: float) -> float:
-    """Funding owed for each 8h settlement in (prev_ts, ts] that falls after
-    `entry_ts`. Longs pay a positive rate. Shared by every paper book that can
-    hold a perp."""
+def funding_due(prev_ts: int, ts: int, entry_ts: int, notional: float, rate: float,
+                period: int = FUNDING_PERIOD_S) -> float:
+    """Funding owed for each settlement in (prev_ts, ts] that falls after
+    `entry_ts`. `rate` is the fraction of notional per 8h; `period` is how often
+    the venue settles (8h on most, hourly on Hyperliquid), and the 8h rate is
+    pro-rated to it. Longs pay a positive rate. Shared by every paper book that
+    can hold a perp."""
     if not rate:
         return 0.0
-    first = (prev_ts // FUNDING_PERIOD_S + 1) * FUNDING_PERIOD_S
-    n = sum(1 for t in range(first, ts + 1, FUNDING_PERIOD_S) if t > entry_ts)
-    return n * notional * rate
+    first = (prev_ts // period + 1) * period
+    n = sum(1 for t in range(first, ts + 1, period) if t > entry_ts)
+    return n * notional * rate * period / FUNDING_PERIOD_S
 
 
 class PaperTrader:
@@ -153,7 +158,8 @@ class PaperTrader:
         """Charge funding for each settlement time in (prev_ts, ts] that falls
         after the position was opened. Longs pay a positive rate."""
         pos = self.position
-        paid = funding_due(prev_ts, ts, pos.entry_ts, pos.size * price, self.cfg.funding_8h)
+        paid = funding_due(prev_ts, ts, pos.entry_ts, pos.size * price, self.cfg.funding_8h,
+                           self.cfg.funding_period)
         if not paid:
             return 0.0
         self.cash -= paid

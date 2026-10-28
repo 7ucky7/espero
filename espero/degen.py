@@ -35,7 +35,7 @@ from .journal import Journal, PendingOrder, Position
 from .ops import ts_zscore
 from .paper import funding_due
 from .risk import RiskLimits, check_buy
-from .venues import VENUES
+from .venues import FUNDING_PERIOD_S, VENUES
 
 log = logging.getLogger(__name__)
 
@@ -144,6 +144,7 @@ class DegenConfig:
     initial: float = 500.0
     fee: float = 0.0002         # per side, taker
     funding_8h: float = 0.0
+    funding_period: int = FUNDING_PERIOD_S
     slippage: float = 0.0005
     granularity: int = GRANULARITY
     min_dollar_volume: float = MIN_DOLLAR_VOLUME
@@ -152,7 +153,8 @@ class DegenConfig:
     @classmethod
     def for_venue(cls, venue: str, **kw) -> "DegenConfig":
         v = VENUES[venue]
-        return cls(venue=venue, fee=v.taker_bps / 1e4, funding_8h=v.funding_bps_8h / 1e4, **kw)
+        return cls(venue=venue, fee=v.taker_bps / 1e4, funding_8h=v.funding_bps_8h / 1e4,
+                   funding_period=v.funding_period_s, **kw)
 
 
 class DegenTrader:
@@ -199,7 +201,7 @@ class DegenTrader:
             pos = self.positions.get(product)
             if pos is not None and self.cfg.funding_8h and bar["prev_ts"] is not None:
                 paid = funding_due(int(bar["prev_ts"]), bts, pos.entry_ts, pos.size * float(bar["close"]),
-                                   self.cfg.funding_8h)
+                                   self.cfg.funding_8h, self.cfg.funding_period)
                 if paid:
                     self.cash -= paid
                     pos.entry_fee += paid

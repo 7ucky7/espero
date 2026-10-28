@@ -21,6 +21,7 @@ class Venue:
     asset_class: str = "crypto"   # "crypto" or "equity"
     kind: str = "spot"            # "spot" or "perp"
     funding_bps_8h: float = 0.0   # perps: what a long pays every 8h (assumed constant)
+    funding_period_s: int = 8 * 3600   # how often funding settles; Hyperliquid is hourly
 
 
 FUNDING_PERIOD_S = 8 * 3600       # 00:00, 08:00, 16:00 UTC on most venues
@@ -45,6 +46,13 @@ VENUES: Dict[str, Venue] = {
     "perp": Venue("Perp (generic, base tier)", maker_bps=2.0, taker_bps=5.0,
                   symbol="{base}-PERP", min_notional=5.0, api="",
                   kind="perp", funding_bps_8h=1.0),
+    # Hyperliquid base tier (no staking discount, no volume tier). Funding settles
+    # hourly and the live rate is quoted per hour by the `info` endpoint; 3 bps per
+    # 8h is the venue's idle-market baseline (0.01% per 8h ≈ 0.00125% per hour).
+    # Hyperliquid excludes US persons from trading; this row exists for paper books.
+    "hyperliquid": Venue("Hyperliquid (base tier)", maker_bps=1.5, taker_bps=4.5,
+                         symbol="{base}", min_notional=10.0, api="",
+                         kind="perp", funding_bps_8h=3.0, funding_period_s=3600),
 }
 
 
