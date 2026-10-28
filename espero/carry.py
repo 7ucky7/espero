@@ -250,11 +250,14 @@ def metrics(res: Result) -> dict:
 
 
 def evaluate(coins: Dict[str, CoinData], initial: float = 1.0, maker: bool = False,
-             swap_gap: float = 0.0, min_hold: int = 0) -> dict:
+             swap_gap: float = 0.0, min_hold: int = 0, perp_fee: Optional[float] = None) -> dict:
     """Both runs the criteria need: Binance.US spot fees and Kraken spot fees.
-    `maker=True` is #12's execution assumption (filled at the close, no slippage)."""
+    `maker=True` is #12's execution assumption (filled at the close, no slippage).
+    `perp_fee` replaces Hyperliquid's perp fee for another venue (#14)."""
     costs = (dict(perp_fee=MAKER["perp"], slippage=MAKER["slippage"]) if maker
              else dict(perp_fee=PERP_FEE, slippage=SLIPPAGE))
+    if perp_fee is not None:
+        costs["perp_fee"] = perp_fee
     spot = MAKER["spot"] if maker else SPOT_FEES
     rule = dict(swap_gap=swap_gap, min_hold=min_hold, initial=initial)
     base = simulate(coins, spot_fee=spot["binanceus"], **costs, **rule)
