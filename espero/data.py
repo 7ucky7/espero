@@ -160,6 +160,14 @@ def fetch(product: str, days: int, granularity: int = 86400) -> pd.DataFrame:
     )
 
 
+def unix_seconds(stamps) -> pd.Series:
+    """Unix seconds from datetimes or ISO strings, whatever resolution pandas
+    parsed them at. `astype("int64") // 10**9` assumes nanoseconds; pandas 3
+    parses these strings to microseconds, which made every such ts 1000x small."""
+    t = pd.to_datetime(pd.Series(stamps), utc=True)
+    return ((t - pd.Timestamp(0, tz="UTC")) // pd.Timedelta(seconds=1)).astype("int64")
+
+
 def save(df: pd.DataFrame, path: Path) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -216,7 +224,7 @@ def fred_series(series_id: str) -> pd.DataFrame:
         return pd.DataFrame(columns=["dt", "open", "high", "low", "close", "volume"])
     df["open"] = df["high"] = df["low"] = df["close"]
     df["volume"] = 0.0
-    df["ts"] = (df["dt"].astype("int64") // 1_000_000_000).astype(int)
+    df["ts"] = unix_seconds(df["dt"]).to_numpy()
     return df[["dt", "ts", "open", "high", "low", "close", "volume"]].sort_values("dt").reset_index(drop=True)
 
 

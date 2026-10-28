@@ -511,7 +511,11 @@ def _degen_frame(p: str, days: int, gran: int, cache: Path, label: str) -> pd.Da
         df = data.fetch(p, days, gran)
         data.save(df, path)
     if "ts" not in df:
-        df["ts"] = (pd.to_datetime(df["time"], utc=True).astype("int64") // 10**9)
+        df["ts"] = data.unix_seconds(df["time"]).to_numpy()
+    step = df["ts"].diff().median() if len(df) > 2 else gran
+    if step != gran:
+        # a ts in the wrong unit replays a wrong clock without any error (#10, see ERRATA)
+        raise ValueError(f"bars are {step}s apart, expected {gran}s")
     return df
 
 

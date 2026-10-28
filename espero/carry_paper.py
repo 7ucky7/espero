@@ -353,7 +353,8 @@ def _close_at(df: pd.DataFrame, ts: int) -> float:
     if "ts" in df.columns:
         t = df["ts"].astype(int)
     else:
-        t = pd.to_datetime(df["time"], utc=True).astype("int64") // 10**9
+        from .data import unix_seconds
+        t = pd.Series(unix_seconds(df["time"]).to_numpy(), index=df.index)
     ok = df[t <= ts]
     return float(ok["close"].iloc[-1]) if len(ok) else float("nan")
 

@@ -97,3 +97,13 @@ class TestYahooCache(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestUnixSeconds(unittest.TestCase):
+    def test_same_seconds_at_any_parse_resolution(self):
+        import pandas as pd
+        iso = ["2026-03-30T00:00:00+00:00", "2026-03-30T01:00:00+00:00"]
+        self.assertEqual(data.unix_seconds(iso).tolist(), [1774828800, 1774832400])
+        for unit in ("s", "ms", "us", "ns"):
+            t = pd.to_datetime(pd.Series(iso), utc=True).astype(f"datetime64[{unit}, UTC]")
+            self.assertEqual(data.unix_seconds(t).tolist(), [1774828800, 1774832400], unit)
