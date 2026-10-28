@@ -96,3 +96,7 @@ points here. Numbers below were reproduced from cached data during the 2026-10-2
 - **#12 carry books**, from 2026-10-28 about 02:25 UTC: the loops now backfill missed settled
   hours (up to 72 h), always fetch held coins, drop rows with missing prices and survive failed
   steps. No rule parameter changed; what the books record changed from this time.
+- **#13 forward book** (`degen-1h.db`), started 2026-10-28, first bar 05:00 UTC, rule `13` on
+  Binance.US fees, polling every 5 minutes. Registered 60 days (to 2026-12-27; to 30 trades or
+  2027-02-25 at the latest if fewer). Started after the backtest had already failed, to record
+  whether the live period agrees.
