@@ -261,7 +261,9 @@ held coin only for one paying 5 points more and only after a week, and rest make
 legs. Swaps fall from 55 to 6, fees from 3.15% to 0.14% of equity, and the rule clears all five
 criteria: +10.9% annualised, Sharpe 1.77, +6.4% on Kraken maker fees. The pass is provisional on
 its own terms (post-hoc, and maker fills assumed at the close) and earns a 30-day forward paper
-test, not a conclusion: [research/RESULTS_CARRY2.md](research/RESULTS_CARRY2.md).
+test, not a conclusion: [research/RESULTS_CARRY2.md](research/RESULTS_CARRY2.md). That test is
+running (`espero carry paper`, two books on live hourly funding, one at taker and one at maker
+costs, 2026-10-28 → 2026-11-27).
 
 Scoreboard: thirteen tests, three passes. Two are risk construction; the third is income (carry at
 maker fees) with a forward test still attached. No predictive edge has been found at any horizon.
