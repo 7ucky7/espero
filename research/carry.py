@@ -45,6 +45,9 @@ def fetch() -> None:
 
     now = dt.datetime.now(dt.timezone.utc)
     for coin in universe:
+        if all((DATA / f"{k}_{coin}.csv").exists() for k in ("funding", "perp", "spot")):
+            print(f"{coin}: on disk")        # resumable after a rate-limit failure
+            continue
         t0 = time.time()
         f = hl.funding_history(coin, HL_START_MS)
         f.to_csv(DATA / f"funding_{coin}.csv", index=False)

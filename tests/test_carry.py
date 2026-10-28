@@ -108,6 +108,11 @@ class TestMoney(unittest.TestCase):
         self.assertAlmostEqual(res.funding_paid, 0.5 * HOURLY_20PCT * 20, places=9)
         self.assertEqual(len(res.trades), 1)
 
+    def test_equity_index_stays_datetime(self):
+        res = carry.simulate({"A": coin(300, HOURLY_20PCT), "B": coin(200, HOURLY_20PCT)})
+        self.assertIsInstance(res.equity.dropna().index, pd.DatetimeIndex)
+        self.assertEqual(res.equity.index.year[0], 2025)
+
     def test_kraken_fees_cost_more(self):
         coins = {"A": coin(600, HOURLY_20PCT)}
         m = carry.evaluate(coins)

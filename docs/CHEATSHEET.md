@@ -94,6 +94,23 @@ Top 60 Coinbase altcoins by 24h volume, new 4h high on a 2-sigma volume spike, s
 `research/PREREGISTRATION_DEGEN.md`; the loop refuses to start twice on one journal. The 30-day
 backtest **failed** before fees (`research/RESULTS_DEGEN.md`): use the scan as a view, not the loop as a plan.
 
+## Drawer 7: funding carry on Hyperliquid (hypothesis #11, paper)
+
+```bash
+.venv/bin/python -m espero carry scan                                   # what perp shorts are being paid right now, top 20 by OI
+.venv/bin/python research/carry.py fetch                                # funding since 2023, perp and spot candles -> research/data/carry
+.venv/bin/python research/carry.py run                                  # one replay, the five criteria, the verdict
+.venv/bin/python -m espero hl account 0xYourAddress                    # testnet account view, read-only (or HL_WALLET_ADDRESS in .env)
+```
+
+Short the perp, hold the same spot, collect the funding longs pay. Enter above 15% annualised on
+the trailing week, exit below 5% or after 30 days, five coins at most, 1x, half the capital on each
+leg. Rules and criteria are frozen in `research/PREREGISTRATION_CARRY.md`; the result is in
+`research/RESULTS_CARRY.md` (**FAIL**: hedge clean, fees took half the funding, regime faded after 2024).
+Hyperliquid excludes US persons: paper only, and a pass would mean finding a venue the account can use.
+Development runs against the testnet (`HL_NETWORK=testnet` in `.env`, UI and faucet at
+app.hyperliquid-testnet.xyz); market data always comes from mainnet. Nothing signs orders.
+
 ## Drawer 5: live money. Off.
 
 `espero live` is experimental and needs `.env` keys, `ESPERO_ALLOW_LIVE=1` and `--confirm-live`

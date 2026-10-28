@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import pathlib
 import sys
 import time
@@ -221,12 +222,42 @@ def _degen_table(rows: list, venue: str) -> None:
 
 
 
+def _cmd_hl_account(args: argparse.Namespace) -> int:
+    """Read-only Hyperliquid account snapshot by public address. Testnet unless
+    HL_NETWORK=mainnet or --mainnet; no key is read and nothing is signed."""
+    from . import hyperliquid as hl
+    from .broker import load_env
+
+    load_env()
+    address = args.address or os.environ.get("HL_WALLET_ADDRESS", "")
+    if not address:
+        print("no address: pass one or set HL_WALLET_ADDRESS in .env (see .env.example)")
+        return 2
+    # the account view is a development tool: testnet unless told otherwise
+    testnet = (True if args.testnet else False if args.mainnet
+               else os.environ.get("HL_NETWORK", "testnet").strip().lower() != "mainnet")
+    url = hl.info_url(testnet=testnet)
+    st = hl.user_state(address, fetch=lambda body: hl.post(body, url))
+    print(f"{'testnet' if testnet else 'MAINNET'}  {address}")
+    print(f"equity {st['equity']:,.2f}  margin used {st['margin_used']:,.2f}  "
+          f"notional {st['notional']:,.2f}  withdrawable {st['withdrawable']:,.2f}")
+    if not st["positions"]:
+        print("no open positions")
+    for p in st["positions"]:
+        liq = f"{p['liquidation']:,.4g}" if p["liquidation"] else "-"
+        print(f"  {p['coin']:<8}{p['side']:<6}{p['size']:>12,.4f} @ {p['entry']:<12,.4g}"
+              f"{p['leverage']:>4.0f}x  uPnL {p['unrealized']:>+9.2f}  "
+              f"funding {p['funding_paid']:>+8.2f}  liq {liq}")
+    return 0
+
+
 def _cmd_carry_scan(args: argparse.Namespace) -> int:
-    """What Hyperliquid perps are paying shorts right now (#11). Read-only, no key."""
+    """What Hyperliquid perps are paying shorts right now (#11). Read-only, no key.
+    Always mainnet: the testnet's funding is not the market's."""
     from . import carry
     from . import hyperliquid as hl
 
-    df = carry.scan(hl.asset_contexts(), top=args.top)
+    df = carry.scan(hl.asset_contexts(fetch=lambda b: hl.post(b, hl.info_url(testnet=False))), top=args.top)
     print(f"{'coin':<8}{'mark':>12}{'funding ann':>13}{'OI $M':>9}{'24h $M':>9}  state")
     for r in df.itertuples():
         state = ("ENTER" if r.funding_ann > carry.ENTER_ANN else
@@ -712,6 +743,14 @@ def build_parser() -> argparse.ArgumentParser:
     q = crs.add_parser("scan", help="top perps by open interest with annualised hourly funding (no writes)")
     q.add_argument("--top", type=int, default=20)
     q.set_defaults(func=_cmd_carry_scan)
+
+    hp = sub.add_parser("hl", help="Hyperliquid: read-only account view (testnet by default; nothing is signed)")
+    hps = hp.add_subparsers(dest="hl_cmd", required=True)
+    q = hps.add_parser("account", help="equity, margin and open positions for a public address")
+    q.add_argument("address", nargs="?", help="0x... (default HL_WALLET_ADDRESS from .env)")
+    q.add_argument("--testnet", action="store_true", help="api.hyperliquid-testnet.xyz (the default)")
+    q.add_argument("--mainnet", action="store_true", help="api.hyperliquid.xyz")
+    q.set_defaults(func=_cmd_hl_account)
 
     dg = sub.add_parser("degen", help="打板: scan altcoins breaking out on volume, backtest it, paper trade it (#10)")
     dgs = dg.add_subparsers(dest="degen_cmd", required=True)

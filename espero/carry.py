@@ -75,10 +75,13 @@ def annualised(funding: pd.DataFrame, lookback: int = LOOKBACK_H) -> pd.DataFram
 def align(coins: Dict[str, CoinData]):
     """Union hourly index; prices forward-filled inside each coin's own range,
     funding left NaN where the venue has no settlement (no entry on NaN)."""
-    idx = pd.DatetimeIndex([])
-    for c in coins.values():
-        idx = idx.union(c.funding.index).union(c.perp.index).union(c.spot.index)
-    idx = idx.sort_values()
+    # start from a real tz-aware index: an empty naive DatetimeIndex unioned with
+    # tz-aware ones degrades to an object Index
+    parts = [ix for c in coins.values() for ix in (c.funding.index, c.perp.index, c.spot.index)]
+    idx = parts[0]
+    for ix in parts[1:]:
+        idx = idx.union(ix)
+    idx = pd.DatetimeIndex(idx).sort_values()
     f = pd.DataFrame({k: c.funding.reindex(idx) for k, c in coins.items()})
     p = pd.DataFrame({k: c.perp.reindex(idx).ffill() for k, c in coins.items()})
     s = pd.DataFrame({k: c.spot.reindex(idx).ffill() for k, c in coins.items()})

@@ -1,6 +1,10 @@
 """Hyperliquid public `info` endpoint: perp universe, hourly funding, candles.
 
 Everything here is a POST of a small JSON body to one URL and needs no key.
+Two networks: mainnet (market data, the default) and the testnet at
+api.hyperliquid-testnet.xyz (HL_NETWORK=testnet, or `testnet_post`), whose web
+UI and faucet are at app.hyperliquid-testnet.xyz. Reading an account needs only
+its public address; nothing here signs anything.
 Every function takes an injectable `fetch(body: dict) -> object` so tests
 never touch the network; the default posts through `data.http_get`, which
 carries the retry and backoff policy.
@@ -13,12 +17,15 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import time
 from typing import Callable, Dict, List, Optional
 
 import pandas as pd
 
-INFO_URL = "https://api.hyperliquid.xyz/info"
+MAINNET_URL = "https://api.hyperliquid.xyz"
+TESTNET_URL = "https://api.hyperliquid-testnet.xyz"
+INFO_URL = MAINNET_URL + "/info"      # default; see info_url()
 FUNDING_PERIOD_S = 3600
 CANDLE_LIMIT = 5000          # the endpoint returns at most this many candles per call
 INTERVAL_S = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400}
@@ -26,11 +33,66 @@ INTERVAL_S = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86
 Fetch = Callable[[dict], object]
 
 
-def post(body: dict) -> object:
+def network(env: Optional[dict] = None) -> str:
+    """"mainnet" or "testnet", from HL_NETWORK in the environment (or .env).
+    Market data (universe, funding, candles) comes from mainnet unless asked
+    otherwise; the testnet is thin and its funding is not the market's."""
+    env = os.environ if env is None else env
+    value = (env.get("HL_NETWORK") or "mainnet").strip().lower()
+    if value not in ("mainnet", "testnet"):
+        raise ValueError(f"HL_NETWORK must be mainnet or testnet, not {value!r}")
+    return value
+
+
+def info_url(env: Optional[dict] = None, testnet: Optional[bool] = None) -> str:
+    """HL_API_URL wins; else the network's base. `testnet=True/False` overrides both."""
+    env = os.environ if env is None else env
+    if testnet is None:
+        override = (env.get("HL_API_URL") or "").strip().rstrip("/")
+        if override:
+            return override + "/info"
+        testnet = network(env) == "testnet"
+    return (TESTNET_URL if testnet else MAINNET_URL) + "/info"
+
+
+def post(body: dict, url: Optional[str] = None) -> object:
     from .data import UA, http_get
-    raw = http_get(INFO_URL, headers={**UA, "Content-Type": "application/json"},
+    raw = http_get(url or INFO_URL, headers={**UA, "Content-Type": "application/json"},
                    data=json.dumps(body).encode())
     return json.loads(raw)
+
+
+def testnet_post(body: dict) -> object:
+    return post(body, info_url(testnet=True))
+
+
+def user_state(address: str, fetch: Optional[Fetch] = None) -> Dict[str, object]:
+    """Read-only account snapshot (`clearinghouseState`): equity, margin in use,
+    withdrawable, and open perp positions with entry, size, unrealised P&L and
+    the funding they have paid or received. Needs only the public address."""
+    st = (fetch or testnet_post)({"type": "clearinghouseState", "user": address})
+    summary = st.get("marginSummary", {})
+    positions = []
+    for ap in st.get("assetPositions", []):
+        p = ap.get("position", {})
+        szi = float(p.get("szi", 0) or 0)
+        if szi == 0:
+            continue
+        positions.append({
+            "coin": p["coin"], "size": szi, "side": "long" if szi > 0 else "short",
+            "entry": float(p.get("entryPx") or 0), "notional": float(p.get("positionValue") or 0),
+            "unrealized": float(p.get("unrealizedPnl") or 0),
+            "funding_paid": float((p.get("cumFunding") or {}).get("sinceOpen", 0) or 0),
+            "liquidation": float(p["liquidationPx"]) if p.get("liquidationPx") else None,
+            "leverage": float((p.get("leverage") or {}).get("value", 0) or 0),
+        })
+    return {
+        "equity": float(summary.get("accountValue", 0) or 0),
+        "margin_used": float(summary.get("totalMarginUsed", 0) or 0),
+        "notional": float(summary.get("totalNtlPos", 0) or 0),
+        "withdrawable": float(st.get("withdrawable", 0) or 0),
+        "positions": positions,
+    }
 
 
 def asset_contexts(fetch: Optional[Fetch] = None) -> List[Dict[str, float]]:
@@ -76,7 +138,7 @@ def funding_history(coin: str, start_ms: int, end_ms: Optional[int] = None,
         cursor = int(page[-1]["time"]) + 1
         if len(page) < 500:
             break
-        sleep(0.15)
+        sleep(0.5)      # the info endpoint rate-limits bursts of history pages
     if not rows:
         return pd.DataFrame(columns=["ts", "funding"])
     df = pd.DataFrame([{"ts": int(r["time"]) // 1000, "funding": float(r["fundingRate"])}

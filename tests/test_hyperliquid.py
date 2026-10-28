@@ -79,6 +79,48 @@ class TestCandles(unittest.TestCase):
         self.assertTrue(df.empty)
 
 
+class TestNetwork(unittest.TestCase):
+    def test_default_is_mainnet(self):
+        self.assertEqual(hl.network({}), "mainnet")
+        self.assertEqual(hl.info_url({}), "https://api.hyperliquid.xyz/info")
+
+    def test_env_switches_to_testnet(self):
+        env = {"HL_NETWORK": "testnet"}
+        self.assertEqual(hl.network(env), "testnet")
+        self.assertEqual(hl.info_url(env), "https://api.hyperliquid-testnet.xyz/info")
+
+    def test_url_override_and_explicit_flag(self):
+        env = {"HL_NETWORK": "testnet", "HL_API_URL": "http://localhost:8080/"}
+        self.assertEqual(hl.info_url(env), "http://localhost:8080/info")
+        self.assertEqual(hl.info_url(env, testnet=False), "https://api.hyperliquid.xyz/info")
+
+    def test_bad_network_rejected(self):
+        with self.assertRaises(ValueError):
+            hl.network({"HL_NETWORK": "devnet"})
+
+
+class TestUserState(unittest.TestCase):
+    def test_parses_positions_and_skips_flat(self):
+        def fetch(body):
+            self.assertEqual(body, {"type": "clearinghouseState", "user": "0xabc"})
+            return {"marginSummary": {"accountValue": "1000.5", "totalMarginUsed": "100",
+                                      "totalNtlPos": "200"},
+                    "withdrawable": "900",
+                    "assetPositions": [
+                        {"position": {"coin": "ETH", "szi": "-0.1", "entryPx": "2000",
+                                      "positionValue": "200", "unrealizedPnl": "-1.5",
+                                      "cumFunding": {"sinceOpen": "0.4"},
+                                      "liquidationPx": "3900", "leverage": {"value": 1}}},
+                        {"position": {"coin": "BTC", "szi": "0"}}]}
+        st = hl.user_state("0xabc", fetch=fetch)
+        self.assertEqual(st["equity"], 1000.5)
+        self.assertEqual(len(st["positions"]), 1)
+        p = st["positions"][0]
+        self.assertEqual((p["coin"], p["side"], p["size"]), ("ETH", "short", -0.1))
+        self.assertEqual(p["liquidation"], 3900.0)
+        self.assertEqual(p["funding_paid"], 0.4)
+
+
 class TestVenue(unittest.TestCase):
     def test_hyperliquid_row_settles_hourly(self):
         v = VENUES["hyperliquid"]

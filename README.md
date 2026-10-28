@@ -94,7 +94,8 @@ the risk gate was fed constants instead of the day's P&L, SELL signals were igno
 different rule from the one that was tested, and the exit fee was not charged). Four things
 must all be true before a single order leaves the process:
 
-1. `.env` contains a CDP key pair (never commit it — `.env` is gitignored)
+1. `.env` contains a CDP key pair (never commit it — `.env` is gitignored; `.env.example` lists
+   every variable the repo reads, Hyperliquid testnet settings included)
 2. `ESPERO_ALLOW_LIVE=1` is set
 3. `--confirm-live` is passed
 4. no `KILL` file exists in the working directory
@@ -245,8 +246,19 @@ The tenth, 打板 altcoin breakout chasing on 5-minute bars, failed on the data:
 after the fill: the 2-sigma volume bar is the climax, and the rule buys it. The scanner stays; the
 rule does not: [research/RESULTS_DEGEN.md](research/RESULTS_DEGEN.md).
 
-Scoreboard: eleven tests, two passes, both risk-construction results. No alpha has been found;
-holding less when volatility rises is the only thing that has reliably helped.
+The eleventh is the first that does not predict anything: delta-neutral funding carry on Hyperliquid
+(short the perp, hold the spot, collect what longs pay). The hedge held (1.5% max drawdown, funding
+paid 4% of funding received) and the income was real, but fees took 55% of it, mostly from the
+rule's own churn, and the 2023–24 premium regime that would have cleared the bar is gone: +5.2%
+annualised against the 8% required, −7% on Kraken fees. FAIL, closest of anything since #8:
+[research/RESULTS_CARRY.md](research/RESULTS_CARRY.md). `espero carry scan` stays as the view of
+what shorts are being paid today; development against Hyperliquid runs on its testnet
+(`HL_NETWORK=testnet`, UI at app.hyperliquid-testnet.xyz), market data from mainnet, and nothing
+in the repo signs an order there.
+
+Scoreboard: twelve tests, two passes, both risk-construction results. No alpha has been found;
+holding less when volatility rises is the only thing that has reliably helped, and the one
+structural income tested (carry) is positive but under the bar at retail fees.
 
 ## The numbers
 

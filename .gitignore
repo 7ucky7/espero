@@ -55,3 +55,8 @@ KILL
 data/book/
 fast.db
 *.db.lock
+
+# secrets: the template is committed, the real file never is
+.env
+.env.*
+!.env.example
