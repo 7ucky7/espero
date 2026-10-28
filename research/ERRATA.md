@@ -5,6 +5,27 @@ change its verdict; the code that produced it stays as it ran, marked with a com
 points here. Numbers below were reproduced from cached data during the 2026-10-27 audit
 (docs/AUDIT_2026-10-27.md, section D) unless stated.
 
+## 2026-10-28 (later): degen replay clock
+
+**#10's verdict (FAIL) stands; two of its explanations do not.**
+
+- **Timestamps 1000× too small in the degen backtest** (espero/cli.py `_cmd_degen_backtest`).
+  pandas 3 parses the cached candle strings to `datetime64[us]`, and `astype("int64") // 10**9`
+  assumed nanoseconds, so a 5-minute bar advanced `ts` by 0.3. Bars sharing one integer `ts`
+  overwrote each other in the replay (about two in three were dropped from trading, though the
+  features still saw them), the 36-bar time stop could not fire, the daily loss cap read every
+  bar as 1970-01-21, and the stale-order check never fired. Live loops were not affected: they
+  take `ts` from the API as integers. Fixed in `0f9bebf` (`data.unix_seconds`), with a guard that
+  refuses a frame whose bar spacing is not the granularity.
+- **#10 reproduced on its own 60 cached files with the corrected clock** (Binance.US fees):
+  812 trades (as run 180), profit factor 0.98 (0.78), net −$12.60 (−$40.94), max drawdown 30.0%
+  (12.8%), Kraken −$280.14 (−$173.21). Still FAIL on four criteria. But RESULTS_DEGEN's "loses
+  money before fees" is wrong: with about $35 of fees on 812 trades, the gross is near
+  **+$22, roughly break-even**. Its "half the stops are gaps, the breakout bar is the climax" is
+  also an artifact: corrected, 51 of 586 stops are gaps.
+- Also corrected, not used by any result: `data.fred_series` and `carry_paper._close_at`'s
+  fallback built `ts` the same way.
+
 ## 2026-10-28
 
 **No published PASS/FAIL verdict changes.** Two items change how strong a reported number is.

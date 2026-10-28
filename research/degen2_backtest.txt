@@ -1,0 +1,15 @@
+```
+venue                        trades   hit     PF    fees  maxDD%      P&L   equity  exits
+Binance.US                      468  0.35   0.90    9.55    29.0   -80.93   423.91  gap_stop=14 gap_target=4 stop=317 target=132 time=1
+Kraken                          460  0.30   0.56  129.17    66.3  -322.16   179.58  gap_stop=14 gap_target=4 stop=313 target=128 time=1
+Coinbase Advanced               390  0.24   0.22  202.24    92.1  -460.51    39.49  gap_stop=11 gap_target=5 stop=273 target=100 time=1
+Perp (generic, base tier)       468  0.34   0.86   26.85    31.8  -111.38   393.05  gap_stop=14 gap_target=4 stop=317 target=132 time=1
+
+  [x] trades >= 30
+  [ ] profit factor > 1.3
+  [ ] net P&L > 0
+  [ ] max drawdown < 15%
+  [ ] net P&L > 0 on Kraken fees
+
+verdict: FAIL (rule 13, pre-registered, research/PREREGISTRATION_DEGEN2.md)
+```

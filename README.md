@@ -266,7 +266,14 @@ test, not a conclusion: [research/RESULTS_CARRY2.md](research/RESULTS_CARRY2.md)
 running (`espero carry paper`, two books on live hourly funding, one at taker and one at maker
 costs, 2026-10-28 → 2026-11-27).
 
-Scoreboard: thirteen tests, three passes. Two are risk construction; the third is income (carry at
+The thirteenth reran 打板 on 1-hour bars, pre-registered with two filters (at most one entry per
+bar, and the coin's move must beat BTC's) over a 180-day window #10 never saw: 468 trades, profit
+factor 0.90, −$81 on Binance.US fees, still negative before fees. The control without the filters
+did no better. FAIL: [research/RESULTS_DEGEN2.md](research/RESULTS_DEGEN2.md). The same day a
+replay-clock bug was found in #10's backtest; its FAIL stands, but its gross was about break-even,
+not negative ([research/ERRATA.md](research/ERRATA.md)).
+
+Scoreboard: fourteen tests, three passes. Two are risk construction; the third is income (carry at
 maker fees) with a forward test still attached. No predictive edge has been found at any horizon.
 
 ## The numbers

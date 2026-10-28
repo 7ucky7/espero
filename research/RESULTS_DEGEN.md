@@ -1,5 +1,9 @@
 # Result — 打板: altcoin breakout chasing on 5-minute bars (#10)
 
+> **Erratum 2026-10-28:** this run's replay clock was 1000× too small; corrected, the verdict is
+> still FAIL but the gross is about break-even, not negative, and gaps are 9% of stops, not half.
+> See [ERRATA.md](ERRATA.md). The text below is as published.
+
 **Verdict: FAIL.** Three of the five pre-registered criteria missed, and the one that matters most
 missed before fees: the strategy loses money with the fee set to zero.
 
