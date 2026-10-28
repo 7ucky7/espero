@@ -20,6 +20,7 @@ from .backtest import Config, run
 from .broker import BrokerError, broker_from_env
 from .journal import Journal
 from .live import LiveConfig, LiveTrader
+from .loop import run_loop
 from .paper import PaperConfig, PaperTrader
 from .report import buy_and_hold, equity_png, format_matrix, matrix
 from .venues import VENUES
@@ -146,26 +147,31 @@ def _paper_loop(args: argparse.Namespace) -> int:
         if df.empty:
             print("no candles returned")
             return
-        known = journal.last_bar_ts(args.product) or 0
-        fresh = [r for r in df.to_dict("records") if int(r["ts"]) > known]
+        known = journal.last_bar_ts(args.product)
+        fresh = [r for r in df.to_dict("records") if int(r["ts"]) > (known or 0)]
         if not fresh:
             print(_waiting(args.granularity))
             return
-        # seed history silently, trade only the most recent closed bar
-        for bar in fresh[:-1]:
-            journal.add_bar(args.product, bar)
-        print(f"bar {fresh[-1]['dt']} close={fresh[-1]['close']:.2f}")
-        for event in trader.on_bar(fresh[-1]):
-            print("  ", event)
+        if known is None:
+            # a new journal: seed history silently, trade only the most recent closed bar
+            with journal.transaction():
+                for bar in fresh[:-1]:
+                    journal.add_bar(args.product, bar)
+            fresh = fresh[-1:]
+        elif len(fresh) > 1:
+            # the loop slept or was down: every missed bar gets its stops, fills and funding
+            print(f"catching up {len(fresh)} bars")
+        for bar in fresh:
+            print(f"bar {bar['dt']} close={bar['close']:.2f}")
+            for event in trader.on_bar(bar):
+                print("  ", event)
         print(f"   cash={trader.cash:.2f}  equity={trader._equity(float(fresh[-1]['close'])):.2f}")
 
     if args.loop:
         print(f"paper trading {args.product} {args.granularity}s -> {args.state} "
               f"(ctrl-c to stop)")
         try:
-            while True:
-                step()
-                time.sleep(args.interval)
+            run_loop(step, args.interval, label=f"paper {args.product}")
         except KeyboardInterrupt:
             print("stopped")
         finally:
@@ -350,34 +356,46 @@ def _carry_loop(args: argparse.Namespace) -> int:
 
     def step() -> None:
         if time.time() - state["refreshed"] > 86400:
-            state["universe"] = cp.universe(args.top)
-            state["refreshed"] = time.time()
-            print(f"universe ({len(state['universe'])}): {' '.join(state['universe'])}")
-        ts, rows = cp.settled_rows(state["universe"])
-        if ts is None:
-            print("no settled hour from any coin; retrying")
-            return
+            try:
+                state["universe"] = cp.universe(args.top)
+                state["refreshed"] = time.time()
+                print(f"universe ({len(state['universe'])}): {' '.join(state['universe'])}")
+            except Exception as exc:  # noqa: BLE001 - keep the last universe
+                print(f"universe refresh failed ({type(exc).__name__}: {exc}); "
+                      f"keeping {len(state['universe'])} coins, retrying in 5 min")
+                state["refreshed"] = time.time() - 86400 + 300
         last = book.last_ts()
-        if last is not None and ts <= last:
-            nxt = datetime.fromtimestamp(ts + 3600, timezone.utc).strftime("%H:%M")
-            print(f"hour {cp.stamp(ts)} already booked  ·  next settlement {nxt} UTC")
+        if last is not None and time.time() < last + 3600:
+            nxt = datetime.fromtimestamp(last + 3600, timezone.utc).strftime("%H:%M")
+            print(f"hour {cp.stamp(last)} booked  ·  next settlement {nxt} UTC")
             return
-        events = book.on_hour(ts, rows)
+        # held coins are always fetched: a hedge is managed until it is closed,
+        # even after its coin leaves the top-N; new entries stay inside the universe
+        universe = list(state["universe"])
+        coins = universe + [p["coin"] for p in book.open_positions() if p["coin"] not in universe]
+        hours = cp.settled_hours(coins, since_ts=last)
+        if not hours:
+            print("no new settled hour yet; retrying")
+            return
+        if len(hours) > 1:
+            print(f"catching up {len(hours)} settled hours")
+        for ts, rows in hours:
+            events = book.on_hour(ts, rows, universe=universe or None)
+            paying = sum(1 for r in rows.values() if r.f_ann > book.enter)
+            print(f"{cp.stamp(ts)} UTC  {len(rows)} coins, {paying} above {book.enter:.0%}  "
+                  f"cash={book.cash:.2f} equity={book.equity(rows):.2f} open={len(book.open_positions())}")
+            for e in events:
+                print("  ", e)
         if mirror is not None:
-            events += mirror.sync(book.open_positions(), book.closed_positions(),
-                                  {c: r.perp for c, r in rows.items()})
-        paying = sum(1 for r in rows.values() if r.f_ann > book.enter)
-        print(f"{cp.stamp(ts)} UTC  {len(rows)} coins, {paying} above {book.enter:.0%}  "
-              f"cash={book.cash:.2f} equity={book.equity(rows):.2f} open={len(book.open_positions())}")
-        for e in events:
-            print("  ", e)
+            rows = hours[-1][1]
+            for e in mirror.sync(book.open_positions(), book.closed_positions(),
+                                 {c: r.perp for c, r in rows.items()}):
+                print("  ", e)
 
     if args.loop:
         print("ctrl-c to stop; a restart resumes the open hedges")
         try:
-            while True:
-                step()
-                time.sleep(args.interval)
+            run_loop(step, args.interval, label=f"carry {args.costs}")
         except KeyboardInterrupt:
             print("stopped")
         finally:
@@ -493,7 +511,7 @@ def _cmd_degen_paper(args: argparse.Namespace) -> int:
 
 
 def _degen_loop(args: argparse.Namespace) -> int:
-    from .degen import GRANULARITY, WARMUP, DegenConfig, DegenTrader, last_row
+    from .degen import GRANULARITY, WARMUP, DegenConfig, DegenTrader, features
 
     journal = Journal(args.state)
     cfg = DegenConfig.for_venue(args.venue, initial=args.cash)
@@ -505,11 +523,24 @@ def _degen_loop(args: argparse.Namespace) -> int:
 
     def step() -> None:
         if time.time() - state["refreshed"] > 3600:
-            state["universe"] = _degen_universe(args)
-            state["refreshed"] = time.time()
-        rows, errors = {}, 0
-        for u in state["universe"]:
-            p = u["product"]
+            try:
+                state["universe"] = _degen_universe(args)
+                state["refreshed"] = time.time()
+            except Exception as exc:  # noqa: BLE001 - keep trading the last universe
+                print(f"   universe refresh failed ({type(exc).__name__}: {exc}); "
+                      f"keeping {len(state['universe'])} coins, retrying in 5 min")
+                state["refreshed"] = time.time() - 3600 + 300
+        volume = {u["product"]: float(u["dollar_volume"]) for u in state["universe"]}
+        # a held coin is watched until it is sold, even after it leaves the top-N
+        held = set(trader.held())
+        products = list(volume) + sorted(held - set(volume))
+        # the last cycle the loop ran: bars after it were missed by everyone and are
+        # caught up; a coin not held that sat outside the universe before it only
+        # re-enters from here, so its gap is history, not trades it should have made
+        cycle = journal.db.execute("SELECT MAX(ts) AS ts FROM equity").fetchone()["ts"] or 0
+        by_ts: dict = {}
+        errors = 0
+        for p in products:
             try:
                 df = data.recent_closed_bars(p, GRANULARITY, 300)
             except Exception as exc:  # noqa: BLE001 - skip the coin this cycle
@@ -518,34 +549,48 @@ def _degen_loop(args: argparse.Namespace) -> int:
                 continue
             if len(df) < WARMUP:
                 continue
-            known = journal.last_bar_ts(p) or 0
-            fresh = df[df["ts"] > known]
+            known = journal.last_bar_ts(p)
+            fresh = df[df["ts"] > (known or 0)]
             if fresh.empty:
                 continue
-            # seed history silently so the trail and the restart have bars to read
-            for bar in fresh.iloc[:-1].to_dict("records"):
-                journal.add_bar(p, bar)
-            row = last_row(p, df, float(u["dollar_volume"]))
-            row.update({k: float(df.iloc[-1][k]) for k in ("open", "high", "low", "close", "volume")})
-            rows[p] = row
+            recs = features(df)                     # causal: row i reads bars <= i only
+            if known is None:
+                trade_from = int(fresh["ts"].iloc[-1]) - 1     # first sight: trade only the newest
+            elif p in held:
+                trade_from = known                             # every missed bar gets its exits
+            else:
+                trade_from = max(known, cycle)
+            silent = fresh[fresh["ts"] <= trade_from]
+            if len(silent):
+                # seed history silently so the trail and the restart have bars to read
+                with journal.transaction():
+                    for bar in silent.to_dict("records"):
+                        journal.add_bar(p, bar)
+            recs = recs[recs["ts"] > trade_from]
+            for rec in recs.to_dict("records"):
+                rec.pop("dt", None)
+                by_ts.setdefault(int(rec["ts"]), {})[p] = dict(
+                    rec, product=p, dollar_volume=volume.get(p, float("nan")), in_universe=p in volume)
             time.sleep(0.12)
-        if not rows:
+        if not by_ts:
             print(_waiting(GRANULARITY))
             return
-        stamp = datetime.fromtimestamp(max(r["ts"] for r in rows.values()), timezone.utc).strftime("%H:%M")
-        events = trader.on_cycle(rows)
-        quiet = [e for e in events if "no slot" not in e and "blocked" not in e]
-        print(f"{stamp} UTC  {len(rows)} coins{f', {errors} errors' if errors else ''}  "
-              f"cash={trader.cash:.2f} equity={trader.equity():.2f} open={len(trader.positions)}")
-        for e in quiet:
-            print("  ", e)
+        if len(by_ts) > 1:
+            print(f"catching up {len(by_ts)} bar times")
+        for ts in sorted(by_ts):
+            rows = by_ts[ts]
+            stamp = datetime.fromtimestamp(ts, timezone.utc).strftime("%H:%M")
+            events = trader.on_cycle(rows)
+            quiet = [e for e in events if "no slot" not in e and "blocked" not in e]
+            print(f"{stamp} UTC  {len(rows)} coins{f', {errors} errors' if errors else ''}  "
+                  f"cash={trader.cash:.2f} equity={trader.equity():.2f} open={len(trader.positions)}")
+            for e in quiet:
+                print("  ", e)
 
     if args.loop:
         print("ctrl-c to stop; a restart resumes the open positions")
         try:
-            while True:
-                step()
-                time.sleep(args.interval)
+            run_loop(step, args.interval, label="degen")
         except KeyboardInterrupt:
             print("stopped")
         finally:
@@ -600,9 +645,7 @@ def _cmd_live(args: argparse.Namespace) -> int:
 
     if args.loop:
         try:
-            while True:
-                step()
-                time.sleep(args.interval)
+            run_loop(step, args.interval, label=f"live {args.product}")
         except KeyboardInterrupt:
             print("stopped")
         finally:

@@ -59,6 +59,13 @@ class Row:
     spot: float
 
 
+def usable(r: Row) -> bool:
+    """Funding and both prices are finite, positive where they must be. `f_ann`
+    may be NaN (a short history); the rule handles that itself."""
+    return (np.isfinite(r.funding) and np.isfinite(r.perp) and np.isfinite(r.spot)
+            and r.perp > 0 and r.spot > 0)
+
+
 class CarryBook:
     def __init__(self, path: str | Path, costs: str = "maker", initial: float = 500.0,
                  swap_gap: float = carry.SWAP_GAP, min_hold: int = carry.MIN_HOLD_H,
@@ -146,12 +153,28 @@ class CarryBook:
                    f"{notional:.2f} a leg, funding {r.f_ann:+.1%} ann, fee {fee:.2f}")
 
     # ------------------------------------------------------------------- cycle
-    def on_hour(self, ts: int, rows: Dict[str, Row]) -> List[str]:
+    def on_hour(self, ts: int, rows: Dict[str, Row], universe: Optional[List[str]] = None) -> List[str]:
         """One settled hour. Same order as carry.simulate: funding, exits, swaps
-        and entries, mark. Idempotent on `ts`: a repeated hour is ignored."""
+        and entries, mark. Idempotent on `ts`: a repeated hour is ignored.
+
+        One hour is one transaction: if anything raises, its writes are rolled
+        back, cash is reloaded and the error propagates. A coin whose funding,
+        perp or spot is not a finite number is treated as missing this hour
+        (kept, marked flat), never allowed near cash. `universe`, when given,
+        limits new entries to those coins: rows for held coins outside it are
+        there so the hedge is still managed, not so it can be re-entered."""
+        try:
+            return self._on_hour(ts, rows, universe)
+        except Exception:
+            self.db.rollback()
+            self.cash = float(self._meta("cash"))
+            raise
+
+    def _on_hour(self, ts: int, rows: Dict[str, Row], universe: Optional[List[str]] = None) -> List[str]:
         last = self.last_ts()
         if last is not None and ts <= last:
             return []
+        rows = {c: r for c, r in rows.items() if usable(r)}
         out: List[str] = []
         held = {p["coin"]: p for p in self.open_positions()}
 
@@ -183,7 +206,8 @@ class CarryBook:
                 del held[coin]
 
         # 3. swaps and entries
-        cands = [c for c, r in rows.items() if c not in held and not np.isnan(r.f_ann)
+        allowed = set(rows) if universe is None else set(universe)
+        cands = [c for c, r in rows.items() if c not in held and c in allowed and not np.isnan(r.f_ann)
                  and r.f_ann > self.enter and not np.isnan(r.perp) and not np.isnan(r.spot)]
         if cands:
             cands.sort(key=lambda c: -rows[c].f_ann)
@@ -238,49 +262,87 @@ class CarryBook:
 
 
 # ------------------------------------------------------------------ live data
-def settled_rows(coins: List[str], lookback_h: int = carry.LOOKBACK_H, fetch=None,
-                 spot_fetch: Optional[Callable[[str], pd.DataFrame]] = None,
-                 pause: float = 0.3, sleep=time.sleep) -> tuple[Optional[int], Dict[str, Row]]:
-    """The latest settled hour and one Row per coin for it.
+MAX_BACKFILL_H = 72        # how far back a restarted loop catches up
+PUBLISH_GRACE_S = 1200     # wait this long for a lagging coin before booking an hour without it
 
-    Funding comes from `fundingHistory` (the row for hour T exists once T has
-    settled); the perp close is the 1h candle for T; the spot close is Coinbase's
-    1h candle for T. A coin missing any of the three this hour is left out and
-    the book keeps its position marked flat. Returns (None, {}) when no coin has
-    a settled hour yet."""
+
+def settled_hours(coins: List[str], since_ts: Optional[int] = None, lookback_h: int = carry.LOOKBACK_H,
+                  fetch=None, spot_fetch: Optional[Callable[[str], pd.DataFrame]] = None,
+                  pause: float = 0.3, sleep=time.sleep, now: Optional[float] = None,
+                  max_backfill_h: int = MAX_BACKFILL_H,
+                  grace_s: int = PUBLISH_GRACE_S) -> List[tuple[int, Dict[str, Row]]]:
+    """Every settled hour after `since_ts`, oldest first, as `(ts, rows)`.
+
+    With `since_ts=None` (a new book) only the latest settled hour comes back.
+    Otherwise every hour the loop missed (the Mac slept, the loop restarted, a
+    fetch failed) is rebuilt from history, up to `max_backfill_h` back, so the
+    book credits the same funding `carry.simulate` would.
+
+    Per coin and hour: funding from `fundingHistory` (the row for hour T exists
+    once T has settled), `f_ann` the mean of the `lookback_h` rates up to T, the
+    perp close of the 1h candle opening at T, Coinbase's spot close at T. A coin
+    missing any of them, or with a non-finite value, is left out of that hour.
+
+    The newest hour is held back while any coin has not published it (or its
+    fetch failed), for up to `grace_s` after settlement, so one slow or
+    rate-limited coin does not lose its funding for good."""
     from .data import recent_closed_bars
     post = fetch or (lambda body: hl.post(body, hl.info_url(testnet=False)))
-    now_ms = int(time.time() * 1000)
-    start_ms = now_ms - (lookback_h + 4) * 3600_000
+    now_s = int(time.time() if now is None else now)
+    floor = now_s - max_backfill_h * 3600
+    first = now_s - 2 * 3600 if since_ts is None else max(since_ts + 3600, floor)
+    start_ms = (first - (lookback_h + 4) * 3600) * 1000
+    pages = (now_s - start_ms // 1000) // (500 * 3600) + 2
     raw: Dict[str, dict] = {}
     for coin in coins:
         try:
-            f = hl.funding_history(coin, start_ms, fetch=post, pages=2, sleep=sleep)
+            f = hl.funding_history(coin, start_ms, fetch=post, pages=pages, sleep=sleep)
             if len(f) < lookback_h:
-                continue
-            p = hl.candles(coin, "1h", now_ms - 6 * 3600_000, fetch=post, sleep=sleep)
-            s = spot_fetch(f"{coin}-USD") if spot_fetch else recent_closed_bars(f"{coin}-USD", 3600, 6)
+                continue        # too new to rank; not a lagging coin, so no grace wait
+            p = hl.candles(coin, "1h", (first - 6 * 3600) * 1000, now_s * 1000, fetch=post, sleep=sleep)
+            s = spot_fetch(f"{coin}-USD") if spot_fetch else recent_closed_bars(f"{coin}-USD", 3600, 300)
             raw[coin] = {"f": f, "p": p, "s": s}
         except Exception as exc:  # noqa: BLE001 - one coin's outage is not the book's
             raw[coin] = {"error": f"{type(exc).__name__}: {exc}"}
         sleep(pause)
-    settled = [int(v["f"]["ts"].iloc[-1]) for v in raw.values() if "f" in v]
-    if not settled:
-        return None, {}
-    ts = max(settled)
-    rows: Dict[str, Row] = {}
-    for coin, v in raw.items():
-        if "f" not in v:
-            continue
-        f = v["f"]
-        if int(f["ts"].iloc[-1]) != ts:
-            continue
-        f_ann = (float(f["funding"].tail(lookback_h).mean() * carry.HOURS_PER_YEAR)
-                 if len(f) >= lookback_h else float("nan"))
-        perp = _close_at(v["p"], ts)
-        spot = _close_at(v["s"], ts)
-        rows[coin] = Row(funding=float(f["funding"].iloc[-1]), f_ann=f_ann, perp=perp, spot=spot)
-    return ts, rows
+    fetched = {c: v for c, v in raw.items() if "f" in v}
+    if not fetched:
+        return []
+    latest = max(int(v["f"]["ts"].iloc[-1]) for v in fetched.values())
+    if since_ts is None:
+        hours = [latest]
+    else:
+        hours = sorted({int(t) for v in fetched.values() for t in v["f"]["ts"]
+                        if since_ts < int(t) <= latest and int(t) >= floor})
+    complete = len(fetched) == len(raw) and all(int(v["f"]["ts"].iloc[-1]) == latest for v in fetched.values())
+    if hours and hours[-1] == latest and not complete and now_s - latest < grace_s:
+        hours = hours[:-1]
+    out: List[tuple[int, Dict[str, Row]]] = []
+    for ts in hours:
+        rows: Dict[str, Row] = {}
+        for coin, v in fetched.items():
+            f = v["f"]
+            upto = f[f["ts"] <= ts]
+            if not len(upto) or int(upto["ts"].iloc[-1]) != ts:
+                continue
+            f_ann = (float(upto["funding"].tail(lookback_h).mean() * carry.HOURS_PER_YEAR)
+                     if len(upto) >= lookback_h else float("nan"))
+            r = Row(funding=float(upto["funding"].iloc[-1]), f_ann=f_ann,
+                    perp=_close_at(v["p"], ts), spot=_close_at(v["s"], ts))
+            if usable(r):
+                rows[coin] = r
+        if rows:
+            out.append((ts, rows))
+    return out
+
+
+def settled_rows(coins: List[str], lookback_h: int = carry.LOOKBACK_H, fetch=None,
+                 spot_fetch: Optional[Callable[[str], pd.DataFrame]] = None,
+                 pause: float = 0.3, sleep=time.sleep) -> tuple[Optional[int], Dict[str, Row]]:
+    """The latest settled hour and its rows, or (None, {}). Kept for callers
+    that want one hour; the loop uses `settled_hours`."""
+    hours = settled_hours(coins, None, lookback_h, fetch, spot_fetch, pause, sleep, grace_s=0)
+    return hours[-1] if hours else (None, {})
 
 
 def _close_at(df: pd.DataFrame, ts: int) -> float:

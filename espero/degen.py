@@ -168,8 +168,15 @@ class DegenTrader:
     def __init__(self, journal: Journal, cfg: DegenConfig):
         self.journal = journal
         self.cfg = cfg
+        self.last_close: Dict[str, float] = {}
+        self._load()
+
+    def _load(self) -> None:
+        """In-memory state from the journal: at start, and again after a cycle
+        failed and its writes were rolled back."""
+        journal = self.journal
         cash, _ = journal.latest_equity()
-        self.cash = cash if cash else cfg.initial
+        self.cash = cash if cash else self.cfg.initial
         self.positions: Dict[str, Position] = {p.product: p for p in journal.open_positions()}
         self.pending: Dict[str, PendingOrder] = {o.product: o for o in journal.pending_orders()}
         self.high_water: Dict[str, float] = {}
@@ -177,12 +184,25 @@ class DegenTrader:
             row = journal.db.execute("SELECT MAX(high) AS h FROM bars WHERE product=? AND ts>=?",
                                      (p.product, p.entry_ts)).fetchone()
             self.high_water[p.product] = float(row["h"]) if row and row["h"] is not None else p.entry_px
-        self.last_close: Dict[str, float] = {}
 
     # ------------------------------------------------------------------ api
+    def held(self) -> List[str]:
+        """Products the book must keep watching: open positions and queued orders."""
+        return sorted(set(self.positions) | set(self.pending))
+
     def on_cycle(self, rows: Dict[str, dict]) -> List[str]:
         """`rows`: product -> the newest closed bar with features. Bars already in
-        the journal are skipped, so a repeated cycle is harmless."""
+        the journal are skipped, so a repeated cycle is harmless. One cycle is
+        one transaction: on any error it is rolled back, memory is reloaded and
+        the error propagates."""
+        try:
+            with self.journal.transaction():
+                return self._on_cycle(rows)
+        except Exception:
+            self._load()
+            raise
+
+    def _on_cycle(self, rows: Dict[str, dict]) -> List[str]:
         events: List[str] = []
         fresh: Dict[str, dict] = {}
         for product, bar in rows.items():
@@ -236,7 +256,9 @@ class DegenTrader:
                 events.append(f"{product}: time stop, queued SELL for next open")
 
         # 2. entries: the ranked scan over every coin that has a fresh bar
-        ranked = rank_rows([dict(b, product=p) for p, b in fresh.items()])
+        # a held coin fetched only to manage its exit is not part of the frozen
+        # universe, so it neither enters the cross-sectional rank nor gets bought
+        ranked = rank_rows([dict(b, product=p) for p, b in fresh.items() if b.get("in_universe", True)])
         for r in ranked:
             if r["status"] != "BREAKOUT":
                 continue

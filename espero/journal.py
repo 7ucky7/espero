@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
@@ -71,9 +72,34 @@ class Journal:
         self.db.execute("PRAGMA journal_mode=WAL")   # a reader never blocks the writer
         self.db.executescript(SCHEMA)
         self.db.commit()
+        self._depth = 0
 
     def close(self) -> None:
         self.db.close()
+
+    # ---------------------------------------------------------- transactions
+    def _commit(self) -> None:
+        """Commit now, unless inside `transaction()`, which commits once at the end."""
+        if not self._depth:
+            self.db.commit()
+
+    @contextmanager
+    def transaction(self):
+        """Make a whole bar one unit: every write inside commits together or not
+        at all. A crash part-way through a bar used to leave a fill without the
+        cash that paid for it, or an open position whose order was still
+        pending. Nested use joins the outer transaction."""
+        self._depth += 1
+        try:
+            yield self
+        except BaseException:
+            self._depth -= 1
+            if not self._depth:
+                self.db.rollback()
+            raise
+        self._depth -= 1
+        if not self._depth:
+            self.db.commit()
 
     # ---------------------------------------------------------------- bars
     def has_bar(self, product: str, ts: int) -> bool:
@@ -90,7 +116,7 @@ class Journal:
             (product, int(bar["ts"]), bar["open"], bar["high"], bar["low"],
              bar["close"], bar.get("volume", 0.0)),
         )
-        self.db.commit()
+        self._commit()
         return cur.rowcount > 0
 
     def last_bar_ts(self, product: str) -> Optional[int]:
@@ -105,7 +131,7 @@ class Journal:
             "INSERT INTO signals(product, ts, side, confidence, strategies) VALUES (?,?,?,?,?)",
             (product, ts, sig.side, sig.confidence, json.dumps([sig.strategy])),
         )
-        self.db.commit()
+        self._commit()
 
     def signals(self, limit: int = 20) -> List[sqlite3.Row]:
         return self.db.execute(
@@ -119,7 +145,7 @@ class Journal:
             "VALUES (?,?,?,?,?,?,'pending')",
             (order.id, order.product, order.created_ts, order.side, order.size, order.reason),
         )
-        self.db.commit()
+        self._commit()
 
     def pending_order(self, product: str) -> Optional[PendingOrder]:
         row = self.db.execute(
@@ -141,11 +167,11 @@ class Journal:
             "UPDATE orders SET status='filled', filled_ts=?, filled_px=?, fee=? WHERE id=?",
             (ts, px, fee, order_id),
         )
-        self.db.commit()
+        self._commit()
 
     def cancel_order(self, order_id: str, reason: str = "cancelled") -> None:
         self.db.execute("UPDATE orders SET status=? WHERE id=?", (reason, order_id))
-        self.db.commit()
+        self._commit()
 
     # ----------------------------------------------------------- positions
     def open_position(self, position: Position) -> None:
@@ -155,7 +181,7 @@ class Journal:
             (position.id, position.product, position.entry_ts, position.entry_px,
              position.size, position.entry_fee, position.stop, position.target),
         )
-        self.db.commit()
+        self._commit()
 
     def current_position(self, product: str) -> Optional[Position]:
         row = self.db.execute(
@@ -177,7 +203,7 @@ class Journal:
     def update_stop(self, position_id: str, stop: float) -> None:
         """A trailing stop is state: it must survive a restart like the position does."""
         self.db.execute("UPDATE positions SET stop=? WHERE id=?", (stop, position_id))
-        self.db.commit()
+        self._commit()
 
     def close_position(self, position_id: str, ts: int, px: float, pnl: float,
                        reason: str) -> None:
@@ -185,7 +211,7 @@ class Journal:
             "UPDATE positions SET exit_ts=?, exit_px=?, pnl=?, reason=? WHERE id=?",
             (ts, px, pnl, reason, position_id),
         )
-        self.db.commit()
+        self._commit()
 
     def charge_position(self, position_id: str, amount: float) -> None:
         """Add a carrying cost (perp funding) to the position's fee bill, so the
@@ -194,7 +220,7 @@ class Journal:
             "UPDATE positions SET entry_fee = COALESCE(entry_fee, 0) + ? WHERE id=?",
             (amount, position_id),
         )
-        self.db.commit()
+        self._commit()
 
     def closed_positions(self) -> List[sqlite3.Row]:
         return self.db.execute(
@@ -207,7 +233,7 @@ class Journal:
             "INSERT OR REPLACE INTO equity(ts, cash, position_value, equity) VALUES (?,?,?,?)",
             (ts, cash, position_value, cash + position_value),
         )
-        self.db.commit()
+        self._commit()
 
     def latest_equity(self) -> tuple[float, float]:
         row = self.db.execute(

@@ -64,14 +64,30 @@ class PaperTrader:
     def __init__(self, journal: Journal, cfg: PaperConfig):
         self.journal = journal
         self.cfg = cfg
-        cash, _ = journal.latest_equity()
-        self.cash = cash if cash else cfg.initial
-        self.position = journal.current_position(cfg.product)
-        self.pending = journal.pending_order(cfg.product)
+        self._load()
+
+    def _load(self) -> None:
+        """In-memory state from the journal: at start, and again after a bar
+        failed and its writes were rolled back."""
+        cash, _ = self.journal.latest_equity()
+        self.cash = cash if cash else self.cfg.initial
+        self.position = self.journal.current_position(self.cfg.product)
+        self.pending = self.journal.pending_order(self.cfg.product)
 
     # ------------------------------------------------------------------ api
     def on_bar(self, bar: dict) -> List[str]:
-        """Process one closed bar. Returns human-readable events."""
+        """Process one closed bar as one transaction. Returns human-readable
+        events. If anything raises, the bar's writes are rolled back, memory is
+        reloaded from the journal and the error propagates; the same bar can
+        then be fed again."""
+        try:
+            with self.journal.transaction():
+                return self._on_bar(bar)
+        except Exception:
+            self._load()
+            raise
+
+    def _on_bar(self, bar: dict) -> List[str]:
         ts = int(bar["ts"])
         close = float(bar["close"])
         events: List[str] = []
@@ -195,8 +211,12 @@ class PaperTrader:
             self.journal.fill_order(order.id, ts, px, fee)
             return f"filled BUY {size:.6f} @ {px:.2f}"
 
-        px = open_px * (1 - self.cfg.slippage)
         pos = self.position
+        if pos is None:
+            # a stop or target already closed it earlier in this bar
+            self.journal.cancel_order(order.id, "no position")
+            return "SELL cancelled, position already closed"
+        px = open_px * (1 - self.cfg.slippage)
         fee = px * pos.size * self.cfg.fee
         pnl = (px - pos.entry_px) * pos.size - fee - pos.entry_fee
         self.cash += px * pos.size - fee
