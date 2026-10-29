@@ -72,3 +72,5 @@ liqfwd_short_trades.csv
 lows_fwd_trades.csv
 # #25 open-interest downloads (research/oi.py)
 data/oi/
+# #26 COIN-M liquidation downloads (research/liq2.py)
+data/liq2/

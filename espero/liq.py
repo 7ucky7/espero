@@ -206,13 +206,14 @@ def clustered(x: pd.Series) -> dict:
     return {"mean": m, "t": t, "n": n}
 
 
-def criteria(ev: pd.DataFrame) -> List[dict]:
-    """The four pre-registered criteria, each with its actual value and whether it is met."""
+def criteria(ev: pd.DataFrame, split: str = SPLIT) -> List[dict]:
+    """The four pre-registered criteria, each with its actual value and whether it is met.
+    `split` starts the second half (#26 passes its own window's)."""
     d = day_diff(ev)
     c1 = clustered(d)
     centred = ev.assign(s_coin=ev["s"] - ev.groupby("coin")["s"].transform("mean"))
     c2 = clustered(day_diff(centred, "s_coin"))
-    h1, h2 = clustered(d[d.index < SPLIT]), clustered(d[d.index >= SPLIT])
+    h1, h2 = clustered(d[d.index < split]), clustered(d[d.index >= split])
     legs = {"a: buy forced down-breaks": clustered(leg(ev, -1, "forced")),
             "b: buy organic up-breaks": clustered(leg(ev, 1, "organic"))}
     leg_ok = {k: v["mean"] > LEG_HURDLE and v["t"] > LEG_T for k, v in legs.items()}
