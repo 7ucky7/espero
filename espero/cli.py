@@ -150,6 +150,47 @@ def _cmd_paper(args: argparse.Namespace) -> int:
         return 3
 
 
+def _cmd_paper_close(args: argparse.Namespace) -> int:
+    """Take profit (or cut) by hand. With a paper loop running on the journal, leave a
+    request it picks up on its next step: a SELL queued and filled at the next bar's
+    open. With none running, close now at the latest recorded bar's close."""
+    from .lock import JournalBusy, JournalLock
+
+    request = Path(str(args.state) + ".close")
+    try:
+        with JournalLock(args.state):
+            journal = Journal(args.state)
+            try:
+                opens = journal.open_positions()
+                product = args.product or (opens[0].product if len(opens) == 1 else None)
+                if product is None:
+                    print("no open position" if not opens else
+                          f"several open positions ({', '.join(p.product for p in opens)}): pass --product")
+                    return 0 if not opens else 2
+                cfg = (PaperConfig.for_venue(args.venue, product=product) if args.venue
+                       else PaperConfig(product=product))
+                if args.fee_bps is not None:
+                    cfg.fee = args.fee_bps / 1e4
+                trader = PaperTrader(journal, cfg)
+                row = journal.db.execute("SELECT ts, close FROM bars WHERE product=? ORDER BY ts DESC LIMIT 1",
+                                         (product,)).fetchone()
+                if row is None:
+                    print(f"no bars recorded for {product}")
+                    return 2
+                print(f"no loop is running on {args.state}: closing now at the latest bar's close "
+                      f"({row['close']:.2f}), fee {1e4 * cfg.fee:.1f} bps")
+                print("  ", trader.close_now(float(row["close"]), int(row["ts"])))
+            finally:
+                journal.close()
+            request.unlink(missing_ok=True)
+            return 0
+    except JournalBusy as exc:
+        request.write_text("manual close requested\n")
+        print(f"a loop is running on this journal ({exc}).\n"
+              f"queued: it sells at the next bar's open, recorded as 'manual' ({request.name})")
+        return 0
+
+
 def _paper_loop(args: argparse.Namespace) -> int:
     from .data import recent_closed_bars
 
@@ -165,8 +206,15 @@ def _paper_loop(args: argparse.Namespace) -> int:
     print(f"fees {1e4 * cfg.fee:.1f} bps per side"
           + (f", funding {1e4 * cfg.funding_8h:.2f} bps per 8h on longs" if cfg.funding_8h else ""))
     trader = PaperTrader(journal, cfg)
+    request = Path(str(args.state) + ".close")
 
     def step() -> None:
+        if request.exists():
+            # `espero paper-close` asked for a manual close: queue it, fill at the next open
+            known = journal.last_bar_ts(args.product)
+            if known is not None:
+                print("  ", trader.request_close(known))
+                request.unlink()
         df = recent_closed_bars(args.product, args.granularity, args.seed)
         if df.empty:
             print("no candles returned")
@@ -1093,6 +1141,13 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("--loop", action="store_true")
     pp.add_argument("--interval", type=float, default=60.0)
     pp.set_defaults(func=_cmd_paper)
+
+    px = sub.add_parser("paper-close", help="close the paper position by hand (take profit early)")
+    px.add_argument("--state", default="paper.db")
+    px.add_argument("--product", default=None, help="default: the journal's only open position")
+    px.add_argument("--venue", choices=sorted(VENUES), default=None, help="fees, when no loop is running")
+    px.add_argument("--fee-bps", type=float, default=None, help="per side, when no loop is running")
+    px.set_defaults(func=_cmd_paper_close)
 
     pc = sub.add_parser("paper-compare",
                         help="replay one paper journal's bars under each venue's fees and funding")

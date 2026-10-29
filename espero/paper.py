@@ -222,9 +222,32 @@ class PaperTrader:
         pnl = (px - pos.entry_px) * pos.size - fee - pos.entry_fee
         self.cash += px * pos.size - fee
         self.journal.fill_order(order.id, ts, px, fee)
-        self.journal.close_position(pos.id, ts, px, pnl, "signal")
+        self.journal.close_position(pos.id, ts, px, pnl, order.reason)     # "signal" or "manual"
         self.position = None
-        return f"filled SELL @ {px:.2f}  pnl {pnl:+.2f}"
+        return f"filled SELL ({order.reason}) @ {px:.2f}  pnl {pnl:+.2f}"
+
+    def request_close(self, ts: int) -> str:
+        """Queue a manual SELL of the open position, filled at the next bar's open like a
+        signal's (fee and slippage included), closed with reason "manual"."""
+        if self.position is None:
+            return "manual close: no open position"
+        if self.pending is not None and self.pending.side == "SELL":
+            return "manual close: a SELL is already queued for the next open"
+        with self.journal.transaction():
+            self.pending = PendingOrder(str(uuid.uuid4())[:8], self.cfg.product, ts, "SELL",
+                                        self.position.size, "manual")
+            self.journal.add_order(self.pending)
+        return "queued manual SELL for the next open"
+
+    def close_now(self, price: float, ts: int) -> str:
+        """Close the open position at `price` (slippage and fee applied), reason "manual":
+        for when no loop is running to fill a queued order."""
+        if self.position is None:
+            return "manual close: no open position"
+        with self.journal.transaction():
+            event = self._close(price, ts, "manual")
+            self.journal.mark_equity(ts, self.cash, 0.0)
+        return event
 
     def _close(self, exit_px: float, ts: int, reason: str) -> str:
         pos = self.position
