@@ -56,6 +56,16 @@ class TestRender(unittest.TestCase):
         self.assertIn("FAILED", out)
         self.assertIn("failing: xs", out)
 
+    def test_mf_account_is_listed_and_counted(self):
+        from espero import mf
+        acc = mf.MFAccount(self.state / "mf.db", cash=100.0)
+        acc.save(1_700_000_000, 100.0, {}, {}, 100.0, "init", {}, 0.0)
+        acc.close()
+        out = self.render(ui.header(self.state), ui.accounts_table(self.state)).replace("\n", " ")
+        self.assertIn("#8     multifactor fwd", out)
+        self.assertIn("cash until its first fill 2026-11-02", out)
+        self.assertIn("$299.88", out)                      # 199.88 + 100
+
     def test_paused_is_loud(self):
         (self.state / "KILL").write_text("")
         self.assertIn("PAUSED", self.render(ui.header(self.state)))
