@@ -167,12 +167,15 @@ def sort_scan(rows: List[ScanRow]) -> List[ScanRow]:
 
 
 def scan_status(st: SignalState, threshold: float) -> str:
+    """A signal past the threshold is a candidate only while it has been working on that
+    coin: a negative 2-week IC (`cold`) has pointed the wrong way lately, and the scan
+    says so before the screen does."""
     if st.value is None:
         return "no signal"
     if st.value >= threshold:
-        return "BUY candidate"
+        return "BUY (cold)" if st.cold else "BUY candidate"
     if st.value <= -threshold:
-        return "sell if held"
+        return "sell (cold)" if st.cold else "sell if held"
     if abs(st.value) >= 0.7 * threshold:
         return "near"
     return ""
@@ -201,7 +204,7 @@ def scan_table(rows: List[ScanRow], threshold: float, title: str = ""):
                   f"{1e4 * st.r_leader:+.0f}", f"{1e4 * st.r_coin:+.0f}", ic,
                   "" if st.vol_ratio is None else f"{st.vol_ratio:.1f}×",
                   Text(status, style="bold green" if status == "BUY candidate"
-                       else ("red" if status == "sell if held" else MUTED)))
+                       else ("red" if status in ("sell if held", "BUY (cold)", "sell (cold)") else MUTED)))
     return t
 
 

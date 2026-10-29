@@ -818,9 +818,11 @@ def _cmd_scan(args: argparse.Namespace) -> int:
         mins = fst.next_signal_minutes()
         console.print(fst.scan_table(rows, threshold, title=f"lead-lag signal · {stamp} · "
                                      f"acts at ±{args.threshold:.0f} bps · next update in {mins}m"))
-        n_buy = sum(1 for r in rows if fst.scan_status(r.state, threshold) == "BUY candidate")
-        console.print(f"[grey58]{n_buy} buy candidate(s). pctile = how unusual this gap is for that coin over "
-                      f"two weeks. 2w IC red = signal cold on that coin.[/]")
+        status = [fst.scan_status(r.state, threshold) for r in rows]
+        n_buy, n_cold = status.count("BUY candidate"), status.count("BUY (cold)")
+        console.print(f"[grey58]{n_buy} buy candidate(s), {n_cold} more past the threshold but cold. pctile = how "
+                      f"unusual this gap is for that coin over two weeks. cold = 2-week IC below zero: the "
+                      f"signal has pointed the wrong way on that coin lately.[/]")
         if args.once or not sys.stdin.isatty():
             return 0
         try:
@@ -828,8 +830,9 @@ def _cmd_scan(args: argparse.Namespace) -> int:
         except ImportError:
             return 0
         from .ui import STYLE
-        choices = [questionary.Choice(f"{r.coin:6s} {1e4 * r.state.value:+5.0f} bps  "
-                                      f"{fst.scan_status(r.state, threshold)}", value=r.product)
+        choices = [questionary.Choice(f"{r.coin:6s} {1e4 * r.state.value:+5.0f} bps  IC "
+                                      + ("  n/a" if r.state.rolling_ic is None else f"{r.state.rolling_ic:+.2f}")
+                                      + f"  {fst.scan_status(r.state, threshold)}", value=r.product)
                    for r in rows if r.state.value is not None][:15]
         choices += [questionary.Choice("rescan", value="__rescan"), questionary.Choice("quit", value=None)]
         pick = questionary.select("Open the fast screen on:", choices=choices, style=STYLE, pointer="❯").ask()
