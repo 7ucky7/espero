@@ -61,11 +61,16 @@ class TestAccount(unittest.TestCase):
         self.assertIn("A", again.units)
 
 
-def fake_fetch(coins, days=400, stale=(), failing=(), end="2026-10-26"):
-    """A stand-in for data.yahoo_daily: a rising series per coin, optionally
-    stale (ends 5 days early) or raising."""
+COIN = {sym: c for c, sym in xs.YAHOO.items()}
+
+
+def fake_fetch(coins, days=400, stale=(), failing=(), end="2026-10-26", dead=(), price=None, asked=None):
+    """A stand-in for data.yahoo_daily: a rising series per coin with dollar volume, optionally
+    stale (ends 5 days early), raising, dead (no volume) or at a fixed `price`."""
     def fetch(symbol, span):
-        c = symbol.replace("-USD", "")
+        if asked is not None:
+            asked.append(symbol)
+        c = COIN.get(symbol, symbol.replace("-USD", ""))
         if c in failing:
             raise OSError("503")
         if c not in coins:
@@ -76,9 +81,11 @@ def fake_fetch(coins, days=400, stale=(), failing=(), end="2026-10-26"):
         n = len(idx)
         base = 100 + (hash(c) % 50)
         close = [base * (1 + 0.001 * i + 0.0001 * (hash(c) % 7) * i) for i in range(n)]
+        if price and c in price:
+            close = [price[c]] * n
         return pd.DataFrame({"dt": idx, "ts": idx.astype("int64") // 10**9,
                              "open": close, "high": close, "low": close, "close": close,
-                             "volume": 1.0})
+                             "volume": 0.0 if c in dead else 1e6})
     return fetch
 
 
@@ -131,6 +138,74 @@ class TestDataIntegrity(unittest.TestCase):
         self.assertIn(held, res["positions"])
         self.assertGreater(res["positions"][held], 0)
         self.assertGreater(res["equity"], 0.5 * before)
+
+
+class TestWrongSeries(unittest.TestCase):
+    """Yahoo's ARB-USD is "ARbit", a dead token, and the account bought it on day one."""
+
+    THURSDAY = datetime(2026, 10, 29, 12, tzinfo=timezone.utc)
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.path = Path(self.tmp.name) / "xs.db"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_arb_is_priced_from_arbitrum(self):
+        asked = []
+        xs.load_prices(fetch=fake_fetch(xs.UNIVERSE, asked=asked))
+        self.assertIn("ARB11841-USD", asked)
+        self.assertNotIn("ARB-USD", asked)
+        self.assertEqual(xs.yahoo_symbol("TIA"), "TIA-USD")
+
+    def test_a_series_nobody_trades_is_not_ranked(self):
+        prices, errors = xs.load_prices(fetch=fake_fetch(xs.UNIVERSE, dead=("DOGE",)))
+        self.assertNotIn("DOGE", prices)
+        self.assertIn("dead or mis-mapped", errors["DOGE"])
+
+    def held_dead_arb(self):
+        """The real account's state: ARB bought at ARbit's $0.000629, next to a real coin."""
+        acc = xs.XSAccount(self.path)
+        acc.db.execute("DELETE FROM xs_meta")                   # an account from before the fix
+        acc.cash, acc.units = 0.0, {"ARB": 10.0 / 0.000629, "BTC": 90.0 / 140.0}
+        acc.save(1, 100.0, {"ARB": 0.1, "BTC": 0.9}, {"ARB": 0.0, "BTC": 0.05}, {}, 100.0, "init",
+                 last_px={"ARB": 0.000629, "BTC": 140.0})
+        acc.db.close()
+
+    def test_held_dead_arb_is_closed_at_its_last_print_not_revalued(self):
+        self.held_dead_arb()
+        res = xs.run(str(self.path), 100.0, now=self.THURSDAY,
+                     fetch=fake_fetch(xs.UNIVERSE, price={"ARB": 0.1655, "BTC": 140.0}))
+        rows = res["account"].db.execute("SELECT note, equity, cash, units FROM xs_account ORDER BY id").fetchall()
+        fix = [r for r in rows if r["note"].startswith("correction")]
+        self.assertEqual(len(fix), 1)
+        self.assertIn("ARB $10.00 at 0.000629", fix[0]["note"])
+        self.assertAlmostEqual(fix[0]["equity"], 100.0)            # cash 10 + BTC 90: no jump
+        self.assertAlmostEqual(res["equity"], 100.0)               # not 10 / 0.000629 x 0.1655 = $2,631
+        self.assertNotIn("ARB", res["account"].units)
+        self.assertEqual(res["traded"], 0.0)                       # a Thursday: no rebalance
+
+    def test_the_correction_happens_once(self):
+        self.held_dead_arb()
+        fetch = fake_fetch(xs.UNIVERSE, price={"ARB": 0.1655, "BTC": 140.0})
+        xs.run(str(self.path), 100.0, now=self.THURSDAY, fetch=fetch)
+        res = xs.run(str(self.path), 100.0, now=self.THURSDAY, fetch=fetch)
+        n = res["account"].db.execute("SELECT COUNT(*) FROM xs_account WHERE note LIKE 'correction%'").fetchone()[0]
+        self.assertEqual(n, 1)
+
+    def test_a_new_account_never_corrects_real_arbitrum(self):
+        monday = datetime(2026, 11, 2, 12, tzinfo=timezone.utc)
+        fetch = fake_fetch(xs.UNIVERSE, price={"ARB": 0.1655})
+        xs.run(str(self.path), 100.0, now=monday, fetch=fetch)
+        acc = xs.XSAccount(self.path)
+        acc.units["ARB"] = 50.0                                     # bought on the real series
+        acc.last_px["ARB"] = 0.1655
+        latest = acc.db.execute("SELECT MAX(ts) FROM xs_account").fetchone()[0]
+        acc.save(latest + 86400, 100.0, {}, {}, {}, 0.0, "rebalance", last_px=acc.last_px)
+        acc.db.close()
+        res = xs.run(str(self.path), 100.0, now=self.THURSDAY, fetch=fetch)
+        self.assertIn("ARB", res["account"].units)
 
 
 class TestVenues(unittest.TestCase):

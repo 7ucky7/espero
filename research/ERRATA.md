@@ -18,8 +18,25 @@ points here. Numbers below were reproduced from cached data during the 2026-10-2
   (2024-07-01 → 2026-10-27) starts after all three switches, so no holdout window straddles one;
   the OP and WLD switches fall in its design period. Verdict unaffected; the forward test from
   2026-11-02 trades only coins that pass the filter.
-- **The XS account (`xs.py`, #7's rule)** has no liquidity filter: a dead token's sporadic prints
-  can rank in its 7-day top 10. Not fixed here; the account's own record stands as it ran.
+- **The XS account (`xs.py`, #7's rule) held the dead token from its first day.** It has no
+  liquidity filter, and on 2026-10-27 ARbit's flat 0.0% week ranked #2 of 42 because most coins
+  fell, so 10% of the book ($9.99 at init) sat in a series with no trades, marked at $0.000629.
+  Fixed 2026-10-29, without rewriting its history:
+  - `xs.YAHOO` maps ARB to `ARB11841-USD` ("Arbitrum USD" in Yahoo's metadata; `ARB-USD` is
+    "ARbit USD"). TIA, WLD and OP need no mapping: Yahoo now serves Celestia, Worldcoin and
+    Optimism under them, and their wrong histories end before the account's two-year window.
+  - A series that traded under $10,000 in its last 7 bars is not ranked (Yahoo quotes crypto
+    volume in dollars; the smallest real coin in the list, KSM, trades about $14M a week). This
+    catches the next silent swap; it excluded none of the 42 coins on 2026-10-29.
+  - Once per account, before any mark at the new prices, units bought on a re-mapped series are
+    closed to cash at that series' last print, at no cost (there was no market to trade them in),
+    and saved as a `correction` row. Without it the ARbit units would have been marked at
+    Arbitrum's $0.1655, a 263× jump. The cash waits for the next Monday rebalance.
+  - The record's first two days stand as they ran: ARB contributed nothing to them (its price
+    never moved), which is what holding a token nobody trades looks like.
+- **Not changed:** #8 keeps `ARB-USD` (its forward test must run the universe its backtest ran, and
+  the $1M filter already excludes it), as does #15's frozen universe; `espero board --alts` lists
+  it as failing the liquidity rule.
 - **`SHIB-USD`** is printed as exactly 0 on 258 days (2020-08-01 → 2021-04-15): any lookback that
   reaches back to them compares against zero.
 
