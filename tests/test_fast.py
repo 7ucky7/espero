@@ -2,6 +2,7 @@
 risk halts it; the journal remembers why."""
 from __future__ import annotations
 
+import importlib.util
 import sqlite3
 import tempfile
 import unittest
@@ -13,6 +14,8 @@ import pandas as pd
 from espero import book as bk
 from espero import fast
 from espero.execution import PaperExchange
+
+HAVE_RICH = importlib.util.find_spec("rich") is not None   # the tui extra is optional
 
 
 def snap(ts=0.0, bid=100.0, ask=100.1, trades=()):
@@ -78,6 +81,7 @@ class TestScan(unittest.TestCase):
         self.assertEqual(fast.scan_status(fast.SignalState(value=0.0025), 0.003), "near")
         self.assertEqual(fast.scan_status(fast.SignalState(value=0.0001), 0.003), "")
 
+    @unittest.skipUnless(HAVE_RICH, "tui extra not installed")
     def test_scan_table_renders(self):
         import io
 
@@ -255,6 +259,7 @@ class TestRiskAndJournal(unittest.TestCase):
         fb.reprice()
         self.assertEqual(fb.exchange.resting()[0].price, 101.0)
 
+    @unittest.skipUnless(HAVE_RICH, "tui extra not installed")
     def test_render_has_no_terminal_dependency(self):
         import io
 
