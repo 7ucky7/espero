@@ -287,6 +287,28 @@ class TestDownloads(unittest.TestCase):
             with raise_(400, body), mock.patch("time.sleep"), self.assertRaises(urllib.error.HTTPError):
                 self.r.get("https://example.test/a")
 
+    def test_a_dropped_read_is_retried(self):
+        import http.client
+
+        class Body:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self):
+                return b"ok"
+        calls = iter([http.client.IncompleteRead(b"half", 10), Body()])
+
+        def urlopen(*a, **k):
+            x = next(calls)
+            if isinstance(x, Exception):
+                raise x
+            return x
+        with mock.patch("urllib.request.urlopen", side_effect=urlopen), mock.patch("time.sleep"):
+            self.assertEqual(self.r.get("https://example.test/a"), b"ok")
+
     def minutes(self, bars):
         """1-minute archive rows whose 5-minute bars are exactly `bars`."""
         rows = []

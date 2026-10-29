@@ -186,3 +186,7 @@ counting them as zero would label those breaks organic. Resolved before any resu
 
 Only 2020-01-01 had been reached (30 coin-days cached). The cache was deleted and the run started
 again from the beginning.
+
+The second start stopped too, before any number: Binance's archive dropped a connection halfway
+through a file (`IncompleteRead`), which the downloader did not retry. Dropped reads are now retried
+like timeouts. The cache of finished coin-days was kept, since they are the same files either way.

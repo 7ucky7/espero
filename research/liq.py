@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 import gzip
+import http.client
 import io
 import json
 import sys
@@ -60,7 +61,8 @@ def get(url: str, tries: int = 4) -> Optional[bytes]:
                 return None
             if exc.code in (401, 403) or k == tries - 1:
                 raise
-        except (urllib.error.URLError, TimeoutError, ConnectionError):
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException):
+            # a timeout, a refused connection, or a file the server dropped halfway (IncompleteRead)
             if k == tries - 1:
                 raise
         time.sleep(1.5 * (k + 1))
