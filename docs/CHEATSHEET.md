@@ -128,6 +128,22 @@ testnet URL constant and refuses any mainnet URL. `--execute-testnet` shadows th
 leg with real resting (ALO) orders so the fill rate #12 assumed can be measured. Mainnet signing is
 not implemented.
 
+## Drawer 8: the signal board, multi-asset trend (hypothesis #15, scanner)
+
+```bash
+.venv/bin/python -m espero board                                        # 1/3/12-month trend: stocks, bonds, commodities, BTC/ETH/SOL, alts
+.venv/bin/python -m espero board --alts                                 # every altcoin on its own row
+.venv/bin/python -m espero board --carry                                # plus Hyperliquid funding right now (#12's market)
+.venv/bin/python research/trend.py                                      # #15's one run, offline from data/trend/
+```
+
+For each asset: ▲/▽ against its close 1, 3 and 12 months ago, how that compares with Monday's
+reading, and the nearest price that would flip a lookback at the next one. Read-only: prices go to a
+temporary cache and `mf.db`/`carry-*.db` are read from copies. **#15 FAILED** its pre-registered test
+(`research/RESULTS_TREND.md`): trend timing cut drawdowns but added no return beyond sizing positions
+by volatility, so the board shows no sizes and sends no alerts. "stale" means Yahoo has not posted
+yesterday's bar yet (it sometimes drops the bar that just closed for a few hours after 00:00 UTC).
+
 ## Drawer 5: live money. Off.
 
 `espero live` is experimental and needs `.env` keys, `ESPERO_ALLOW_LIVE=1` and `--confirm-live`

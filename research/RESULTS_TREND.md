@@ -94,6 +94,13 @@ still adds nothing to the vol sizing, and the drawdown benefit is the same.
 - **A wrong confound.** The pre-registration said the alt sleeve would be empty until November 2018.
   It was not: Yahoo's `LTC-USD` history starts in October 2016, so the sleeve was LTC alone from
   the first decision until the other coins became eligible.
+- **Float dust, found by the CI matrix.** Replayed under Python 3.9 and pandas 2.3, the trend book
+  ended 0.07% lower with the same 3,749 trades. When a week's ETF buys spent the cash to the last
+  1e-17, pandas 2's rounding left 1.2e-17, which bought a 6.9e-18 ETC position at Monday's close;
+  that dust then counted as held, sat inside the 1% band and blocked ETC's real entry a week later.
+  After the run, positions and buys below 1e-12 of equity are zero (`trend.DUST`). The published
+  run (pandas 3.1) never created such a position, so its numbers are unchanged at every daily mark,
+  and the two library versions now agree to twelve decimals.
 - **A deprecation.** After the run, `DatetimeIndex.weekday` (deprecated in pandas 3) was replaced by
   `day_of_week` in the simulator's weekly sampler; the rerun output is byte-identical.
 

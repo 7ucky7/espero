@@ -229,6 +229,17 @@ class TestBook(unittest.TestCase):
         self.assertAlmostEqual(book.values["SPY"], 20.0 / (1 + trend.COSTS["etf"]))   # scaled to the cash
         self.assertNotIn("BTC-USD", book.values)                                     # the exit sold it all
 
+    def test_float_dust_is_neither_bought_nor_held(self):
+        # cash spent to the last 1e-17 must not buy a 1e-17 position, and such a position must
+        # not count as held: it would sit inside the band and block the real entry a week later
+        book = trend.Book(cash=1e-17, values={"SPY": 1.0}, marks={"SPY": trend.last_adj(self.f["SPY"], MON)})
+        book.rebalance(self.decision({"SPY": 1.0, "BTC-USD": 0.0005}), self.f, trend.run_moment(MON))
+        book.fill(self.f, MON + pd.Timedelta(days=1))
+        self.assertNotIn("BTC-USD", book.values)
+        book.values["BTC-USD"] = 7e-18
+        orders = book.rebalance(self.decision({"SPY": 0.9, "BTC-USD": 0.0005}), self.f, trend.run_moment(MON))
+        self.assertIn(("BTC-USD", False), {(o.symbol, o.exit) for o in orders})
+
     def test_dividends_accrue_through_adjusted_marks(self):
         dates = pd.bdate_range("2026-02-02", "2026-03-06")
         raw = np.full(len(dates), 100.0)

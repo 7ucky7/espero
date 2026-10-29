@@ -48,6 +48,7 @@ TARGET_VOL = 0.20                 # #8's constants, reused
 MAX_SCALE = 2.0
 BAND = 0.01                       # trade only moves above 1% of equity, or entries and exits
 COSTS = {"etf": 0.0005, "crypto": 0.0010}
+DUST = 1e-12                      # share of equity below which a position or a buy is zero: float residue
 ALT_MIN_CLOSES = 365              # #8's eligibility
 ALT_MIN_DOLLAR_VOLUME = 1e6
 ALT_VOLUME_DAYS = 30
@@ -424,7 +425,7 @@ class Book:
                 if amount < 0 and held > 0:
                     sold = min(-amount, held)
                     self.values[o.symbol] = held - sold
-                    if o.exit or self.values[o.symbol] <= 1e-12:
+                    if o.exit or self.values[o.symbol] <= DUST * self.equity():
                         self.values.pop(o.symbol, None)
                     self._book(o.symbol, -sold, sold * c, bar, late, fills)
                     self.cash += sold - sold * c
@@ -434,7 +435,7 @@ class Book:
             scale = min(1.0, self.cash / need) if need > 0 else 1.0
             for o, bar, amount, c, late in buys:
                 bought = amount * max(scale, 0.0)
-                if bought <= 0:
+                if bought <= DUST * self.equity():     # cash spent to the last 1e-17: buy nothing
                     continue
                 self.values[o.symbol] = self.values.get(o.symbol, 0.0) + bought
                 self._book(o.symbol, bought, bought * c, bar, late, fills)
@@ -454,12 +455,14 @@ class Book:
         """This week's orders, from values marked at the decision's cutoff. An order still
         pending from an earlier week is replaced. Stale assets are not traded."""
         equity = self.equity()
+        dust = DUST * equity
         orders: List[Order] = []
-        for sym in sorted(set(decision.targets) | {s for s, v in self.values.items() if v > 0}):
+        for sym in sorted(set(decision.targets) | {s for s, v in self.values.items() if v > dust}):
             if sym in decision.stale:
                 continue
             target = decision.targets.get(sym, 0.0) * equity
             cur = self.values.get(sym, 0.0)
+            cur = cur if cur > dust else 0.0
             enter, exit_ = cur <= 0 and target > 0, cur > 0 and target <= 0
             if not (enter or exit_ or abs(target - cur) > band * equity):
                 continue

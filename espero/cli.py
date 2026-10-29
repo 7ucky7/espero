@@ -904,6 +904,29 @@ def _cmd_factors(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_board(args: argparse.Namespace) -> int:
+    """#15's trend readings for stocks, bonds, commodities and crypto. Read-only: a
+    scanner, since #15 failed its test (research/RESULTS_TREND.md)."""
+    from . import board, trend
+
+    frames, errors = board.fetch_frames(trend.symbols())
+    v = board.view(frames, pd.Timestamp.now(tz="UTC").tz_localize(None), alts=args.alts)
+    try:
+        from rich.console import Console
+        Console().print(board.table(v))
+    except ImportError:
+        print(board.format_plain(v))
+    for line in board.context(Path(args.state_dir)):
+        print(line)
+    if errors:
+        print(f"\n{len(errors)} symbols failed to load: {', '.join(sorted(errors))}")
+    if args.carry:
+        args.top = 10
+        print()
+        return _cmd_carry_scan(args)
+    return 0
+
+
 def _cmd_mf(args: argparse.Namespace) -> int:
     from . import mf as mfm
     res = mfm.run(args.state, args.cash)
@@ -1129,6 +1152,12 @@ def build_parser() -> argparse.ArgumentParser:
     dy.add_argument("--dry-run", action="store_true", help="preflight: no network, no account changes")
     dy.add_argument("--no-notify", action="store_true")
     dy.set_defaults(func=_cmd_daily)
+
+    bd = sub.add_parser("board", help="1/3/12-month trend for stocks, bonds, commodities, crypto (#15 scanner)")
+    bd.add_argument("--alts", action="store_true", help="list every altcoin instead of one summary row")
+    bd.add_argument("--carry", action="store_true", help="also show Hyperliquid funding now (#12's market)")
+    bd.add_argument("--state-dir", default=".", help="where mf.db and carry-*.db live (read-only)")
+    bd.set_defaults(func=_cmd_board)
 
     d = sub.add_parser("dashboard", help="static HTML dashboard for the paper accounts")
     d.add_argument("-o", "--out", default="dashboard.html")

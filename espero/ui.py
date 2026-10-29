@@ -450,6 +450,10 @@ def act_paper(console, state):
                    "--loop", "--interval", "60"], state)
 
 
+def act_board(console, state):
+    _run(console, ["board", "--state-dir", str(state)], state)
+
+
 def act_scan(console, state):
     _run(console, ["scan", "--state-dir", str(state)], state)
 
@@ -523,6 +527,7 @@ MENU: List[Tuple[str, Callable]] = [
     ("Open the dashboard", act_dashboard),
     ("Why: the last decision, as the bot saw it", act_why),
     ("Preview what each rule would do now (no writes)", act_preview),
+    ("Signal board: 1/3/12-month trend, stocks to altcoins (scanner, no writes)", act_board),
     ("Account history", act_history),
     ("Run the daily job now", act_daily),
     ("Deposit paper capital", act_deposit),
