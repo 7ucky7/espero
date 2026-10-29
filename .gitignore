@@ -83,3 +83,5 @@ data/bids/
 data/hlcollect/
 # #32's Binance funding cache (espero/fundsplit.py)
 data/funding/
+# #37 Polymarket downloads (research/polyhour.py)
+data/polymarket/
