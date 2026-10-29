@@ -105,7 +105,9 @@ backtest **failed** before fees (`research/RESULTS_DEGEN.md`): use the scan as a
 .venv/bin/python research/carry.py fetch                                # funding since 2023, perp and spot candles -> research/data/carry
 .venv/bin/python research/carry.py run                                  # #11: one replay, the five criteria, the verdict
 .venv/bin/python research/carry.py run2                                 # #12: swap gap + maker execution, with ablations
-.venv/bin/python -m espero carry paper --costs maker --state carry-maker.db --loop   # #12 forward book (and --costs taker on carry-taker.db)
+./scripts/install-carry-launchd.sh                                      # #12's two forward books under launchd: restart if they die
+./scripts/install-carry-launchd.sh --status                             # running? (--uninstall stops and removes both)
+.venv/bin/python -m espero carry paper --costs maker --state carry-maker.db --loop   # one book by hand (stop launchd's first)
 .venv/bin/python -m espero carry status --state carry-maker.db          # equity, funding, fees, open and closed hedges
 .venv/bin/python -m espero hl account 0xYourAddress                    # testnet account view, read-only (or HL_WALLET_ADDRESS in .env)
 .venv/bin/python -m espero hl order ETH sell 0.01 2400                  # one resting TESTNET order (ALO: maker only)
@@ -174,4 +176,7 @@ before it sends anything. Leave this drawer shut; see the README section before 
 | logs | `~/Library/Logs/espero/daily.log` |
 | the launchd job | `~/Library/LaunchAgents/com.espero.daily.plist` |
 | remove the job | `./scripts/install-launchd.sh --uninstall` |
+| #12's carry loops | launchd agents `com.espero.carry-taker` and `com.espero.carry-maker` (maker mirrors to testnet) |
+| their logs | `~/Library/Logs/espero/carry-taker.log`, `carry-maker.log` |
+| stop them | `./scripts/install-carry-launchd.sh --uninstall` |
 | full operating procedure | `docs/RUNBOOK.md` |

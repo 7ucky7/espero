@@ -360,7 +360,8 @@ espero/
     report.py       # the matrix table and the equity chart
     cli.py          # fetch | backtest | matrix | chart | paper | live | tsmom | xs | factors | daily | dashboard
   tests/            # 141 tests
-  deploy/launchd/   # the LaunchAgent template; scripts/install-launchd.sh renders it
+  deploy/launchd/   # the LaunchAgent templates; scripts/install-launchd.sh (daily) and
+                    # scripts/install-carry-launchd.sh (#12's two carry loops) render them
   research/         # one pre-registration and one results file per hypothesis
   data/             # committed BTC/ETH daily candles so the numbers reproduce offline
   docs/AUDIT.md     # the audit that started this
