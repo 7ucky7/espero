@@ -40,5 +40,20 @@ class TestCarryAgents(unittest.TestCase):
         self.assertNotIn("--execute-testnet", agents["com.espero.carry-taker"]["ProgramArguments"])
 
 
+@unittest.skipUnless(shutil.which("bash") and shutil.which("sed"), "needs bash and sed")
+class TestCollectorAgent(unittest.TestCase):
+    def test_kept_alive_reading_public_data_into_the_repo(self):
+        out = subprocess.run(["bash", str(ROOT / "scripts" / "install-hlcollect-launchd.sh"), "--print"],
+                             capture_output=True, text=True, check=True,
+                             env={"PATH": "/usr/bin:/bin", "HOME": "/tmp", "PYTHON": "/x/python"}).stdout
+        p = plistlib.loads(out.encode())
+        self.assertEqual(p["Label"], "com.espero.hlcollect")
+        self.assertEqual(p["ProgramArguments"], ["/x/python", "-m", "espero", "hlcollect", "--loop", "--data",
+                                                 str(ROOT / "data" / "hlcollect")])
+        self.assertEqual(p["WorkingDirectory"], str(ROOT))
+        self.assertTrue(p["KeepAlive"] and p["RunAtLoad"])
+        self.assertTrue(p["StandardOutPath"].endswith("hlcollect.log"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

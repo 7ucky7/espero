@@ -79,3 +79,5 @@ data/liq2/
 data/levetf/
 # #30 downloads: 5-minute months and days, re-downloadable (research/bids.py)
 data/bids/
+# the Hyperliquid collector, public data, re-collectable only going forward (espero/hlcollect.py)
+data/hlcollect/

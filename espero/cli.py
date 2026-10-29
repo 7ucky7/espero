@@ -560,6 +560,26 @@ def _cmd_liqfwd(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_hlcollect(args: argparse.Namespace) -> int:
+    """Hyperliquid's positions, HLP, contexts and 1-minute candles, saved under data/hlcollect/."""
+    from . import hlcollect as hc
+
+    data = Path(args.data) if args.data else hc.DATA
+    if args.status:
+        for kind, s in hc.status(data).items():
+            print(f"{kind:10s} {s['files']:6d} files  {s['bytes'] / 1e6:8.1f} MB  latest {s['latest'] or '-'}")
+        return 0
+    c = hc.Collector(data, top=args.top)
+    if args.loop:
+        print(f"collecting into {data} (top {args.top} accounts hourly, HLP every 15 min, contexts every 5 min, "
+              f"1-minute candles daily); ctrl-c stops", flush=True)
+        c.loop()
+        return 0
+    for note in c.step() or ["nothing due"]:
+        print(note)
+    return 0
+
+
 def _cmd_carry_screen(args: argparse.Namespace) -> int:
     """#12's forward test on one screen. Read-only: the books are read from copies."""
     from . import carry_view as cv
@@ -1377,6 +1397,13 @@ def build_parser() -> argparse.ArgumentParser:
     dy.add_argument("--dry-run", action="store_true", help="preflight: no network, no account changes")
     dy.add_argument("--no-notify", action="store_true")
     dy.set_defaults(func=_cmd_daily)
+
+    hc = sub.add_parser("hlcollect", help="record Hyperliquid's positions, HLP, contexts and 1m candles (public data)")
+    hc.add_argument("--loop", action="store_true", help="run forever (what launchd runs)")
+    hc.add_argument("--status", action="store_true", help="what is on disk, then exit")
+    hc.add_argument("--top", type=int, default=2000, help="accounts by account value, snapshotted hourly")
+    hc.add_argument("--data", default=None, help="folder (default data/hlcollect in the repo)")
+    hc.set_defaults(func=_cmd_hlcollect)
 
     lf = sub.add_parser("liqfwd", help="#22 forward paper test: record aggr's bars, show the ledger")
     lf.add_argument("--state-dir", default=None)
