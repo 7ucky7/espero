@@ -130,12 +130,15 @@ costs 3. The forced trader has to cross the spread, and the patient side collect
 keep the prediction frozen and change **how** we trade it. That is a new question, with its own risk
 (adverse selection), not a re-tuning.
 
-### 9. Resting bids catch forced sellers (#30, being tested)
+### 9. Resting bids catch forced sellers (#30 failed; #31 running forward)
 
-Rest a bid one ATR below a breakdown while the forced selling runs, and sell back at the breakdown
-price. #20's bounce, bought as a maker, but only on the events that fall further. Pre-registered in
-[PREREGISTRATION_BIDS.md](PREREGISTRATION_BIDS.md), on April–October 2026, months no breakdown test
-has used.
+Rest a bid below a breakdown while the forced selling runs, and sell back at the breakdown price:
+#20's bounce, bought as a maker, but only on the events that fall further.
+- **#30 failed** at one ATR deep: +1.7 bps net per fill ([RESULTS_BIDS.md](RESULTS_BIDS.md)). The
+  breakdowns that reached the bid went on to fall, and the ones that never did bounced.
+- **Deeper bids paid** as information: +12.5 to +20 bps net per fill at 2–3 ATR, in every month.
+- **#31** ([FORWARD_BIDS2.md](FORWARD_BIDS2.md)) tests a 2-ATR bid with a 4-hour exit on data from
+  2026-10-30.
 
 ### 10. The funding snipe
 
