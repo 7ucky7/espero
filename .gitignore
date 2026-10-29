@@ -70,3 +70,5 @@ data/lows/
 liqfwd_trades.csv
 liqfwd_short_trades.csv
 lows_fwd_trades.csv
+# #25 open-interest downloads (research/oi.py)
+data/oi/
