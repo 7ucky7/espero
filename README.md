@@ -329,8 +329,15 @@ strongest effect measured here, and still under the 18 bps bar for one hour: "re
 At 4 hours it was +37.8 bps (information only), the lead now worth a test of its own:
 [research/RESULTS_LOWS.md](research/RESULTS_LOWS.md).
 
-Scoreboard: twenty-two tests. Three passes, two real but not tradable (#19, #20), the rest failed;
-#22 and #23 are running as paper tests. Two are risk construction; the third is income (carry at
+The twenty-sixth reran #18's rule, unchanged, on Binance's COIN-M liquidation archive: every day from
+June 2023 to October 2024 that #18 had not used, 429 days and 35,906 breaks. Breaks made of
+liquidations faded 23.6 bps more over the next hour than organic ones (t −4.1), in both halves and
+coin by coin, and buying the forced down-breaks earned +23.5 bps an hour (t 7.1). **PASS**: the
+first signal here to clear every pre-registered criterion. It now needs a forward test on a live
+liquidation feed before anything trades: [research/RESULTS_LIQ2.md](research/RESULTS_LIQ2.md).
+
+Scoreboard: twenty-seven tests. Four passes (#4, #8, #12 provisional, #26), two real but not
+tradable (#19, #20), the rest failed or are running (#22–#25). Two are risk construction; the third is income (carry at
 maker fees) with a forward test still attached. No predictive edge has been found at any horizon,
 and across #4, #8 and #15 the one effect that survives is volatility sizing.
 
