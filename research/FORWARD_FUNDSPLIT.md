@@ -70,6 +70,25 @@ would be strong.
 - **Binance's funding, aggr's liquidations, Binance's prices**: three sources, one clock.
 - **Five winter months, 14 coins.**
 
+## Amendment, 2026-10-29, before the window opens
+
+Binance's live API (`fapi.binance.com`) answers this machine with HTTP 451: it refuses US
+addresses. The same settlements are published in Binance's public archive, which this repo already
+reads for prices: monthly files at
+`data.binance.vision/data/futures/um/monthly/fundingRate/{SYMBOL}/`, with columns
+`calc_time, funding_interval_hours, last_funding_rate`. **The funding comes from there.**
+
+- Some perpetuals settle every 4 hours, not 8. The rate compared with 0.0001 is **scaled to
+  8 hours** (rate × 8 ÷ interval). For an 8-hour coin that is the rate itself.
+- The archive is monthly, so the running numbers lag by up to a month. The verdict waits for March
+  2027's file.
+
+Nothing else changes. No break and no rate from the window had been read.
+
+Seen while testing the parser, outside the window: in September 2026 neither BTCUSDT nor 1000SHIBUSDT
+settled above 0.01% even once (90 settlements each). In calm months the crowded group may be small,
+and criterion 1 may then lack the breaks to reach t ≥ 2.
+
 ## Transparency — what was seen before this commit
 
 #26's result and events (2023–24), #19's settlement study, #27's design, and today's funding rates

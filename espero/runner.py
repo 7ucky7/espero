@@ -1,7 +1,8 @@
 """`espero daily`: the one command a scheduler runs.
 
     tsmom -> xs -> mf (#8) -> mf-hl -> liqfwd (#22/#23) -> lowsfwd (#24) -> liqbreak (#27)
-          -> postclose (#29) -> bidsfwd (#31) -> dashboard -> health.json
+          -> fundsplit (#32) -> postclose (#29) -> bidsfwd (#31)
+          -> dashboard -> health.json
 
 Rules:
 
@@ -32,6 +33,7 @@ from typing import Callable, Dict, Optional
 
 from . import bidsfwd as bfw
 from . import dashboard as dash
+from . import fundsplit as fsp
 from . import liqbreak as lbk
 from . import liqfwd as lfm
 from . import lowsfwd as lwf
@@ -215,7 +217,8 @@ def run_daily(state_dir: Path = Path("."), cash_tsmom: float = 100.0, cash_xs: f
 
     with Lock(state_dir / "daily.lock"):
         if dry_run:
-            for name in ("tsmom", "xs", "mf", "mf-hl", "liqfwd", "lowsfwd", "liqbreak", "postclose", "bidsfwd"):
+            for name in ("tsmom", "xs", "mf", "mf-hl", "liqfwd", "lowsfwd", "liqbreak", "fundsplit", "postclose",
+                         "bidsfwd"):
                 result.steps[name] = StepResult(True, 0.0, note="skipped (dry run)", skipped=True)
                 log.info("%s skipped (dry run)", name)
         else:
@@ -234,6 +237,9 @@ def run_daily(state_dir: Path = Path("."), cash_tsmom: float = 100.0, cash_xs: f
             # #27: #26's rule forward on aggr's 5-minute liquidations (FORWARD_LIQBREAK.md); after
             # lowsfwd, whose Binance bars it reads
             _step("liqbreak", lambda: lbk.run(state_dir), result, notify)
+            # #32: #27's forced down-breaks split by Binance funding (FORWARD_FUNDSPLIT.md); reads
+            # the ledger liqbreak just wrote
+            _step("fundsplit", lambda: fsp.run(state_dir), result, notify)
             # #29: the US session's move after 16:00 ET (FORWARD_POSTCLOSE.md); reads lowsfwd's files,
             # downloads nothing
             _step("postclose", lambda: pcl.run(state_dir), result, notify)

@@ -81,3 +81,5 @@ data/levetf/
 data/bids/
 # the Hyperliquid collector, public data, re-collectable only going forward (espero/hlcollect.py)
 data/hlcollect/
+# #32's Binance funding cache (espero/fundsplit.py)
+data/funding/
