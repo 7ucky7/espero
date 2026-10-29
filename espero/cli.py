@@ -553,6 +553,8 @@ def _cmd_liqfwd(args: argparse.Namespace) -> int:
     print("#24 (FORWARD_LOWS.md): " + lwf.run(sd)["note"] + f" -> {sd / lwf.LEDGER}")
     from . import liqbreak as lbk
     print("#27 (FORWARD_LIQBREAK.md): " + lbk.run(sd)["note"] + f" -> {sd / lbk.LEDGER}")
+    from . import postclose as pc
+    print("#29 (FORWARD_POSTCLOSE.md): " + pc.run(sd)["note"] + f" -> {sd / pc.LEDGER}")
     return 0
 
 
