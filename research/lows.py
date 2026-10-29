@@ -41,7 +41,7 @@ COST_BINANCE_US = 0.0004
 COST_HL = 0.0009
 
 
-def get(url: str, tries: int = 4) -> Optional[bytes]:
+def get(url: str, tries: int = 8) -> Optional[bytes]:
     """The body, or None for a 404 (no such month). Anything else is retried, then raised."""
     for k in range(tries):
         try:
@@ -56,7 +56,7 @@ def get(url: str, tries: int = 4) -> Optional[bytes]:
         except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException):
             if k == tries - 1:
                 raise
-        time.sleep(1.5 * (k + 1))
+        time.sleep(min(60.0, 2.0 ** k))       # the archive sometimes drops connections for a while
     return None
 
 
