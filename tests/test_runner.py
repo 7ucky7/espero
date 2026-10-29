@@ -92,6 +92,17 @@ class TestIsolation(RunnerCase):
         self.assertTrue(any("rebalance" in t for t in sent))
         self.assertTrue(any("failed" in t for t in sent))
 
+    def test_mf_runs_twice_once_on_hyperliquid_prices(self):
+        from espero import hyperliquid as hl
+        with mock.patch.object(runner.tsm, "run", return_value={"note": "mark", "equity": 1.0}), \
+             mock.patch.object(runner.xsm, "run", return_value={"note": "mark", "equity": 1.0}):
+            res = self.run_daily()
+        self.assertTrue(res.steps["mf-hl"].ok)
+        calls = self.mf_run.call_args_list
+        self.assertEqual([Path(c.args[0]).name for c in calls], ["mf.db", "mf-hl.db"])
+        self.assertIsNone(calls[0].kwargs.get("fetch"))           # #8 itself stays on Yahoo
+        self.assertIs(calls[1].kwargs["fetch"], hl.daily)
+
     def test_trade_note_without_equity_does_not_crash_the_run(self):
         sent = []
         with mock.patch.object(runner.notifier, "notify", side_effect=lambda t, m: sent.append((t, m))), \

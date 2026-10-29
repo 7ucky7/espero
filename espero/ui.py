@@ -187,7 +187,8 @@ def header(state: Path) -> Panel:
     t = _latest(state / "tsmom.db", "account")
     x = _latest(state / "xs.db", "xs_account")
     m = _latest(state / "mf.db", "mf_account")
-    total = sum(float(r["equity"]) for r in (t, x, m) if r)
+    mh = _latest(state / "mf-hl.db", "mf_account")
+    total = sum(float(r["equity"]) for r in (t, x, m, mh) if r)
     paused = (state / "KILL").exists()
 
     line1 = Text()
@@ -278,14 +279,15 @@ def accounts_table(state: Path) -> Table:
     else:
         tbl.add_row("XS     weekly top-10", "-", "", "", "", "not started")
 
-    rows = _history(state / "mf.db", "mf_account", limit=400)
-    if rows:
-        from . import mf
-        rows = list(reversed(rows))
-        pos = {k: v for k, v in json.loads(rows[-1].get("positions") or "{}").items() if v > 0}
-        holds = ", ".join(sorted(pos)) or f"cash until its first fill {mf.FORWARD_START.date()}"
-        eq, delta, pnl, spark = _account_row(rows)
-        tbl.add_row("#8     multifactor fwd", eq, delta, pnl, Text(spark, style=ACCENT), holds)
+    for db, label in (("mf.db", "#8     multifactor fwd"), ("mf-hl.db", "#8 HL  shadow (info)")):
+        rows = _history(state / db, "mf_account", limit=400)
+        if rows:
+            from . import mf
+            rows = list(reversed(rows))
+            pos = {k: v for k, v in json.loads(rows[-1].get("positions") or "{}").items() if v > 0}
+            holds = ", ".join(sorted(pos)) or f"cash until its first fill {mf.FORWARD_START.date()}"
+            eq, delta, pnl, spark = _account_row(rows)
+            tbl.add_row(label, eq, delta, pnl, Text(spark, style=ACCENT), holds)
     return tbl
 
 

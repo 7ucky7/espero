@@ -152,12 +152,25 @@ class TestWrongSeries(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_arb_is_priced_from_arbitrum(self):
+    def test_on_yahoo_arb_is_priced_from_arbitrum(self):
         asked = []
-        xs.load_prices(fetch=fake_fetch(xs.UNIVERSE, asked=asked))
+        xs.load_prices(fetch=fake_fetch(xs.UNIVERSE, asked=asked), source="yahoo")
         self.assertIn("ARB11841-USD", asked)
         self.assertNotIn("ARB-USD", asked)
         self.assertEqual(xs.yahoo_symbol("TIA"), "TIA-USD")
+
+    def test_hyperliquid_is_the_default_and_its_arb_is_arbitrum(self):
+        asked = []
+        prices, _ = xs.load_prices(fetch=fake_fetch(xs.UNIVERSE, asked=asked))
+        self.assertEqual(xs.SOURCE, "hyperliquid")
+        self.assertIn("ARB-USD", asked)                 # Hyperliquid's ARB perp is Arbitrum
+        self.assertIn("ARB", prices)
+
+    def test_hyperliquid_volume_is_in_coins_so_the_guard_uses_dollars(self):
+        cheap = fake_fetch(xs.UNIVERSE, price={"DOGE": 0.001})   # 1e6 coins a day x $0.001 = $7k a week
+        prices, errors = xs.load_prices(fetch=cheap)
+        self.assertNotIn("DOGE", prices)
+        self.assertIn("dead or mis-mapped", errors["DOGE"])
 
     def test_a_series_nobody_trades_is_not_ranked(self):
         prices, errors = xs.load_prices(fetch=fake_fetch(xs.UNIVERSE, dead=("DOGE",)))

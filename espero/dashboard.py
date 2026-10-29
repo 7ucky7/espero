@@ -79,7 +79,7 @@ def esc(v) -> str:
 
 def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
            live_db: Path = Path("live.db"), xs_db: Path = Path("xs.db"), offline: bool = False,
-           mf_db: Optional[Path] = None, board: bool = False) -> str:
+           mf_db: Optional[Path] = None, board: bool = False, mf_hl_db: Optional[Path] = None) -> str:
     """`offline=True` (the daily job's dry run) skips the live-signal preview and the
     signal board, the only network calls here. `mf_db` and `board` are opt-in, so a
     render pointed at test databases never picks up the real ones."""
@@ -268,6 +268,9 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
     if mf_db is not None and Path(mf_db).exists():
         cards.append(_mf_card(Path(mf_db)))
         total += _mf_equity(Path(mf_db))
+    if mf_hl_db is not None and Path(mf_hl_db).exists():
+        cards.append(_mf_card(Path(mf_hl_db), "#8 on Hyperliquid prices", "shadow · information only"))
+        total += _mf_equity(Path(mf_hl_db))
     if board and not offline:
         cards.append(_board_card())
 
@@ -351,8 +354,8 @@ def _mf_equity(path: Path) -> float:
     return float(rows[-1]["equity"]) if rows else 0.0
 
 
-def _mf_card(path: Path) -> str:
-    """#8's forward test: research/FORWARD_MF.md."""
+def _mf_card(path: Path, title: str = "#8 multifactor, forward test", pill: str = "") -> str:
+    """#8's forward test (research/FORWARD_MF.md), or its Hyperliquid shadow."""
     from . import mf
     rows = _mf_rows(path)
     if not rows:
@@ -377,7 +380,7 @@ def _mf_card(path: Path) -> str:
     window = f"{mf.FORWARD_START.date()} → {mf.FORWARD_END.date()}"
     return f"""
         <section class="card">
-          <h2>#8 multifactor, forward test <span class="pill">paper · {window}</span></h2>
+          <h2>{esc(title)} <span class="pill">{esc(pill or "paper · " + window)}</span></h2>
           <div class="big">${equity:,.2f}</div>
           <div class="sub">as of {as_of} · {decided} · last action: {esc(latest.get('note', ''))}</div>
           <div class="sub">deposited ${deposited:,.2f} · P&amp;L

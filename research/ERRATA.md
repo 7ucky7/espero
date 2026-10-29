@@ -5,6 +5,24 @@ change its verdict; the code that produced it stays as it ran, marked with a com
 points here. Numbers below were reproduced from cached data during the 2026-10-27 audit
 (docs/AUDIT_2026-10-27.md, section D) unless stated.
 
+## 2026-10-29: the XS account moves to Hyperliquid prices; the scan and fast screen too
+
+**No verdict changes.** At the user's request, crypto prices for the live tools come from
+Hyperliquid's mainnet perps instead of Yahoo (spot) and Coinbase:
+
+- **XS account** (`xs.SOURCE`): 35 of its 42 coins (MKR, YFI, XTZ, EOS, KSM, VET and THETA are not
+  listed), daily closes of completed bars only. The record's first two days stand on Yahoo. The first
+  Hyperliquid mark is about +2.5% above the last Yahoo mark (\$102.03 vs \$99.58 on a copy at
+  06:40 UTC), mostly timing rather than source: Yahoo's marks used the day still forming,
+  Hyperliquid's use the last completed bar. Perp prices track spot but are not spot.
+- **Scan and fast screen**: Hyperliquid candles, live book and prints, fills at its maker fee
+  (1.5 bps), paper only: Hyperliquid's mainnet excludes US persons. `--source coinbase` keeps the
+  old feed; #9b's results were measured on Coinbase.
+- **The board's coins** come from Hyperliquid; its ETFs stay on Yahoo. #15's frozen result reads
+  its own snapshot and does not change.
+- **#8 stays on Yahoo**; a Hyperliquid shadow runs beside it, information only (FORWARD_MF.md,
+  amendment 2026-10-29).
+
 ## 2026-10-29: the #4 TSMOM paper account ignored dividends and could break on a split
 
 **#4's verdict is untouched; the live account's accounting is fixed from 2026-10-29.**

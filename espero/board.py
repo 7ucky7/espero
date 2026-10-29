@@ -85,7 +85,12 @@ def fetch_frames(symbols: List[str], fetch: Callable[[str], pd.DataFrame] = None
     frames: Dict[str, pd.DataFrame] = {}
     errors: Dict[str, str] = {}
     with tempfile.TemporaryDirectory() as tmp:
-        get = fetch or (lambda s: data.yahoo_daily(s, SPAN, cache_dir=Path(tmp), adjusted=True))
+        def default(sym: str) -> pd.DataFrame:
+            if trend.kind(sym) == "crypto":          # coins from Hyperliquid's perps, ETFs from Yahoo
+                from . import hyperliquid as hl
+                return hl.daily(sym, SPAN)
+            return data.yahoo_daily(sym, SPAN, cache_dir=Path(tmp), adjusted=True)
+        get = fetch or default
 
         def one(sym: str):
             try:
@@ -195,7 +200,8 @@ def header(v: dict) -> List[str]:
             f"bars through {(v['today'] - pd.Timedelta(days=1)).date()}; week read on {v['week'].date()}; "
             f"next reading {v['next'].date()}",
             "▲/▽: above/below the close 1, 3 and 12 months ago. Nearest flip: the close at the next reading "
-            "that turns that lookback down (↓) or up (↑). stale: no fresh bar from Yahoo yet."]
+            "that turns that lookback down (↓) or up (↑). ETFs: Yahoo, dividend-adjusted. Coins: Hyperliquid perps "
+            "(a coin it does not list reads 'no data'). stale: no fresh bar yet."]
 
 
 def format_plain(v: dict) -> str:

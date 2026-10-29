@@ -133,6 +133,18 @@ def build_coinbase(coins: Optional[List[str]] = None, days: int = 365, granulari
     return MarketPanel(**frames, errors=errors)
 
 
+def build_hyperliquid(coins: Optional[List[str]] = None, days: int = 365, granularity: int = 86400,
+                      fetch: Callable[[str, int, int], pd.DataFrame] = None) -> MarketPanel:
+    """Panel of Hyperliquid perp bars from mainnet, for new crypto research: daily
+    history from August 2020, hourly only the last ~208 days (5,000 bars). Volume is in
+    coins, so `dollar_volume` is a real dollar figure. Coins it does not list are
+    recorded in `errors`, never substituted."""
+    from . import hyperliquid as hl
+    limit = int(days * 86400 // granularity)
+    get = fetch or (lambda product, _days, gran: hl.closed_bars(product, gran, limit))
+    return build_coinbase(coins, days, granularity, fetch=get)
+
+
 def eligible(p: MarketPanel, min_history: int = 365, min_dollar_volume: float = 1e6,
              volume_window: int = 30) -> pd.DataFrame:
     """True where a coin may be ranked on that date, using only that date's past.

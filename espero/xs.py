@@ -53,6 +53,7 @@ MIN_UNIVERSE = 30        # fewer rankable coins than this: mark, do not trade
 MAX_STALE_DAYS = 2       # a close older than this is not a price, it is a memory
 MIN_WEEK_VOLUME = 10_000.0   # dollars in the last 7 bars (Yahoo quotes crypto volume in USD)
 YAHOO = {"ARB": "ARB11841-USD"}   # ARB-USD is "ARbit USD"; Arbitrum is ARB11841-USD
+SOURCE = "hyperliquid"   # since 2026-10-29 (research/ERRATA.md); "yahoo" is what the account ran on before
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS xs_account (
@@ -70,23 +71,30 @@ def yahoo_symbol(coin: str) -> str:
 
 
 def load_prices(span: str = "2y",
-                fetch: Callable[[str, str], pd.DataFrame] = None,
+                fetch: Callable[[str, str], pd.DataFrame] = None, source: str = SOURCE,
                 ) -> Tuple[Dict[str, pd.Series], Dict[str, str]]:
     """Daily closes per coin, plus a dict of the coins that could not be loaded
-    and why. The caller decides whether the gaps are survivable."""
-    fetch = fetch or data.yahoo_daily
+    and why. The caller decides whether the gaps are survivable. `source` is
+    "hyperliquid" (perp closes, completed bars only, volume in coins) or "yahoo"
+    (spot, volume in dollars, ARB re-mapped)."""
+    if source == "hyperliquid":
+        from . import hyperliquid as hl
+        fetch, symbol = fetch or hl.daily, (lambda c: f"{c}-USD")
+    else:
+        fetch, symbol = fetch or data.yahoo_daily, yahoo_symbol
     out: Dict[str, pd.Series] = {}
     errors: Dict[str, str] = {}
     for c in UNIVERSE:
         try:
-            df = fetch(yahoo_symbol(c), span)
+            df = fetch(symbol(c), span)
         except Exception as exc:  # noqa: BLE001 - recorded, then judged by run()
             errors[c] = f"{type(exc).__name__}: {exc}"
             continue
         if df.empty:
             errors[c] = "empty"
             continue
-        week = float(df["volume"].tail(7).sum())
+        dollars = df["volume"] if source == "yahoo" else df["close"] * df["volume"]
+        week = float(dollars.tail(7).sum())
         if week < MIN_WEEK_VOLUME:
             errors[c] = f"${week:,.0f} traded in 7 days: a dead or mis-mapped series"
             continue
@@ -230,8 +238,8 @@ class XSAccount:
 
 def run(state: str, cash: float, force: bool = False, deposit: float = 0.0,
         now: Optional[datetime] = None,
-        fetch: Callable[[str, str], pd.DataFrame] = None) -> dict:
-    prices, errors = load_prices(fetch=fetch)
+        fetch: Callable[[str, str], pd.DataFrame] = None, source: str = SOURCE) -> dict:
+    prices, errors = load_prices(fetch=fetch, source=source)
     fresh_px, stale_px = split_stale(prices)
     for c, why in errors.items():
         log.warning("xs: %s not loaded: %s", c, why)

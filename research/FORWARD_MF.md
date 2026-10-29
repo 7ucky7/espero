@@ -46,6 +46,14 @@ At the verdict, for every Monday's fills, the result reports the gap between tha
 the price at the 07:30 run (from hourly bars), information only, so the reader can see what the
 timing assumption was worth over the 26 weeks.
 
+## Amendment 2026-10-29, before the first fill — a Hyperliquid shadow book, information only
+
+A second account (`mf-hl.db`, the daily job's `mf-hl` step) runs this exact rule on Hyperliquid
+perp prices instead of Yahoo's: the 35 of the 42 coins Hyperliquid lists (MKR, YFI, XTZ, EOS, KSM,
+VET and THETA are not), daily bars from its mainnet, dollar volume as close × coins traded. It
+starts and decides on the same calendar. It cannot change the verdict, which is computed on
+`mf.db` only; it is reported beside it, so the reader can see how much the price source matters.
+
 ## Pass criteria — all three, over the forward window
 
 Measured on the account's daily equity marks (rf = 0, √365):
