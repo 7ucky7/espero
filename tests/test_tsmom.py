@@ -147,3 +147,51 @@ class TestCalendar(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+def total_return_fetch(end, spy_dividend=0.0, uso_split=1.0):
+    """yahoo_daily(adjusted=True) for the six assets, rising, ending on `end`. SPY can pay
+    `spy_dividend` dollars going ex on `end`; USO's whole history can be restated by a split."""
+    def fetch(symbol, span):
+        crypto = symbol.endswith("-USD")
+        dates = (pd.date_range if crypto else pd.bdate_range)(end=end, periods=400 if crypto else 300, tz="UTC")
+        path = 100 * np.exp(0.001 * np.arange(len(dates)))
+        close, adj = path.copy(), path.copy()
+        if symbol == "SPY" and spy_dividend:
+            close[-1] -= spy_dividend                         # ex-date: the price drops by the payout
+            adj[:-1] *= 1 - spy_dividend / path[-2]           # Yahoo scales the history down instead
+            adj[-1] = close[-1]
+        if symbol == "USO":
+            close, adj = close * uso_split, adj * uso_split   # a restatement moves every past price
+        return pd.DataFrame({"dt": dates, "close": close, "adj_close": adj})
+    return fetch
+
+
+class TestTotalReturn(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.state = str(Path(self.tmp.name) / "tsmom.db")
+        self.day1 = T.run(self.state, 100.0, fetch=total_return_fetch("2026-10-27"))
+        self.wed = pd.Timestamp("2026-10-28", tz="UTC").to_pydatetime()   # not a rebalance day
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def grown(self, asset, ratio):
+        return self.day1["positions"][asset] * ratio
+
+    def test_a_dividend_is_credited_not_lost(self):
+        res = T.run(self.state, 100.0, now=self.wed, fetch=total_return_fetch("2026-10-28", spy_dividend=2.0))
+        p27, p28 = 100 * np.exp(0.001 * 298), 100 * np.exp(0.001 * 299)
+        self.assertEqual(res["note"], "mark")
+        self.assertAlmostEqual(res["positions"]["SPY"], self.grown("SPY", (p28 - 2) / (p27 - 2)), places=9)
+        self.assertGreater(res["positions"]["SPY"], self.grown("SPY", (p28 - 2) / p27))   # what raw marks gave
+
+    def test_a_split_restated_into_the_history_does_not_multiply_the_position(self):
+        res = T.run(self.state, 100.0, now=self.wed, fetch=total_return_fetch("2026-10-28", uso_split=8.0))
+        self.assertAlmostEqual(res["positions"]["USO"], self.grown("USO", np.exp(0.001)), places=9)
+
+    def test_a_rerun_on_the_same_data_changes_nothing(self):
+        again = T.run(self.state, 100.0, now=self.wed, fetch=total_return_fetch("2026-10-27"))
+        for a, v in self.day1["positions"].items():
+            self.assertAlmostEqual(again["positions"][a], v, places=9)

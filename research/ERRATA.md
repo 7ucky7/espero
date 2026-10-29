@@ -5,6 +5,21 @@ change its verdict; the code that produced it stays as it ran, marked with a com
 points here. Numbers below were reproduced from cached data during the 2026-10-27 audit
 (docs/AUDIT_2026-10-27.md, section D) unless stated.
 
+## 2026-10-29: the #4 TSMOM paper account ignored dividends and could break on a split
+
+**#4's verdict is untouched; the live account's accounting is fixed from 2026-10-29.**
+
+- `tsmom.py` held share counts marked at Yahoo's raw closes, so SPY, TLT, GLD and USO earned price
+  only. Over ten years that is TLT ×0.62 instead of ×0.83 with its coupons, SPY ×3.62 instead of
+  ×4.24. And a split Yahoo restates into the history would have multiplied a share count bought
+  before it (USO, held now, did a 1:8 reverse split in 2020).
+- Now each run first rolls every position's value at the last run forward by its adjusted close
+  (now ÷ then, both from the same fetch, so a restatement cancels), then turns it back into shares
+  at today's price: dividends are reinvested on the ex-date and splits cancel. The signal still
+  reads raw closes, as #4 was registered. The first run after the fix marked exactly as before
+  ($200.81): no dividend or split fell between 2026-10-27 and the fix, so nothing before it is
+  restated.
+
 ## 2026-10-29: #8's forward test books Monday fills at a price its schedule cannot trade
 
 Disclosed before the first fill, rule unchanged: research/FORWARD_MF.md, amendment 2026-10-29. The
