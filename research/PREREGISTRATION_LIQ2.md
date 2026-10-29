@@ -69,3 +69,12 @@ terciles, taker-flow agreement), and both legs net of costs.
 The user's script, the header row of the BTCUSD_PERP file for 2024-10-14, response codes for a few
 dates (to find the archive's first and last days), the archive's symbol list, #18's, #20's and #21's
 results, and #25's design.
+
+## Amendment before any download (2026-10-29)
+
+The *Coins* line above says both that a coin-day without a file "contributes no liquidations" and
+that one whose file is missing "has no forced share". Binance's archive appears to publish a file
+only for days with liquidations, so the two cases cannot be told apart by the file alone. Resolved,
+before any file is fetched: **between a coin's first and last file in the window, a day without a
+file counts as no liquidations (s = 0)**; before its first file or after its last, the coin has no
+forced share (its events are not grouped).
