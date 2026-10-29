@@ -75,3 +75,5 @@ liqbreak_trades.csv
 data/oi/
 # #26 COIN-M liquidation downloads (research/liq2.py)
 data/liq2/
+# #28's extra 5-minute months and days, re-downloadable (research/levetf.py)
+data/levetf/
