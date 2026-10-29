@@ -315,7 +315,15 @@ with ordinary funding and to the same coin four hours later (t 3.5), in both era
 signs. It is the repo's first confirmed effect, and it is small: no long-only spot trade earned it
 after costs. "Real, not tradable": [research/RESULTS_SETTLE.md](research/RESULTS_SETTLE.md).
 
-Scoreboard: twenty tests. Three passes, one real but not tradable (#19), the rest failed. Two are risk construction; the third is income (carry at
+The twenty-first took the pattern an exploration of aggr's hourly liquidation bars had shown
+(April–June 2026: prices came back after a coin's biggest liquidation hours) and tested it once on
+four months sealed unread before the exploration began. It did not hold: the reversal across both
+sides was +4.8 bps (t 0.3), and it went the other way in July–August. Buying after long-liquidation
+spikes made +51 bps a day, in months when the market rose by almost half that anyway. FAIL:
+[research/RESULTS_LIQSPIKE.md](research/RESULTS_LIQSPIKE.md).
+
+Scoreboard: twenty-one tests. Three passes, one real but not tradable (#19), the rest failed; #20
+is pre-registered and running. Two are risk construction; the third is income (carry at
 maker fees) with a forward test still attached. No predictive edge has been found at any horizon,
 and across #4, #8 and #15 the one effect that survives is volatility sizing.
 

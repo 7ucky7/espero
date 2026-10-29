@@ -1,0 +1,57 @@
+sealed files verified against research/aggr_holdout_manifest.json
+
+## data
+
+14 coins; spike hours from 2026-07-01 00:00 -> 2026-10-27 23:00 UTC; thresholds from each coin's previous 720 hours
+events: 631 long-liquidation spikes, 609 short-liquidation spikes, on 119 days
+baseline (mean over every coin-hour): 1h +0.8 bps, 4h +3.4 bps, 24h +19.5 bps
+
+## criteria (excess = return minus the baseline; R signs it so a reversal is positive)
+
+| # | criterion | actual | met |
+|---|---|---|---|
+| 1 | forced flow reverts: mean R > 0, t >= 3 | R +4.8 bps, t 0.27, 117 days | **no** |
+| 2 | each side: excess 24h > 0 after long spikes, < 0 after short spikes | longs +28.0 bps (t 1.36), shorts -53.9 bps (t -1.87) | yes |
+| 3 | not one stretch: R > 0 in both halves | -20.2 bps (62 days), +33.0 bps (55 days) | **no** |
+| 4 | a long-only trade pays: raw 24h after long spikes > 18 bps, t > 2 | +51.1 bps, t 2.45, 101 days | yes |
+
+verdict: FAIL
+
+## information only
+
+| variant | mean | t | days |
+|---|---|---|---|
+| R at 1h | +0.5 bps | 0.17 | 119 |
+| longs, excess 1h | +7.5 bps | 2.15 | 102 |
+| shorts, excess 1h | -5.4 bps | -1.05 | 113 |
+| R at 4h | +10.7 bps | 1.73 | 119 |
+| longs, excess 4h | +26.0 bps | 3.12 | 102 |
+| shorts, excess 4h | -27.1 bps | -2.88 | 113 |
+| long leg raw 24h, entry at the next hour's open | +51.2 bps | 2.46 | 101 |
+| short leg (a paper short) raw 24h | +26.8 bps | 0.91 | 111 |
+| R, spikes shared by 5+ coins in the hour (324 events) | +2.0 bps | 0.04 | 36 |
+| R, spikes on 1-4 coins (916 events) | -0.5 bps | -0.03 | 116 |
+| long spikes, top third by dollars | +54.5 bps | 2.37 | 66 |
+| long spikes, bottom third | +12.3 bps | 0.46 | 86 |
+
+long leg, raw 24h: +51.1 bps gross; net Binance.US +47.1 bps, Hyperliquid +42.1 bps
+
+long-liquidation spikes' excess 24h by coin:
+      size  mean
+coin            
+ADA     43 -84.9
+AVAX    47 -17.6
+BNB     48   2.6
+BTC     47  14.0
+DOGE    45  -2.8
+ETH     44  54.3
+HBAR    47  38.9
+LINK    52  -0.2
+LTC     47  -6.3
+SHIB    43  27.5
+SOL     46   7.5
+TRX     37 -20.6
+XLM     41 -96.9
+XRP     44   2.1
+
+-> research/liqspike_events.csv
