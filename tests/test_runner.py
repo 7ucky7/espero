@@ -32,6 +32,10 @@ class RunnerCase(unittest.TestCase):
         lb = mock.patch.object(runner.lbk, "run", return_value={"note": "mark", "equity": None})
         lb.start()
         self.addCleanup(lb.stop)
+        # #29 reads the repo's recorded files: not in tests
+        pc = mock.patch.object(runner.pcl, "run", return_value={"note": "mark: 3 trading days", "equity": None})
+        self.pc_run = pc.start()
+        self.addCleanup(pc.stop)
         # the dashboard's signal board fetches 55 Yahoo series: no network in tests
         board = mock.patch.object(brd, "fetch_frames", return_value=({}, {}))
         board.start()
@@ -57,6 +61,8 @@ class TestDryRun(RunnerCase):
         self.assertTrue(res.steps["mf"].skipped)
         self.assertTrue(res.steps["liqfwd"].skipped)
         self.assertTrue(res.steps["lowsfwd"].skipped)
+        self.assertTrue(res.steps["postclose"].skipped)
+        self.pc_run.assert_not_called()
         self.mf_run.assert_not_called()
         self.lf_run.assert_not_called()
         health = json.loads((self.state / "health.json").read_text())
@@ -115,6 +121,17 @@ class TestIsolation(RunnerCase):
         self.assertEqual([Path(c.args[0]).name for c in calls], ["mf.db", "mf-hl.db"])
         self.assertIsNone(calls[0].kwargs.get("fetch"))           # #8 itself stays on Yahoo
         self.assertIs(calls[1].kwargs["fetch"], hl.daily)
+
+    def test_postclose_runs_after_the_files_are_recorded(self):
+        order = []
+        runner.lwf.run.side_effect = lambda *a, **k: order.append("lowsfwd") or {"note": "mark", "equity": None}
+        self.pc_run.side_effect = lambda *a, **k: order.append("postclose") or {"note": "mark", "equity": None}
+        with mock.patch.object(runner.tsm, "run", return_value={"note": "mark", "equity": 1.0}), \
+             mock.patch.object(runner.xsm, "run", return_value={"note": "mark", "equity": 1.0}):
+            res = self.run_daily()
+        self.assertTrue(res.steps["postclose"].ok)
+        self.assertEqual(order, ["lowsfwd", "postclose"])
+        self.assertEqual(Path(self.pc_run.call_args.args[0]), self.state)
 
     def test_trade_note_without_equity_does_not_crash_the_run(self):
         sent = []

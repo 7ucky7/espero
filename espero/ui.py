@@ -619,6 +619,42 @@ def act_carry(console, state):
             subprocess.run([str(cv.INSTALLER)])
 
 
+FORWARD = [   # (tests, the daily step that keeps them, what they record)
+    ("#22 #23", "liqfwd", "long- and short-liquidation spikes, held 4 hours (aggr's hourly bars)"),
+    ("#24", "lowsfwd", "new 4-hour lows bought, sold 4 hours later"),
+    ("#27", "liqbreak", "#26's rule live: forced down-breaks bought for an hour"),
+    ("#29", "postclose", "the US session's move after 16:00 ET: does it reverse?"),
+]
+
+
+def forward_table(state: Path) -> "Table":
+    """The forward paper tests, as the last daily run left them. Reads health.json only."""
+    steps = _health(state).get("steps") or {}
+    tbl = Table(title="forward tests · paper · each judged once after 2027-03-31", box=None,
+                header_style=MUTED, padding=(0, 2))
+    for col in ("test", "records", "last daily run"):
+        tbl.add_column(col)
+    for tests, step, what in FORWARD:
+        s = steps.get(step) or {}
+        if s.get("error"):
+            last = Text(s["error"], style="bold red")
+        else:
+            last = Text(s.get("note") or "not run yet", style=None if s.get("note") else MUTED)
+        tbl.add_row(tests, what, last)
+    return tbl
+
+
+def act_forward(console, state):
+    """The forward paper tests: the daily job's last notes, and a refresh on request."""
+    console.print(forward_table(state))
+    console.print(Text("running numbers decide nothing; each verdict follows its research/FORWARD_*.md",
+                       style=MUTED))
+    what = questionary.select("Forward tests", choices=["Refresh now (fetches missing days; a minute)",
+                                                        "Back to the menu"], style=STYLE, pointer="❯").ask()
+    if what and what.startswith("Refresh"):
+        _run(console, ["liqfwd", "--state-dir", str(state)], state)
+
+
 def act_factors(console, state):
     console.print(Text("builds or reuses data/panel, then evaluates the zoo (a minute or two)", style=MUTED))
     _run(console, ["factors"], state)
@@ -655,6 +691,7 @@ MENU: List[Tuple[str, Callable]] = [
     ("Fast screen: resting orders on the live book (semi-auto, paper)", act_fast),
     ("Paper trading: run a loop, buy or close by hand, see positions", act_paper),
     ("Carry (#12): the forward books, their loops, funding vs the 15% bar", act_carry),
+    ("Forward tests (#22–#24, #27, #29): the paper ledgers, judged after March 2027", act_forward),
     ("Factor IC table (research)", act_factors),
     ("Run the tests", act_tests),
     ("Quit", None),

@@ -1,6 +1,7 @@
 """`espero daily`: the one command a scheduler runs.
 
-    tsmom -> xs -> mf (#8) -> mf-hl -> liqfwd (#22/#23) -> lowsfwd (#24) -> dashboard -> health.json
+    tsmom -> xs -> mf (#8) -> mf-hl -> liqfwd (#22/#23) -> lowsfwd (#24) -> liqbreak (#27)
+          -> postclose (#29) -> dashboard -> health.json
 
 Rules:
 
@@ -35,6 +36,7 @@ from . import liqfwd as lfm
 from . import lowsfwd as lwf
 from . import mf as mfm
 from . import notify as notifier
+from . import postclose as pcl
 from . import tsmom as tsm
 from . import xs as xsm
 
@@ -212,7 +214,7 @@ def run_daily(state_dir: Path = Path("."), cash_tsmom: float = 100.0, cash_xs: f
 
     with Lock(state_dir / "daily.lock"):
         if dry_run:
-            for name in ("tsmom", "xs", "mf", "mf-hl", "liqfwd", "lowsfwd", "liqbreak"):
+            for name in ("tsmom", "xs", "mf", "mf-hl", "liqfwd", "lowsfwd", "liqbreak", "postclose"):
                 result.steps[name] = StepResult(True, 0.0, note="skipped (dry run)", skipped=True)
                 log.info("%s skipped (dry run)", name)
         else:
@@ -231,6 +233,9 @@ def run_daily(state_dir: Path = Path("."), cash_tsmom: float = 100.0, cash_xs: f
             # #27: #26's rule forward on aggr's 5-minute liquidations (FORWARD_LIQBREAK.md); after
             # lowsfwd, whose Binance bars it reads
             _step("liqbreak", lambda: lbk.run(state_dir), result, notify)
+            # #29: the US session's move after 16:00 ET (FORWARD_POSTCLOSE.md); reads lowsfwd's files,
+            # downloads nothing
+            _step("postclose", lambda: pcl.run(state_dir), result, notify)
 
         def render():
             out = dash.write(state_dir / "dashboard.html", tsmom_db=tsmom_db, paper_db=paper_db,
