@@ -122,6 +122,58 @@ that are new (2024–26 instruments) or where the data exists but nobody has sha
 | 6 stablecoin conversion | plumbing | uncertain | Binance archive | small | exploratory look, then sealed test |
 | 8 Polymarket hourly | crowd mispricing | medium | public | medium | paper only |
 
+## Execution ideas: making the "real, not tradable" effects tradable
+
+Added the same day, from the scalper's side of the desk. Every "real, not tradable" verdict here
+(#19, #20, #29's lead) assumed taker fills: 9 bps a round trip on Hyperliquid. A maker round trip
+costs 3. The forced trader has to cross the spread, and the patient side collects it. These ideas
+keep the prediction frozen and change **how** we trade it. That is a new question, with its own risk
+(adverse selection), not a re-tuning.
+
+### 9. Resting bids catch forced sellers (#30, being tested)
+
+Rest a bid one ATR below a breakdown while the forced selling runs, and sell back at the breakdown
+price. #20's bounce, bought as a maker, but only on the events that fall further. Pre-registered in
+[PREREGISTRATION_BIDS.md](PREREGISTRATION_BIDS.md), on April–October 2026, months no breakdown test
+has used.
+
+### 10. The funding snipe
+
+Hyperliquid's small caps sometimes pay tens of bps per hour. Enter as a maker just before the hour,
+collect one payment, and leave after. #19 measured the cost on Binance: the price swings about 15 bps
+against the paying side around settlement. The test is where the payment starts to beat the swing
+plus fees. It needs 1-minute prices around the hour, which Hyperliquid keeps for only a few days, so
+it uses the same collector as #3.
+
+### 11. Stop runs at obvious levels
+
+Stop orders are forced orders too, and they cluster just past yesterday's high and low, the week's
+extremes and round numbers. A sweep beyond the level that closes back inside should reverse, by #26's
+logic. Retail trading lore calls these liquidity sweeps; I know of no proper test. It is testable on
+the cached 5-minute bars: no level-based trigger has been run here.
+
+### 12. Our own fills sit on Binance's settlement
+
+XS and #8 fill at 00:00 UTC, the minute Binance settles funding, where #19 measured swings of about
+15 bps on high-funding coins. Measure what the bot pays at 00:00 against 00:15 or 00:30 on its own
+coins. #8 is frozen, so any change needs its own document.
+
+### 13. The after-close reversal with resting orders
+
+#29's 6–10 bps is below taker costs and above maker costs. If #29 confirms it, the trade is a resting
+order on the fade side at 16:00 ET. Waits for #29's verdict.
+
+### 14. Hyperliquid's price against Binance's
+
+When Hyperliquid-only liquidations push its price away from Binance's, arbitrage pulls it back. Trade
+Hyperliquid alone, with Binance as the signal. It needs second-by-second recording (the collector).
+
+### Not worth trying here
+
+- **Order-book imbalance and queue games**: firms with servers next to the exchange win that race.
+- **Indicator scalps**: every indicator vote failed here.
+- **Copying whales**: survivorship, and the whales are often the ones being hunted (#3).
+
 ## The lesson from today's run
 
 #28 also found that crypto's own daily close (23:45 → 00:00 UTC) used to have a push in the day's
