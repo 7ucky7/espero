@@ -5,6 +5,22 @@ change its verdict; the code that produced it stays as it ran, marked with a com
 points here. Numbers below were reproduced from cached data during the 2026-10-27 audit
 (docs/AUDIT_2026-10-27.md, section D) unless stated.
 
+## 2026-10-29: 打板 (`espero degen`) takes its coin list and bars from Hyperliquid
+
+`degen scan`, `backtest` and `paper` now rank Hyperliquid perps by 24h dollar volume and read their
+bars from Hyperliquid by default, charging Hyperliquid's fees; `hyperliquid` is a default backtest
+row and a choice in the UI. `--source coinbase` restores the old path exactly.
+
+- **No published number moves.** #10 and #13 were run on Coinbase spot (`--source coinbase`), and
+  their verdicts are read on the Binance.US row with Kraken as the check. A Hyperliquid run prints
+  its verdict lines marked information only.
+- **Shorter history.** Hyperliquid serves the last 5,000 bars: 17 days of 5-minute bars, not the
+  30 the backtest asks for; the command says so and uses 17. Its bars are cached apart
+  (`*_hl.csv`).
+- **Separate books.** The paper loop's default journal is `degen-hl.db` on Hyperliquid and stays
+  `degen.db` (#10's) on Coinbase, so perp and spot bars never share a book.
+- **Per-1,000 perps** (kPEPE, kBONK) are listed as `PEPE-USD` and priced per coin.
+
 ## 2026-10-29: the XS account moves to Hyperliquid prices; the scan and fast screen too
 
 **No verdict changes.** At the user's request, crypto prices for the live tools come from

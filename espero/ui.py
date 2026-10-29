@@ -498,19 +498,31 @@ def act_degen(console, state):
                               style=STYLE, pointer="❯").ask()
     if not what:
         return
-    venue = questionary.select("Charge whose taker fee?", choices=["binanceus", "kraken", "coinbase", "perp"],
-                               default="binanceus", style=STYLE, pointer="❯").ask() or "binanceus"
+    source = questionary.select("Coin list and prices from?", choices=["hyperliquid", "coinbase"],
+                                default="hyperliquid", style=STYLE, pointer="❯").ask() or "hyperliquid"
+    hl = source == "hyperliquid"
+    venue = "hyperliquid" if hl else "binanceus"
+    if not what.startswith("backtest"):         # the backtest replays every venue's fees side by side
+        venue = questionary.select("Charge whose taker fee?",
+                                   choices=["hyperliquid", "binanceus", "kraken", "coinbase", "perp"],
+                                   default=venue, style=STYLE, pointer="❯").ask() or venue
+    src = ["--source", source]
     if what.startswith("scan"):
-        _run(console, ["degen", "scan", "--venue", venue], state)
+        _run(console, ["degen", "scan", *src, "--venue", venue], state)
     elif what.startswith("paper"):
-        # degen.db is the #10 forward test on Binance.US fees; another venue gets its own book
-        db = "degen.db" if venue == "binanceus" else f"degen-{venue}.db"
+        # degen.db is the #10 forward test (Coinbase bars, Binance.US fees); every other
+        # source and venue gets its own book
+        if hl:
+            db = "degen-hl.db" if venue == "hyperliquid" else f"degen-hl-{venue}.db"
+        else:
+            db = "degen.db" if venue == "binanceus" else f"degen-{venue}.db"
         console.print(Text(f"ctrl-c returns to the menu; state is kept in {db} here", style=MUTED))
-        _run(console, ["degen", "paper", "--venue", venue, "--state", str(state / db), "--loop"], state)
+        _run(console, ["degen", "paper", *src, "--venue", venue, "--state", str(state / db), "--loop"], state)
     else:
-        console.print(Text("fetches 30 days of 5m candles for 60 coins the first time (about ten minutes)",
+        console.print(Text("fetches 17 days of 5m Hyperliquid bars for 60 coins the first time (its 5,000-bar limit)"
+                           if hl else "fetches 30 days of 5m candles for 60 coins the first time (about ten minutes)",
                            style=MUTED))
-        _run(console, ["degen", "backtest", "--venue", venue], state)
+        _run(console, ["degen", "backtest", *src], state)
 
 
 def act_factors(console, state):

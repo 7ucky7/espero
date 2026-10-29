@@ -84,14 +84,16 @@ Kept because its journal loop is the template for the live path. Not scheduled, 
 ## Drawer 6: degen altcoins, 打板 (hypothesis #10, paper)
 
 ```bash
-.venv/bin/python -m espero degen scan                                   # who is breaking out on volume right now
-.venv/bin/python -m espero degen backtest --days 30                     # replay through every venue's fees, print the verdict
-.venv/bin/python -m espero degen paper --venue binanceus --state degen.db --loop   # the live 5m paper loop
+.venv/bin/python -m espero degen scan                                   # who is breaking out now: Hyperliquid perps, its fees
+.venv/bin/python -m espero degen backtest                               # last 17 days of Hyperliquid 5m bars, every venue's fees
+.venv/bin/python -m espero degen paper --loop                           # the live 5m paper loop on Hyperliquid -> degen-hl.db
+.venv/bin/python -m espero degen backtest --source coinbase --days 30   # Coinbase spot, as the pre-registered #10/#13 runs
+.venv/bin/python -m espero degen paper --source coinbase --venue binanceus --state degen.db --loop   # #10's forward book
 .venv/bin/espero fees            # your real Coinbase maker/taker rates (Exchange API key with "view", in .env)
 .venv/bin/python -m espero degen paper --venue coinbase --fee-bps 40 --state degen-coinbase.db --loop   # at your own rate
 ```
 
-Top 60 Coinbase altcoins by 24h volume, new 4h high on a 2-sigma volume spike, stop 2 ATR, trail
+Top 60 Hyperliquid perps by 24h volume (Coinbase spot with `--source coinbase`; BTC and ETH left out), new 4h high on a 2-sigma volume spike, stop 2 ATR, trail
 2.5 ATR, target 3 ATR, time stop 3h, three slots. Rules and pass criteria are frozen in
 `research/PREREGISTRATION_DEGEN.md`; the loop refuses to start twice on one journal. The 30-day
 backtest **failed** before fees (`research/RESULTS_DEGEN.md`): use the scan as a view, not the loop as a plan.

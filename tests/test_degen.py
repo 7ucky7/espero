@@ -371,7 +371,7 @@ class TestCLI(unittest.TestCase):
         with mock.patch.object(data, "degen_universe", return_value=uni), \
              mock.patch.object(data, "recent_closed_bars", side_effect=lambda p, g, n: plant_breakout(bars())), \
              mock.patch("sys.stdout") as out:
-            self.assertEqual(main(["degen", "scan", "--top", "1"]), 0)
+            self.assertEqual(main(["degen", "scan", "--source", "coinbase", "--top", "1"]), 0)
         text = "".join(str(c.args[0]) for c in out.write.call_args_list)
         self.assertIn("AAA-USD", text)
 
