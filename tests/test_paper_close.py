@@ -136,8 +136,9 @@ class TestManualOpen(PaperTestCase):
         Path(str(self.db) + ".open").write_text('{"usd": 100}')
         args = cli.build_parser().parse_args(["paper", "--product", self.cfg.product, "--state", str(self.db),
                                               "--granularity", str(GRAN), "--fee-bps", "0"])
-        import pandas as pd
         from unittest import mock
+
+        import pandas as pd
         nxt = bar(1, 102.0)
         df = pd.DataFrame([dict(nxt, dt=pd.Timestamp(nxt["ts"], unit="s", tz="UTC"))])
         with mock.patch("espero.data.recent_closed_bars", return_value=df), \
