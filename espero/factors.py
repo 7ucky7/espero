@@ -133,6 +133,71 @@ def leadlag_beta(p: MarketPanel, n: int = 1, window: int = 168, leader: str = "B
     return out
 
 
+def push(p: MarketPanel, n: int = 1, window: int = 168, leader: str = "BTC") -> pd.DataFrame:
+    """beta_i * r_leader(t-n, t): only the part of #9b's gap that is about the
+    leader (#17, research/PREREGISTRATION_PEERS.md). It leaves out the coin's own
+    return, where the bid-ask bounce lives, and since a high-beta coin moved with
+    the leader, the bounce biases its IC down, not up."""
+    if leader not in p.close.columns:
+        raise KeyError(f"leader {leader} not in panel")
+    out = rolling_beta(p, window, leader).mul(ops.returns(p.close, n)[leader], axis=0)
+    out[leader] = np.nan
+    return out
+
+
+def peer_basket(p: MarketPanel, members: pd.DataFrame, n: int = 1,
+                exclude=("BTC",)) -> pd.DataFrame:
+    """Each coin's own leader for #16: the equal-weighted mean n-bar return of
+    the coins in `members` (a dated boolean panel, the eligibility mask) on that
+    bar, leaving out `exclude` and the coin itself. NaN where no other member
+    has a return."""
+    r = ops.returns(p.close, n)
+    m = members.reindex_like(r).fillna(False).astype(bool) & r.notna()
+    for c in exclude:
+        if c in m.columns:
+            m[c] = False
+    own = r.where(m, 0.0)
+    total, count = own.sum(axis=1), m.sum(axis=1)
+    others = (-m.astype(int)).add(count, axis=0)
+    return (-own).add(total, axis=0) / others.where(others > 0)
+
+
+def beta_each(r: pd.DataFrame, lead: pd.DataFrame, window: int = 168) -> pd.DataFrame:
+    """cov(r_i, lead_i) / var(lead_i) over `window` bars, column by column: each
+    coin against its own leader series. Bars where the coin has no return are
+    left out of the leader's variance too, so both use the same bars."""
+    out = {}
+    for c in r.columns:
+        x, y = r[c], lead[c].where(r[c].notna())
+        cov = x.rolling(window, min_periods=window).cov(y)
+        var = y.rolling(window, min_periods=window).var()
+        out[c] = cov / var.replace(0, np.nan)
+    return pd.DataFrame(out, index=r.index)
+
+
+def push_peers(p: MarketPanel, members: pd.DataFrame, n: int = 1, window: int = 168) -> pd.DataFrame:
+    """#16: beta_i,B * B_-i(t-n, t), the coin's beta to its leave-one-out peer
+    basket times the basket's last n-bar move. BTC is NaN: it is in neither."""
+    beta = beta_each(ops.returns(p.close, 1), peer_basket(p, members, 1), window)
+    out = beta * peer_basket(p, members, n)
+    if "BTC" in out.columns:
+        out["BTC"] = np.nan
+    return out
+
+
+def gap_peers(p: MarketPanel, members: pd.DataFrame, n: int = 1, window: int = 168,
+              scaled: bool = True) -> pd.DataFrame:
+    """#9b's gap with the peer basket as the leader: (beta_i,B *) B_-i - r_i.
+    Unscaled, its ranks are -r_i's, exactly, on every bar. Information only."""
+    lead = peer_basket(p, members, n)
+    if scaled:
+        lead = lead * beta_each(ops.returns(p.close, 1), peer_basket(p, members, 1), window)
+    out = lead - ops.returns(p.close, n)
+    if "BTC" in out.columns:
+        out["BTC"] = np.nan
+    return out
+
+
 def leadlag_beta_1h(p):
     return leadlag_beta(p, 1)
 

@@ -128,9 +128,12 @@ def fetch_page(product: str, granularity: int, start: dt.datetime, end: dt.datet
     return http_json(BASE.format(product=product) + "?" + q)
 
 
-def fetch(product: str, days: int, granularity: int = 86400) -> pd.DataFrame:
-    """Download `days` of candles, paginating under the 300-candle cap."""
-    end = dt.datetime.now(dt.timezone.utc).replace(minute=0, second=0, microsecond=0)
+def fetch(product: str, days: int, granularity: int = 86400,
+          end: Optional[dt.datetime] = None) -> pd.DataFrame:
+    """Download `days` of candles, paginating under the 300-candle cap. With
+    `end`, the window ends there (exclusive) instead of now: a past year."""
+    stop = end
+    end = end or dt.datetime.now(dt.timezone.utc).replace(minute=0, second=0, microsecond=0)
     start = end - dt.timedelta(days=days)
     rows: List[list] = []
     cursor = start
@@ -142,7 +145,7 @@ def fetch(product: str, days: int, granularity: int = 86400) -> pd.DataFrame:
         time.sleep(0.34)  # public limit is 10 req/s; do not hammer it
     # Coinbase's `end` is inclusive: the candle opening at `end` is still in
     # progress and would be cached as if it were closed
-    now = int(time.time())
+    now = int(time.time()) if stop is None else int(stop.timestamp())
     dedup = {int(r[0]): r for r in rows if int(r[0]) + granularity <= now}
     ordered = [dedup[k] for k in sorted(dedup)]
     return pd.DataFrame(
