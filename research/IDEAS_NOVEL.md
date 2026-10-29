@@ -109,6 +109,15 @@ that are new (2024–26 instruments) or where the data exists but nobody has sha
 - **Data.** Polymarket's public price history. The repo already reads its order book.
 - **Limit.** Access for US persons is restricted, so this is paper and research only.
 
+**Collecting since 2026-10-29.** `espero hlcollect` (under launchd; see docs/RUNBOOK.md) saves
+the inputs that cannot be fetched later, for #3, #4, #10 and #14:
+- the top 2,000 accounts' positions and liquidation prices, hourly;
+- HLP's positions, every 15 minutes;
+- every perp's funding, premium, open interest and prices, every 5 minutes;
+- 1-minute candles, daily.
+
+Each test still needs its pre-registration before its data is read.
+
 ## Ranking (my view)
 
 | idea | why it may be unused | mechanism | data | cost to test | next step |
