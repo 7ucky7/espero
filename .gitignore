@@ -77,3 +77,5 @@ data/oi/
 data/liq2/
 # #28's extra 5-minute months and days, re-downloadable (research/levetf.py)
 data/levetf/
+# #30 downloads: 5-minute months and days, re-downloadable (research/bids.py)
+data/bids/
