@@ -108,7 +108,7 @@ class TestFeeds(unittest.TestCase):
                                    return_value=[{"product": "AAA-USD", "dollar_volume": 5e6}]), \
                     mock.patch.object(hl, "closed_bars", side_effect=hl_bars), \
                     mock.patch.object(data, "fetch", side_effect=AssertionError("coinbase")), \
-                    contextlib.redirect_stdout(io.StringIO()) as out:
+                    mock.patch("time.sleep"), contextlib.redirect_stdout(io.StringIO()) as out:
                 self.assertEqual(cli.main(["degen", "backtest", "--cache", d]), 0)
             self.assertEqual(calls, [("AAA-USD", 300, 4896)])            # 17 days of 5m bars
             self.assertEqual([f.name for f in Path(d).iterdir()], ["AAAUSD_300s_17d_hl.csv"])
@@ -116,6 +116,7 @@ class TestFeeds(unittest.TestCase):
             self.assertIn("Hyperliquid serves the last 5,000 bars: 17 days of 5m bars, not 30", text)
             self.assertIn("Hyperliquid (base tier)", text)
             self.assertIn("information only", text)
+            self.assertIn("replaying 1 coins x 17d", text)
 
 
 if __name__ == "__main__":

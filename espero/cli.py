@@ -550,6 +550,7 @@ def _degen_frame(p: str, days: int, gran: int, cache: Path, label: str,
             from . import hyperliquid as hlm
             df = hlm.closed_bars(p, gran, min(days * 86400 // gran, hlm.CANDLE_LIMIT))
             df["time"] = df["dt"].map(lambda t: t.isoformat())
+            time.sleep(0.5)     # a 5,000-bar page weighs heavily on its rate limit: 60 in a row drew 429s
         else:
             df = data.fetch(p, days, gran)
         data.save(df, path)
@@ -607,7 +608,7 @@ def _cmd_degen_backtest(args: argparse.Namespace) -> int:
     if RULES[args.rule].get("beat_benchmark"):
         bench = cut(_degen_frame(BENCHMARK, days, gran, cache, "[benchmark]", source))
     venues = [v.strip() for v in args.venues.split(",") if v.strip()]
-    span = f"{args.start} -> {args.end or 'now'}" if args.start else f"{args.days}d"
+    span = f"{args.start} -> {args.end or 'now'}" if args.start else f"{days}d"
     print(f"rule {args.rule}: replaying {len(frames)} coins x {span} through {', '.join(venues)} ...", flush=True)
     rows = compare_venues(frames, venues, initial=args.cash, dollar_volume=dv, rule=args.rule, benchmark=bench)
     lines = [f"{'venue':<28}{'trades':>7}{'hit':>6}{'PF':>7}{'fees':>8}{'maxDD%':>8}{'P&L':>9}{'equity':>9}  exits"]
