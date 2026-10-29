@@ -157,7 +157,10 @@ against the paying side around settlement. The test is where the payment starts 
 plus fees. It needs 1-minute prices around the hour, which Hyperliquid keeps for only a few days, so
 it uses the same collector as #3.
 
-### 11. Stop runs at obvious levels
+### 11. Stop runs at obvious levels (#35 failed)
+
+**Tested** ([RESULTS_SWEEPS.md](RESULTS_SWEEPS.md)): sweeps of yesterday's low bounce, but failed sweeps bounce more than reclaimed ones; the stop-run reading adds nothing beyond #20's mean reversion at lows. The original note follows.
+
 
 Stop orders are forced orders too, and they cluster just past yesterday's high and low, the week's
 extremes and round numbers. A sweep beyond the level that closes back inside should reverse, by #26's

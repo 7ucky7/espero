@@ -364,8 +364,14 @@ in the half hour after the fill when funding was ordinary, which it was 93.5% of
 FAIL, and the fill time stays: [research/RESULTS_FILLCOST.md](research/RESULTS_FILLCOST.md). The
 bias sits only on coins whose shorts pay hard (1.5%), where the price fell 34 bps after 00:00.
 
-Scoreboard: thirty-four tests. Four passes (#4, #8, #12 provisional, #26), two real but not
-tradable (#19, #20), the rest failed (#33 the latest) or are running (#22–#24, #27, #29, #31, #32). Two are risk construction; the third is income (carry at
+The thirty-sixth tested stop runs: sweeps of yesterday's low that close back above it within 15
+minutes. Over 40,785 sweeps on 42 coins (2020–2026) they bounced +15 bps in the next hour, but
+sweeps that failed to reclaim bounced more (+19.5 bps), so the reclaim says nothing. FAIL:
+[research/RESULTS_SWEEPS.md](research/RESULTS_SWEEPS.md). What is left is #20's mean reversion at
+lows, from a second trigger: +39 to +44 bps over 4 hours.
+
+Scoreboard: thirty-six tests. Four passes (#4, #8, #12 provisional, #26), two real but not
+tradable (#19, #20), the rest failed (#35 the latest) or are running (#22–#24, #27, #29, #31, #32, #34). Two are risk construction; the third is income (carry at
 maker fees) with a forward test still attached. No predictive edge has been found at any horizon,
 and across #4, #8 and #15 the one effect that survives is volatility sizing.
 

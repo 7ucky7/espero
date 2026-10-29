@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "research"))
 from levpush import bars  # noqa: E402  (the cached-bar reader)
+
 from espero import liq as lq  # noqa: E402
 from espero import sweeps as sw  # noqa: E402
 from espero.liq import clustered  # noqa: E402
