@@ -95,6 +95,21 @@ def user_state(address: str, fetch: Optional[Fetch] = None) -> Dict[str, object]
     }
 
 
+def margin_mode(address: str, fetch: Optional[Fetch] = None) -> Dict[str, object]:
+    """How the account is margined, and its spot USDC. A *unified* account (the default
+    for new accounts) margins perps with spot USDC directly: its `clearinghouseState`
+    reads 0.00 while the money sits in spot, ready to use. Read-only, public address."""
+    get = fetch or testnet_post
+    try:
+        mode = get({"type": "userAbstraction", "user": address})
+    except Exception:  # noqa: BLE001 - an older API without the query: the classic split
+        mode = "default"
+    spot = get({"type": "spotClearinghouseState", "user": address}) or {}
+    usdc = next((b for b in spot.get("balances", []) if b.get("coin") == "USDC"), {})
+    return {"mode": str(mode or "default"), "spot_usdc": float(usdc.get("total", 0) or 0),
+            "spot_hold": float(usdc.get("hold", 0) or 0)}
+
+
 def asset_contexts(fetch: Optional[Fetch] = None) -> List[Dict[str, float]]:
     """One row per listed perp: coin, mark, hourly funding, open interest and
     24h volume in dollars. `metaAndAssetCtxs` returns `[meta, ctxs]` with the

@@ -315,9 +315,16 @@ def _cmd_hl_account(args: argparse.Namespace) -> int:
                else os.environ.get("HL_NETWORK", "testnet").strip().lower() != "mainnet")
     url = hl.info_url(testnet=testnet)
     st = hl.user_state(address, fetch=lambda body: hl.post(body, url))
-    print(f"{'testnet' if testnet else 'MAINNET'}  {address}")
-    print(f"equity {st['equity']:,.2f}  margin used {st['margin_used']:,.2f}  "
+    mm = hl.margin_mode(address, fetch=lambda body: hl.post(body, url))
+    unified = mm["mode"] in ("unifiedAccount", "portfolioMargin")
+    print(f"{'testnet' if testnet else 'MAINNET'}  {address}  ({mm['mode']})")
+    if unified:
+        print(f"margin (spot USDC) {mm['spot_usdc']:,.2f}  on hold {mm['spot_hold']:,.2f}  "
+              f"-- a unified account margins perps with spot USDC, so the perp-only figures below stay 0")
+    print(f"{'perp ' if unified else ''}equity {st['equity']:,.2f}  margin used {st['margin_used']:,.2f}  "
           f"notional {st['notional']:,.2f}  withdrawable {st['withdrawable']:,.2f}")
+    if not unified and mm["spot_usdc"]:
+        print(f"spot USDC {mm['spot_usdc']:,.2f} (not perp margin until transferred)")
     if not st["positions"]:
         print("no open positions")
     for p in st["positions"]:

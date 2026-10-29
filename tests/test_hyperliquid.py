@@ -121,6 +121,27 @@ class TestUserState(unittest.TestCase):
         self.assertEqual(p["funding_paid"], 0.4)
 
 
+class TestMarginMode(unittest.TestCase):
+    def fetch(self, mode):
+        def get(body):
+            if body["type"] == "userAbstraction":
+                if isinstance(mode, Exception):
+                    raise mode
+                return mode
+            self.assertEqual(body, {"type": "spotClearinghouseState", "user": "0xabc"})
+            return {"balances": [{"coin": "HYPE", "total": "3"}, {"coin": "USDC", "total": "967.74", "hold": "12.5"}]}
+        return get
+
+    def test_unified_account_reports_spot_usdc_as_margin(self):
+        mm = hl.margin_mode("0xabc", fetch=self.fetch("unifiedAccount"))
+        self.assertEqual(mm, {"mode": "unifiedAccount", "spot_usdc": 967.74, "spot_hold": 12.5})
+
+    def test_an_api_without_the_query_is_the_classic_split(self):
+        mm = hl.margin_mode("0xabc", fetch=self.fetch(RuntimeError("unknown type")))
+        self.assertEqual(mm["mode"], "default")
+        self.assertEqual(mm["spot_usdc"], 967.74)
+
+
 class TestVenue(unittest.TestCase):
     def test_hyperliquid_row_settles_hourly(self):
         v = VENUES["hyperliquid"]
