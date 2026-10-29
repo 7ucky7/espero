@@ -1,0 +1,74 @@
+42 coins: #20's down-breaks 2021-01-01 -> 2026-03-31, open interest from Binance's metrics archive (cached in data/oi/) ...
+  1/42 {'coin': 'BTC', 'status': 'ok', 'events': 3793, 'measured': 3788, 'oi_days_missing': 0}
+  2/42 {'coin': 'ETH', 'status': 'ok', 'events': 3754, 'measured': 3089, 'oi_days_missing': 310}
+  3/42 {'coin': 'SOL', 'status': 'ok', 'events': 3728, 'measured': 3083, 'oi_days_missing': 307}
+  4/42 {'coin': 'BNB', 'status': 'ok', 'events': 3506, 'measured': 2872, 'oi_days_missing': 300}
+  5/42 {'coin': 'XRP', 'status': 'ok', 'events': 3614, 'measured': 2989, 'oi_days_missing': 308}
+  6/42 {'coin': 'ADA', 'status': 'ok', 'events': 3519, 'measured': 2877, 'oi_days_missing': 309}
+  7/42 {'coin': 'DOGE', 'status': 'ok', 'events': 3506, 'measured': 2926, 'oi_days_missing': 302}
+  8/42 {'coin': 'AVAX', 'status': 'ok', 'events': 3532, 'measured': 2936, 'oi_days_missing': 307}
+  9/42 {'coin': 'LINK', 'status': 'ok', 'events': 3575, 'measured': 2944, 'oi_days_missing': 308}
+  10/42 {'coin': 'DOT', 'status': 'ok', 'events': 3474, 'measured': 2851, 'oi_days_missing': 310}
+  11/42 {'coin': 'TRX', 'status': 'ok', 'events': 3070, 'measured': 2531, 'oi_days_missing': 305}
+  12/42 {'coin': 'SHIB', 'status': 'ok', 'events': 3351, 'measured': 2960, 'oi_days_missing': 190}
+  13/42 {'coin': 'LTC', 'status': 'ok', 'events': 3436, 'measured': 2799, 'oi_days_missing': 307}
+  14/42 {'coin': 'BCH', 'status': 'ok', 'events': 3325, 'measured': 2739, 'oi_days_missing': 308}
+  15/42 {'coin': 'ATOM', 'status': 'ok', 'events': 3302, 'measured': 2732, 'oi_days_missing': 302}
+  16/42 {'coin': 'ETC', 'status': 'ok', 'events': 3456, 'measured': 2897, 'oi_days_missing': 304}
+  17/42 {'coin': 'XLM', 'status': 'ok', 'events': 3029, 'measured': 2489, 'oi_days_missing': 303}
+  18/42 {'coin': 'NEAR', 'status': 'ok', 'events': 3220, 'measured': 2721, 'oi_days_missing': 301}
+  19/42 {'coin': 'ARB', 'status': 'ok', 'events': 2014, 'measured': 2014, 'oi_days_missing': 0}
+  20/42 {'coin': 'OP', 'status': 'ok', 'events': 2536, 'measured': 2536, 'oi_days_missing': 0}
+  21/42 {'coin': 'FIL', 'status': 'ok', 'events': 3519, 'measured': 2945, 'oi_days_missing': 301}
+  22/42 {'coin': 'INJ', 'status': 'ok', 'events': 2221, 'measured': 2221, 'oi_days_missing': 1}
+  23/42 {'coin': 'SEI', 'status': 'ok', 'events': 1536, 'measured': 1536, 'oi_days_missing': 1}
+  24/42 {'coin': 'TIA', 'status': 'ok', 'events': 1675, 'measured': 1675, 'oi_days_missing': 0}
+  25/42 {'coin': 'RUNE', 'status': 'ok', 'events': 3119, 'measured': 2548, 'oi_days_missing': 305}
+  26/42 {'coin': 'AAVE', 'status': 'ok', 'events': 3182, 'measured': 2593, 'oi_days_missing': 309}
+  27/42 {'coin': 'MKR', 'status': 'ok', 'events': 2508, 'measured': 2064, 'oi_days_missing': 294}
+  28/42 {'coin': 'CRV', 'status': 'ok', 'events': 2118, 'measured': 1567, 'oi_days_missing': 307}
+  29/42 {'coin': 'SNX', 'status': 'ok', 'events': 2655, 'measured': 2099, 'oi_days_missing': 296}
+  30/42 {'coin': 'SUSHI', 'status': 'ok', 'events': 3013, 'measured': 2391, 'oi_days_missing': 310}
+  31/42 {'coin': 'YFI', 'status': 'ok', 'events': 3181, 'measured': 2582, 'oi_days_missing': 309}
+  32/42 {'coin': 'ALGO', 'status': 'ok', 'events': 2810, 'measured': 2277, 'oi_days_missing': 300}
+  33/42 {'coin': 'XTZ', 'status': 'ok', 'events': 2000, 'measured': 1502, 'oi_days_missing': 301}
+  34/42 {'coin': 'EOS', 'status': 'ok', 'events': 2118, 'measured': 1516, 'oi_days_missing': 308}
+  35/42 {'coin': 'ZEC', 'status': 'ok', 'events': 2849, 'measured': 2390, 'oi_days_missing': 296}
+  36/42 {'coin': 'DASH', 'status': 'ok', 'events': 2840, 'measured': 2326, 'oi_days_missing': 300}
+  37/42 {'coin': 'KSM', 'status': 'ok', 'events': 2855, 'measured': 2231, 'oi_days_missing': 309}
+  38/42 {'coin': 'ICP', 'status': 'ok', 'events': 2846, 'measured': 2367, 'oi_days_missing': 365}
+  39/42 {'coin': 'HBAR', 'status': 'ok', 'events': 2889, 'measured': 2502, 'oi_days_missing': 236}
+  40/42 {'coin': 'VET', 'status': 'ok', 'events': 3144, 'measured': 2554, 'oi_days_missing': 309}
+  41/42 {'coin': 'THETA', 'status': 'ok', 'events': 3148, 'measured': 2595, 'oi_days_missing': 300}
+  42/42 {'coin': 'WLD', 'status': 'ok', 'events': 1903, 'measured': 1902, 'oi_days_missing': 2}
+
+## data
+
+down-breaks: 124869; with an open-interest drop measured: 105156 on 1709 days; median oi_drop +0.18%, top decile from +1.45%
+
+## criteria (within-day terciles of oi_drop; r60 = 1h long return from the next open)
+
+| # | criterion | actual | met |
+|---|---|---|---|
+| 1 | forced breakdowns bounce more: mean D > 0, t >= 3 | D +3.2 bps, t 2.36, 1430 days | **no** |
+| 2 | not the coin mix: D on coin-centred oi_drop > 0 | D +3.3 bps, t 2.37 | yes |
+| 3 | not one era: D > 0 in both halves | +7.6 bps (580 days), +0.2 bps (850 days) | yes |
+| 4 | it pays: forced breakdowns' 1h > 18 bps, t > 2 | +12.3 bps, t 6.00, 1430 days | **no** |
+
+verdict: FAIL
+
+## information only
+
+4-hour outcome: D +7.2 bps, t 3.19, 1430 days
+global terciles: D +3.4 bps, t 2.48, 1427 days
+  forced  : 1h +12.3 bps (t 6.00), 4h +31.8 bps (t 9.59), 35319 events
+  middle  : 1h +8.3 bps (t 4.51), 4h +22.0 bps (t 6.67), 34814 events
+  organic : 1h +9.2 bps (t 5.48), 4h +24.6 bps (t 7.82), 34347 events
+
+D by year:
+  2021: +14.8 bps (t 0.92, 32 days)
+  2022: +6.7 bps (t 2.24, 329 days)
+  2023: +10.3 bps (t 4.42, 329 days)
+  2024: +1.2 bps (t 0.42, 330 days)
+  2025: -4.2 bps (t -1.48, 329 days)
+  2026: -6.3 bps (t -1.34, 81 days)

@@ -336,6 +336,11 @@ coin by coin, and buying the forced down-breaks earned +23.5 bps an hour (t 7.1)
 first signal here to clear every pre-registered criterion. It now needs a forward test on a live
 liquidation feed before anything trades: [research/RESULTS_LIQ2.md](research/RESULTS_LIQ2.md).
 
+The twenty-fifth asked the same question with Binance's open interest as a stand-in for liquidations
+(every day 2021 → March 2026): breakdowns where open interest dropped most bounced only 3.2 bps more
+(t 2.4), and the gap has faded to below zero since 2025. FAIL:
+[research/RESULTS_OI.md](research/RESULTS_OI.md). Open interest does not see which closes were forced.
+
 Scoreboard: twenty-seven tests. Four passes (#4, #8, #12 provisional, #26), two real but not
 tradable (#19, #20), the rest failed or are running (#22–#25). Two are risk construction; the third is income (carry at
 maker fees) with a forward test still attached. No predictive edge has been found at any horizon,
