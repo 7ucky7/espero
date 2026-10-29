@@ -17,6 +17,10 @@ class RunnerCase(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.state = Path(self.tmp.name) / "state"
         self.logs = Path(self.tmp.name) / "logs"
+        # the #8 account fetches 42 coins; a test that wants it to fail patches it again
+        mf = mock.patch.object(runner.mfm, "run", return_value={"note": "mark", "equity": 100.0})
+        self.mf_run = mf.start()
+        self.addCleanup(mf.stop)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -35,6 +39,8 @@ class TestDryRun(RunnerCase):
         self.assertTrue(res.ok)
         self.assertEqual(res.exit_code, 0)
         self.assertTrue(res.steps["tsmom"].skipped)
+        self.assertTrue(res.steps["mf"].skipped)
+        self.mf_run.assert_not_called()
         health = json.loads((self.state / "health.json").read_text())
         self.assertTrue(health["ok"])
         self.assertTrue(health["dry_run"])
@@ -54,6 +60,7 @@ class TestIsolation(RunnerCase):
         self.assertFalse(res.steps["tsmom"].ok)
         self.assertIn("yahoo down", res.steps["tsmom"].error)
         self.assertTrue(res.steps["xs"].ok)
+        self.assertTrue(res.steps["mf"].ok)
         self.assertTrue(res.steps["dashboard"].ok)
         health = json.loads((self.state / "health.json").read_text())
         self.assertFalse(health["ok"])

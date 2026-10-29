@@ -1,6 +1,6 @@
 """`espero daily`: the one command a scheduler runs.
 
-    tsmom mark/rebalance  ->  xs mark/rebalance  ->  dashboard  ->  health.json
+    tsmom mark/rebalance  ->  xs mark/rebalance  ->  mf (#8 forward test)  ->  dashboard  ->  health.json
 
 Rules:
 
@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Callable, Dict, Optional
 
 from . import dashboard as dash
+from . import mf as mfm
 from . import notify as notifier
 from . import tsmom as tsm
 from . import xs as xsm
@@ -177,6 +178,7 @@ def write_health(state_dir: Path, result: DailyResult) -> Path:
 
 
 def run_daily(state_dir: Path = Path("."), cash_tsmom: float = 100.0, cash_xs: float = 100.0,
+              cash_mf: float = 100.0,
               force: bool = False, dry_run: bool = False, notify: bool = True,
               now: Optional[datetime] = None, log_dir: Path = LOG_DIR) -> DailyResult:
     state_dir = Path(state_dir)
@@ -193,18 +195,20 @@ def run_daily(state_dir: Path = Path("."), cash_tsmom: float = 100.0, cash_xs: f
         write_health(state_dir, result)
         return result
 
-    tsmom_db, xs_db = state_dir / "tsmom.db", state_dir / "xs.db"
+    tsmom_db, xs_db, mf_db = state_dir / "tsmom.db", state_dir / "xs.db", state_dir / "mf.db"
     paper_db, live_db = state_dir / "paper.db", state_dir / "live.db"
 
     with Lock(state_dir / "daily.lock"):
         if dry_run:
-            for name in ("tsmom", "xs"):
+            for name in ("tsmom", "xs", "mf"):
                 result.steps[name] = StepResult(True, 0.0, note="skipped (dry run)", skipped=True)
                 log.info("%s skipped (dry run)", name)
         else:
             _step("tsmom", lambda: tsm.run(str(tsmom_db), cash_tsmom, force=force, now=now),
                   result, notify)
             _step("xs", lambda: xsm.run(str(xs_db), cash_xs, force=force, now=now), result, notify)
+            # no --force: #8's calendar is frozen (FORWARD_MF.md); it fills only its own Mondays
+            _step("mf", lambda: mfm.run(str(mf_db), cash_mf), result, notify)
 
         def render():
             out = dash.write(state_dir / "dashboard.html", tsmom_db=tsmom_db, paper_db=paper_db,
