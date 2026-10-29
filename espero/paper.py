@@ -239,6 +239,30 @@ class PaperTrader:
             self.journal.add_order(self.pending)
         return "queued manual SELL for the next open"
 
+    def request_open(self, ts: int, notional: float, price: float) -> str:
+        """Queue a manual BUY of `notional` dollars (at most the cash) for the next bar's open,
+        filled like a signal's: slippage and fee, the usual stop and target."""
+        if self.position is not None:
+            return "manual open: a position is already open"
+        if self.pending is not None:
+            return f"manual open: a {self.pending.side} is already queued"
+        notional = min(notional, self.cash / (1 + self.cfg.fee + self.cfg.slippage))
+        if notional <= 0 or price <= 0:
+            return "manual open: no cash or no price"
+        with self.journal.transaction():
+            self.pending = PendingOrder(str(uuid.uuid4())[:8], self.cfg.product, ts, "BUY", notional / price, "manual")
+            self.journal.add_order(self.pending)
+        return f"queued manual BUY of {notional:.2f} for the next open"
+
+    def holding(self, price: float) -> str:
+        """One line on the open position at `price`, or ''."""
+        p = self.position
+        if p is None:
+            return ""
+        pnl = (price - p.entry_px) * p.size - p.entry_fee
+        return (f"holding {p.size:.6f} @ {p.entry_px:.2f}  now {price:.2f}  P&L {pnl:+.2f} "
+                f"({100 * (price / p.entry_px - 1):+.2f}%)  stop {p.stop:.2f}  target {p.target:.2f}")
+
     def close_now(self, price: float, ts: int) -> str:
         """Close the open position at `price` (slippage and fee applied), reason "manual":
         for when no loop is running to fill a queued order."""

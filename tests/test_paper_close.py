@@ -100,3 +100,51 @@ class TestCommand(PaperTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestManualOpen(PaperTestCase):
+    def test_queued_buy_fills_at_the_next_open_with_the_usual_stop_and_target(self):
+        t = self.trader()
+        t.on_bar(bar(0, 100.0))
+        self.assertEqual(t.request_open(bar(0, 0)["ts"], 200.0, 100.0), "queued manual BUY of 200.00 for the next open")
+        t.on_bar(bar(1, 101.0))
+        self.assertIsNotNone(t.position)
+        self.assertAlmostEqual(t.position.entry_px, 101.0)
+        self.assertAlmostEqual(t.position.size, 2.0)
+        self.assertAlmostEqual(t.position.stop, 101.0 * (1 - self.cfg.stop_pct))
+        self.assertIn("holding 2.000000 @ 101.00  now 110.00  P&L +18.00", t.holding(110.0))
+
+    def test_never_more_than_the_cash_and_never_on_top_of_a_position(self):
+        t = self.trader()
+        t.on_bar(bar(0, 100.0))
+        self.assertIn("queued manual BUY of 500.00", t.request_open(bar(0, 0)["ts"], 9999.0, 100.0))
+        t.on_bar(bar(1, 100.0))
+        self.assertIn("already open", t.request_open(bar(1, 0)["ts"], 50.0, 100.0))
+
+    def test_command_needs_a_running_loop(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(cli.main(["paper-open", "--state", str(self.db), "--usd", "50"]), 2)
+        with JournalLock(self.db), contextlib.redirect_stdout(out):
+            self.assertEqual(cli.main(["paper-open", "--state", str(self.db), "--usd", "50"]), 0)
+        self.assertEqual(Path(str(self.db) + ".open").read_text(), '{"usd": 50.0}')
+
+    def test_the_loop_buys_on_request_then_shows_the_holding(self):
+        t = self.trader()
+        t.on_bar(bar(0, 100.0))
+        t.journal.close()
+        Path(str(self.db) + ".open").write_text('{"usd": 100}')
+        args = cli.build_parser().parse_args(["paper", "--product", self.cfg.product, "--state", str(self.db),
+                                              "--granularity", str(GRAN), "--fee-bps", "0"])
+        import pandas as pd
+        from unittest import mock
+        nxt = bar(1, 102.0)
+        df = pd.DataFrame([dict(nxt, dt=pd.Timestamp(nxt["ts"], unit="s", tz="UTC"))])
+        with mock.patch("espero.data.recent_closed_bars", return_value=df), \
+                contextlib.redirect_stdout(io.StringIO()) as out:
+            cli._paper_loop(args)
+        text = out.getvalue()
+        self.assertIn("queued manual BUY of 100.00", text)
+        self.assertIn("filled BUY", text)
+        self.assertIn("holding", text)
+        self.assertFalse(Path(str(self.db) + ".open").exists())
