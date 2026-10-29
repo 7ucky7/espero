@@ -87,6 +87,17 @@ class TestIsolation(RunnerCase):
         self.assertTrue(any("rebalance" in t for t in sent))
         self.assertTrue(any("failed" in t for t in sent))
 
+    def test_trade_note_without_equity_does_not_crash_the_run(self):
+        sent = []
+        with mock.patch.object(runner.notifier, "notify", side_effect=lambda t, m: sent.append((t, m))), \
+             mock.patch.object(runner.tsm, "run", return_value={"note": "rebalance", "equity": None}), \
+             mock.patch.object(runner.xsm, "run", return_value={"note": "init", "equity": 5.0,
+                                                                "message": "bought 3 coins"}):
+            res = self.run_daily(notify=True)
+        self.assertTrue(res.ok)
+        self.assertIn(("espero tsmom: rebalance", "rebalance"), sent)
+        self.assertIn(("espero xs: init", "bought 3 coins"), sent)
+
 
 class TestGuards(RunnerCase):
     def test_kill_file_pauses_everything(self):

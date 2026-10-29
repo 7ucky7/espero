@@ -147,7 +147,11 @@ def _step(name: str, fn: Callable[[], dict], result: DailyResult, notify: bool) 
     log.info("%s ok in %.1fs: %s equity=%s", name, time.time() - t0, note,
              f"{equity:.2f}" if equity is not None else "-")
     if notify and note.split(" ")[0] in TRADE_NOTES:
-        notifier.notify(f"espero {name}: {note}", f"equity ${equity:,.2f}")
+        # a step may say what it did; outside the try above, so it must not raise
+        message = out.get("message") if isinstance(out, dict) else None
+        if not message:
+            message = f"equity ${equity:,.2f}" if isinstance(equity, (int, float)) else note
+        notifier.notify(f"espero {name}: {note}", str(message))
     return out
 
 
