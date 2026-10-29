@@ -341,8 +341,17 @@ The twenty-fifth asked the same question with Binance's open interest as a stand
 (t 2.4), and the gap has faded to below zero since 2025. FAIL:
 [research/RESULTS_OI.md](research/RESULTS_OI.md). Open interest does not see which closes were forced.
 
-Scoreboard: twenty-seven tests. Four passes (#4, #8, #12 provisional, #26), two real but not
-tradable (#19, #20), the rest failed or are running (#22–#25). Two are risk construction; the third is income (carry at
+The twenty-eighth looked for a forced flow on a clock. Leveraged and inverse ETFs must buy after up
+days and sell after down days to restore their leverage at the 4 p.m. ET valuation, and the US 2x
+bitcoin and ether funds hold billions. Over 596 NYSE days since June 2024, BTC and ETH did not drift
+with the day's move in the last 15 minutes before 16:00 (−1.5 bps, t −1.4). FAIL:
+[research/RESULTS_LEVETF.md](research/RESULTS_LEVETF.md). The other end of the flow did show, as
+information: after the close the session's move reverses, −6.0 bps in 15 minutes (t −5.6), on
+trading days and not on weekends, larger on bigger days, in every year since 2024. It is under
+costs as a trade and is now a forward test (#29).
+
+Scoreboard: twenty-nine tests. Four passes (#4, #8, #12 provisional, #26), two real but not
+tradable (#19, #20), the rest failed (#28 the latest) or are running (#22–#24, #27, #29). Two are risk construction; the third is income (carry at
 maker fees) with a forward test still attached. No predictive edge has been found at any horizon,
 and across #4, #8 and #15 the one effect that survives is volatility sizing.
 
