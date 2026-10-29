@@ -322,8 +322,15 @@ sides was +4.8 bps (t 0.3), and it went the other way in July–August. Buying a
 spikes made +51 bps a day, in months when the market rose by almost half that anyway. FAIL:
 [research/RESULTS_LIQSPIKE.md](research/RESULTS_LIQSPIKE.md).
 
-Scoreboard: twenty-one tests. Three passes, one real but not tradable (#19), the rest failed; #20
-is pre-registered and running. Two are risk construction; the third is income (carry at
+The twentieth mirrored 打板: buy the new 4-hour **low** on a volume spike instead of the high. On
+136,523 breakdowns over six years (2020 → March 2026, the days #18 used left out) it earned +14.8 bps
+in the next hour, t 9.8, in every year and on 40 of 42 coins, while buying breakouts lost 6.9 bps. The
+strongest effect measured here, and still under the 18 bps bar for one hour: "real, not tradable".
+At 4 hours it was +37.8 bps (information only), the lead now worth a test of its own:
+[research/RESULTS_LOWS.md](research/RESULTS_LOWS.md).
+
+Scoreboard: twenty-two tests. Three passes, two real but not tradable (#19, #20), the rest failed;
+#22 and #23 are running as paper tests. Two are risk construction; the third is income (carry at
 maker fees) with a forward test still attached. No predictive edge has been found at any horizon,
 and across #4, #8 and #15 the one effect that survives is volatility sizing.
 
