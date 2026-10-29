@@ -68,7 +68,10 @@ that are new (2024–26 instruments) or where the data exists but nobody has sha
   forced buys at the bottom revert) before collecting.
 - **Next.** Forward only; the same collector as #3.
 
-## 5. Ethena's hedge as a funding forecast (for #12)
+## 5. Ethena's hedge as a funding forecast (for #12) (#36 failed)
+
+**Tested** ([RESULTS_ETHENA.md](RESULTS_ETHENA.md)): with funding's own level and reversion controlled, USDe flows forecast nothing (t +0.75); the raw correlation (t −2.2) is funding mean-reverting after high-yield minting. The original note follows.
+
 
 - **Mechanism.** Ethena's USDe is backed by spot crypto plus **short perpetuals**, billions of dollars
   of them.

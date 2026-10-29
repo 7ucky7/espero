@@ -77,7 +77,8 @@ def criteria(flow: pd.Series, binance: pd.Series, hyperliquid: pd.Series) -> Lis
     hl = fit(design(flow, hyperliquid))
     return [
         {"criterion": "Binance: next week's funding change on this week's USDe flow, b < 0, t <= -2",
-         "actual": f"b {full['b']:+.3f}, t {full['t']:.2f}, {full['n']} weeks", "met": full["b"] < 0 and full["t"] <= -2},
+         "actual": f"b {full['b']:+.3f}, t {full['t']:.2f}, {full['n']} weeks",
+         "met": full["b"] < 0 and full["t"] <= -2},
         {"criterion": "not one stretch: b < 0 in each half",
          "actual": f"b {h1['b']:+.3f} (t {h1['t']:.2f}), {h2['b']:+.3f} (t {h2['t']:.2f})",
          "met": h1["b"] < 0 and h2["b"] < 0},

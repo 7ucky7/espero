@@ -370,8 +370,14 @@ sweeps that failed to reclaim bounced more (+19.5 bps), so the reclaim says noth
 [research/RESULTS_SWEEPS.md](research/RESULTS_SWEEPS.md). What is left is #20's mean reversion at
 lows, from a second trigger: +39 to +44 bps over 4 hours.
 
-Scoreboard: thirty-six tests. Four passes (#4, #8, #12 provisional, #26), two real but not
-tradable (#19, #20), the rest failed (#35 the latest) or are running (#22–#24, #27, #29, #31, #32, #34). Two are risk construction; the third is income (carry at
+The thirty-seventh asked whether Ethena's USDe flows forecast funding: minting opens Ethena's
+shorts, redemptions close them. Over 138 weeks (2024–2026) the raw correlation had the predicted sign
+(t −2.2), but it vanished once funding's own level and reversion were controlled (t +0.75). USDe
+is minted when funding is high, and high funding falls back on its own. FAIL:
+[research/RESULTS_ETHENA.md](research/RESULTS_ETHENA.md).
+
+Scoreboard: thirty-seven tests. Four passes (#4, #8, #12 provisional, #26), two real but not
+tradable (#19, #20), the rest failed (#36 the latest) or are running (#22–#24, #27, #29, #31, #32, #34). Two are risk construction; the third is income (carry at
 maker fees) with a forward test still attached. No predictive edge has been found at any horizon,
 and across #4, #8 and #15 the one effect that survives is volatility sizing.
 
