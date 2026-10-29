@@ -60,3 +60,5 @@ fast.db
 .env
 .env.*
 !.env.example
+# #18's downloads: a few hundred MB, re-downloadable (research/liq.py)
+data/liq/
