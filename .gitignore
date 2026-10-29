@@ -62,3 +62,5 @@ fast.db
 !.env.example
 # #18's downloads: a few hundred MB, re-downloadable (research/liq.py)
 data/liq/
+# #19's downloads: funding history and hourly bars, re-downloadable (research/settle.py)
+data/settle/
