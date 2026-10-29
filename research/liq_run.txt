@@ -1,0 +1,67 @@
+82 days x 42 coins = 3444 coin-days (2020-01-01 .. 2026-10-01), cached in data/liq/ ...
+  250/3444 coin-days
+  500/3444 coin-days
+  750/3444 coin-days
+  1000/3444 coin-days
+  1250/3444 coin-days
+  1500/3444 coin-days
+  1750/3444 coin-days
+  2000/3444 coin-days
+  2250/3444 coin-days
+  2500/3444 coin-days
+  2750/3444 coin-days
+  3000/3444 coin-days
+  3250/3444 coin-days
+-> research/liq_events.csv, research/liq_manifest.json
+
+## data
+
+coin-days with Binance bars: 2986 of 3444
+  with a binance-futures liquidation file: 2973
+  with a bybit liquidation file: 2514
+events: 9213 (4437 up, 4776 down); usable (s and y present, day with >= 6): 9212 on 82 days
+events with no liquidation at all in the hour before: 9.3%; with none on the break's side: 10.9%
+
+## criteria (y = 1-hour return in the break's direction, within-day terciles of s)
+
+| # | criterion | actual | met |
+|---|---|---|---|
+| 1 | forced breaks fade relative to organic: mean D < 0, t <= -3 | D -11.4 bps, t -2.11, 82 days | **no** |
+| 2 | not the coin mix: D on coin-centred s < 0 | D -11.2 bps, t -2.01, 82 days | yes |
+| 3 | not one era: D < 0 in both halves | +0.1 bps (41 days), -22.9 bps (41 days) | **no** |
+| 4 | a long leg earns > 18 bps an hour with t > 2 | a: buy forced down-breaks +26.4 bps, t 3.85, 82 days; b: buy organic up-breaks +2.5 bps, t 0.46, 82 days | yes |
+
+verdict: FAIL
+
+## information only
+
+| variant | mean D | t | days |
+|---|---|---|---|
+| Binance liquidations only | -13.0 bps | -2.51 | 82 |
+| Bybit liquidations only | -8.1 bps | -1.67 | 62 |
+| 15-minute window | -11.1 bps | -1.89 | 82 |
+| 15-minute horizon | -5.4 bps | -1.83 | 82 |
+| 4-hour horizon | -21.2 bps | -2.37 | 82 |
+| global terciles | -5.8 bps | -1.00 | 82 |
+| aggressor agreement (taker flow) instead of s | -9.8 bps | -1.81 | 82 |
+
+mean y of every break (days counted once):
+  up-breaks: +5.5 bps in the break's direction, t 0.97, 4437 events
+  down-breaks: -18.5 bps in the break's direction, t -3.02, 4775 events
+
+long legs, gross and net of one taker round trip:
+  a: buy forced down-breaks: +26.4 bps (t 3.85, 82 days); net Binance.US +22.4 bps, Hyperliquid +17.4 bps
+  b: buy organic up-breaks: +2.5 bps (t 0.46, 82 days); net Binance.US -1.5 bps, Hyperliquid -6.5 bps
+  buy organic down-breaks: +9.0 bps (t 1.56, 82 days); net Binance.US +5.0 bps, Hyperliquid +0.0 bps
+  buy forced up-breaks: +4.5 bps (t 0.59, 77 days); net Binance.US +0.5 bps, Hyperliquid -4.5 bps
+
+events by year:
+      down   up
+year           
+2020   283  415
+2021   663  742
+2022   641  615
+2023   728  758
+2024   908  624
+2025   888  698
+2026   665  585

@@ -300,7 +300,14 @@ the wrong sign. Both FAIL on all four criteria: [research/RESULTS_PEERS.md](rese
 One-hour reversal replicated on the new year (t 10.7, +4 bps per three hours): the bid-ask bounce
 again. The scan keeps BTC as its only leader and says why.
 
-Scoreboard: eighteen tests, three passes. Two are risk construction; the third is income (carry at
+The eighteenth asked whether the liquidations aggr shows can tell a forced breakout from an
+organic one. On the 82 free first-of-month days of Binance and Bybit liquidations (2020–2026, 9,212
+breaks), breaks made mostly of liquidations faded 11 bps more over the next hour than organic ones,
+the predicted direction in every variant, but at t −2.1 against the −3 hurdle, and only in the
+second half of the period. FAIL: [research/RESULTS_LIQ.md](research/RESULTS_LIQ.md). Information only:
+new 4-hour lows bounced about 18 bps in the next hour, while new highs did not continue.
+
+Scoreboard: nineteen tests, three passes. Two are risk construction; the third is income (carry at
 maker fees) with a forward test still attached. No predictive edge has been found at any horizon,
 and across #4, #8 and #15 the one effect that survives is volatility sizing.
 
