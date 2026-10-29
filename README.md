@@ -307,7 +307,15 @@ the predicted direction in every variant, but at t −2.1 against the −3 hurdl
 second half of the period. FAIL: [research/RESULTS_LIQ.md](research/RESULTS_LIQ.md). Information only:
 new 4-hour lows bounced about 18 bps in the next hour, while new highs did not continue.
 
-Scoreboard: nineteen tests, three passes. Two are risk construction; the third is income (carry at
+The nineteenth started from a rule rather than a pattern: Binance's perpetuals settle funding every
+8 hours, so when one side pays a high rate, holders who will not pay exit before the instant and
+arbitrageurs who collect it enter. Over 266,964 settlements (2020–2026, 42 coins), a coin whose
+holders paid at least 0.05% swung 15.5 bps against them around the settlement, relative to coins
+with ordinary funding and to the same coin four hours later (t 3.5), in both eras and for both
+signs. It is the repo's first confirmed effect, and it is small: no long-only spot trade earned it
+after costs. "Real, not tradable": [research/RESULTS_SETTLE.md](research/RESULTS_SETTLE.md).
+
+Scoreboard: twenty tests. Three passes, one real but not tradable (#19), the rest failed. Two are risk construction; the third is income (carry at
 maker fees) with a forward test still attached. No predictive edge has been found at any horizon,
 and across #4, #8 and #15 the one effect that survives is volatility sizing.
 

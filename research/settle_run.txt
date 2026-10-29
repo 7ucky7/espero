@@ -1,0 +1,89 @@
+42 coins, settlements 2020-01-01 -> 2026-09-30 16:00 UTC; 82 months of hourly bars each, cached in data/settle/ ...
+  1/42 BTC: ok
+  2/42 ETH: ok
+  3/42 SOL: ok
+  4/42 BNB: ok
+  5/42 XRP: ok
+  6/42 ADA: ok
+  7/42 DOGE: ok
+  8/42 AVAX: ok
+  9/42 LINK: ok
+  10/42 DOT: ok
+  11/42 TRX: ok
+  12/42 SHIB: ok
+  13/42 LTC: ok
+  14/42 BCH: ok
+  15/42 ATOM: ok
+  16/42 ETC: ok
+  17/42 XLM: ok
+  18/42 NEAR: ok
+  19/42 ARB: ok
+  20/42 OP: ok
+  21/42 FIL: ok
+  22/42 INJ: ok
+  23/42 SEI: ok
+  24/42 TIA: ok
+  25/42 RUNE: ok
+  26/42 AAVE: ok
+  27/42 MKR: ok
+  28/42 CRV: ok
+  29/42 SNX: ok
+  30/42 SUSHI: ok
+  31/42 YFI: ok
+  32/42 ALGO: ok
+  33/42 XTZ: ok
+  34/42 EOS: ok
+  35/42 ZEC: ok
+  36/42 DASH: ok
+  37/42 KSM: ok
+  38/42 ICP: ok
+  39/42 HBAR: ok
+  40/42 VET: ok
+  41/42 THETA: ok
+  42/42 WLD: ok
+-> research/settle_events.csv (17845 high events), research/settle_manifest.json
+
+## data
+
+coins with a perpetual and bars: 42 of 42; without spot bars: []; left out: []
+8-hour settlements: 266964; high (|previous rate| >= 0.05%): 17845 (13732 longs paying, 4113 shorts paying); baseline: 211519
+high events with g: 9579 on 1452 days
+
+## criteria (perpetual hourly bars; g = settlement minus placebo, against the hour's baseline coins)
+
+| # | criterion | actual | met |
+|---|---|---|---|
+| 1 | the settlement moves prices: mean g > 0, t >= 3 | g +15.5 bps, t 3.52, 1452 days | yes |
+| 2 | the predicted shape: excess pre < 0, excess post > 0 | pre -3.3 bps (t -1.56), post +6.9 bps (t 2.90) | yes |
+| 3 | not one era: g > 0 in both halves | +13.2 bps (875 days), +18.8 bps (577 days) | yes |
+| 4 | a long-only spot leg earns > 18 bps with t > 2 | a: buy after the longs paid -7.4 bps, t -1.32, 572 days; b: buy into the short cover +7.1 bps, t 1.85, 1203 days | **no** |
+
+verdict: real, not tradable after costs
+
+## information only
+
+| variant | mean | t | days |
+|---|---|---|---|
+| g, |previous rate| 0.05-0.1% | +11.1 bps | 2.57 | 1369 |
+| g, 0.1-0.2% | +13.2 bps | 1.42 | 631 |
+| g, 0.2% and above | +86.4 bps | 4.21 | 277 |
+| g, grouped on the settling rate | +31.1 bps | 5.95 | 1428 |
+| placebo alone (e at +4h) | -4.9 bps | -1.68 | 1453 |
+| settlement alone (e at T) | +10.2 bps | 3.22 | 1453 |
+| g on spot bars | +11.4 bps | 2.54 | 1453 |
+| g, 2-hour windows | +17.4 bps | 2.74 | 1452 |
+
+long-only spot legs, gross and net of one taker round trip:
+  a: buy after the longs paid (T -> T+1h): -7.4 bps (t -1.32, 572 days); net Binance.US -11.4 bps, Hyperliquid -16.4 bps
+  b: buy into the short cover (T-1h -> T): +7.1 bps (t 1.85, 1203 days); net Binance.US +3.1 bps, Hyperliquid -1.9 bps
+
+high events by year and by who pays:
+pays  longs pay  shorts pay
+year                       
+2020       3123        1164
+2021       8490         657
+2022          0         767
+2023        279         498
+2024       1837         206
+2025          3         442
+2026          0         379
