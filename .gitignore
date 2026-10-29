@@ -64,3 +64,5 @@ fast.db
 data/liq/
 # #19's downloads: funding history and hourly bars, re-downloadable (research/settle.py)
 data/settle/
+# #20's downloads: 5-minute bars, about a gigabyte, re-downloadable (research/lows.py)
+data/lows/
