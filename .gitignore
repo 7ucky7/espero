@@ -69,3 +69,4 @@ data/lows/
 # #22 paper ledger, rebuilt daily from data/aggr/forward
 liqfwd_trades.csv
 liqfwd_short_trades.csv
+lows_fwd_trades.csv

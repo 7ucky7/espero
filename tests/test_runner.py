@@ -26,6 +26,9 @@ class RunnerCase(unittest.TestCase):
         lf = mock.patch.object(runner.lfm, "run", return_value={"note": "mark", "equity": None})
         self.lf_run = lf.start()
         self.addCleanup(lf.stop)
+        lw = mock.patch.object(runner.lwf, "run", return_value={"note": "mark", "equity": None})
+        lw.start()
+        self.addCleanup(lw.stop)
         # the dashboard's signal board fetches 55 Yahoo series: no network in tests
         board = mock.patch.object(brd, "fetch_frames", return_value=({}, {}))
         board.start()
@@ -50,6 +53,7 @@ class TestDryRun(RunnerCase):
         self.assertTrue(res.steps["tsmom"].skipped)
         self.assertTrue(res.steps["mf"].skipped)
         self.assertTrue(res.steps["liqfwd"].skipped)
+        self.assertTrue(res.steps["lowsfwd"].skipped)
         self.mf_run.assert_not_called()
         self.lf_run.assert_not_called()
         health = json.loads((self.state / "health.json").read_text())

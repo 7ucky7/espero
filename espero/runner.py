@@ -1,6 +1,6 @@
 """`espero daily`: the one command a scheduler runs.
 
-    tsmom -> xs -> mf (#8) -> mf-hl -> liqfwd (#22 paper ledger) -> dashboard -> health.json
+    tsmom -> xs -> mf (#8) -> mf-hl -> liqfwd (#22/#23) -> lowsfwd (#24) -> dashboard -> health.json
 
 Rules:
 
@@ -31,6 +31,7 @@ from typing import Callable, Dict, Optional
 
 from . import dashboard as dash
 from . import liqfwd as lfm
+from . import lowsfwd as lwf
 from . import mf as mfm
 from . import notify as notifier
 from . import tsmom as tsm
@@ -210,7 +211,7 @@ def run_daily(state_dir: Path = Path("."), cash_tsmom: float = 100.0, cash_xs: f
 
     with Lock(state_dir / "daily.lock"):
         if dry_run:
-            for name in ("tsmom", "xs", "mf", "mf-hl", "liqfwd"):
+            for name in ("tsmom", "xs", "mf", "mf-hl", "liqfwd", "lowsfwd"):
                 result.steps[name] = StepResult(True, 0.0, note="skipped (dry run)", skipped=True)
                 log.info("%s skipped (dry run)", name)
         else:
@@ -224,6 +225,8 @@ def run_daily(state_dir: Path = Path("."), cash_tsmom: float = 100.0, cash_xs: f
                   result, notify)
             # #22's forward paper test: record aggr's hourly bars, rebuild the ledger (FORWARD_LIQ.md)
             _step("liqfwd", lambda: lfm.run(state_dir), result, notify)
+            # #24's forward paper test: record Binance's 5-minute archive, rebuild the ledger (FORWARD_LOWS.md)
+            _step("lowsfwd", lambda: lwf.run(state_dir), result, notify)
 
         def render():
             out = dash.write(state_dir / "dashboard.html", tsmom_db=tsmom_db, paper_db=paper_db,

@@ -473,6 +473,8 @@ def _cmd_liqfwd(args: argparse.Namespace) -> int:
     print(out["note"])
     print(f"ledgers: {sd / lfm.LEDGERS['long']} (#22, FORWARD_LIQ.md), {sd / lfm.LEDGERS['short']} "
           f"(#23, FORWARD_LIQSHORT.md); each judged once after 2027-03-31")
+    from . import lowsfwd as lwf
+    print("#24 (FORWARD_LOWS.md): " + lwf.run(sd)["note"] + f" -> {sd / lwf.LEDGER}")
     return 0
 
 
