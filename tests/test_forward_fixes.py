@@ -242,7 +242,7 @@ class TestDegenLoop(unittest.TestCase):
             j.open_position(Position("p1", "GONE-USD", T0, 1.0, 10.0, 0.9, 1.2))
             j.mark_equity(T0, 990.0, 10.0)
             j.close()
-            args = cli.build_parser().parse_args(["degen", "paper", "--state", state])
+            args = cli.build_parser().parse_args(["degen", "paper", "--source", "coinbase", "--state", state])
             fetched = []
 
             def bars(product, gran, limit):
@@ -267,7 +267,7 @@ class TestDegenLoop(unittest.TestCase):
                 j.add_bar("BBB-USD", bar)
             j.mark_equity(T0 + 69 * 300, 1000.0, 0.0)            # the loop's last cycle
             j.close()
-            args = cli.build_parser().parse_args(["degen", "paper", "--state", state])
+            args = cli.build_parser().parse_args(["degen", "paper", "--source", "coinbase", "--state", state])
             cycles = []
             real = dg.DegenTrader.on_cycle
 
@@ -291,7 +291,7 @@ class TestDegenLoop(unittest.TestCase):
             j = Journal(state)
             j.mark_equity(T0 + 99 * 300, 1000.0, 0.0)            # last cycle = the fetch's newest bar
             j.close()
-            args = cli.build_parser().parse_args(["degen", "paper", "--state", state])
+            args = cli.build_parser().parse_args(["degen", "paper", "--source", "coinbase", "--state", state])
             with mock.patch.object(cli, "_degen_universe",
                                    return_value=[{"product": "NEW-USD", "dollar_volume": 5e6}]), \
                     mock.patch.object(cli.data, "recent_closed_bars", side_effect=lambda p, g, n: five_min(100, T0)), \
@@ -309,7 +309,7 @@ class TestDegenLoop(unittest.TestCase):
             j = Journal(state)
             j.open_position(Position("p1", "GONE-USD", T0, 1.0, 10.0, 0.9, 1.2))
             j.close()
-            args = cli.build_parser().parse_args(["degen", "paper", "--state", state])
+            args = cli.build_parser().parse_args(["degen", "paper", "--source", "coinbase", "--state", state])
             fetched = []
             with mock.patch.object(cli, "_degen_universe", side_effect=RuntimeError("5xx")), \
                     mock.patch.object(cli.data, "recent_closed_bars",

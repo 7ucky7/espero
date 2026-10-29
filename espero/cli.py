@@ -208,9 +208,35 @@ def _paper_loop(args: argparse.Namespace) -> int:
 
 
 # ------------------------------------------------------------------ degen (#10)
+def _degen_defaults(args: argparse.Namespace) -> argparse.Namespace:
+    """Fill the source-dependent defaults: the venue whose fees are charged and the
+    paper journal, kept apart per source so Coinbase spot and Hyperliquid perp bars
+    never share one book."""
+    hl = getattr(args, "source", "hyperliquid") == "hyperliquid"
+    if getattr(args, "venue", None) is None:
+        args.venue = "hyperliquid" if hl else "binanceus"
+    if hasattr(args, "state") and not args.state:
+        args.state = "degen-hl.db" if hl else "degen.db"
+    return args
+
+
+def _degen_bars(args: argparse.Namespace):
+    """Closed bars (product, granularity, limit) from the chosen source, looked up at
+    call time."""
+    if getattr(args, "source", "hyperliquid") == "hyperliquid":
+        from . import hyperliquid as hl
+        return hl.closed_bars
+    return data.recent_closed_bars
+
+
 def _degen_universe(args: argparse.Namespace) -> list:
-    print(f"ranking Coinbase altcoins by 24h dollar volume (top {args.top}) ...", flush=True)
-    uni = data.degen_universe(top=args.top)
+    if getattr(args, "source", "hyperliquid") == "hyperliquid":
+        from . import hyperliquid as hl
+        print(f"ranking Hyperliquid perps by 24h dollar volume (top {args.top}) ...", flush=True)
+        uni = hl.degen_universe(top=args.top)
+    else:
+        print(f"ranking Coinbase altcoins by 24h dollar volume (top {args.top}) ...", flush=True)
+        uni = data.degen_universe(top=args.top)
     print(f"{len(uni)} coins, {uni[0]['product']} .. {uni[-1]['product']}" if uni else "no products")
     return uni
 
@@ -486,10 +512,11 @@ def _cmd_carry_status(args: argparse.Namespace) -> int:
 def _cmd_degen_scan(args: argparse.Namespace) -> int:
     from .degen import scan
 
+    _degen_defaults(args)
     uni = _degen_universe(args)
     if not uni:
         return 2
-    rows = scan(uni, fetch=data.recent_closed_bars)
+    rows = scan(uni, fetch=_degen_bars(args))
     _degen_table(rows, args.venue)
     return 0
 
@@ -510,13 +537,22 @@ def _degen_window(args: argparse.Namespace, gran: int) -> tuple:
     return days, first, end
 
 
-def _degen_frame(p: str, days: int, gran: int, cache: Path, label: str) -> pd.DataFrame:
-    path = cache / f"{p.replace('-', '')}_{gran}s_{days}d.csv"
+def _degen_frame(p: str, days: int, gran: int, cache: Path, label: str,
+                 source: str = "coinbase") -> pd.DataFrame:
+    hl = source == "hyperliquid"
+    path = cache / f"{p.replace('-', '')}_{gran}s_{days}d{'_hl' if hl else ''}.csv"
     if path.exists():
         df = data.load(path)
     else:
-        print(f"{label} fetching {p} {days}d of {gran // 60}m candles ...", flush=True)
-        df = data.fetch(p, days, gran)
+        print(f"{label} fetching {p} {days}d of {gran // 60}m {'Hyperliquid perp bars' if hl else 'candles'} ...",
+              flush=True)
+        if hl:
+            from . import hyperliquid as hlm
+            df = hlm.closed_bars(p, gran, min(days * 86400 // gran, hlm.CANDLE_LIMIT))
+            df["time"] = df["dt"].map(lambda t: t.isoformat())
+            time.sleep(0.5)     # a 5,000-bar page weighs heavily on its rate limit: 60 in a row drew 429s
+        else:
+            df = data.fetch(p, days, gran)
         data.save(df, path)
     if "ts" not in df:
         df["ts"] = data.unix_seconds(df["time"]).to_numpy()
@@ -535,6 +571,14 @@ def _cmd_degen_backtest(args: argparse.Namespace) -> int:
         return 2
     gran = RULES[args.rule]["granularity"]
     days, first, end = _degen_window(args, gran)
+    source = getattr(args, "source", "hyperliquid")
+    if source == "hyperliquid":
+        from .hyperliquid import CANDLE_LIMIT
+        most = CANDLE_LIMIT * gran // 86400
+        if days > most:
+            print(f"Hyperliquid serves the last {CANDLE_LIMIT:,} bars: {most} days of "
+                  f"{gran // 60}m bars, not {days}" + (" (the window starts before them)" if args.start else ""))
+            days = most
 
     def cut(df: pd.DataFrame) -> pd.DataFrame:
         # bars after the window are dropped before anything reads them
@@ -548,7 +592,7 @@ def _cmd_degen_backtest(args: argparse.Namespace) -> int:
     for i, u in enumerate(uni, 1):
         p = u["product"]
         try:
-            df = cut(_degen_frame(p, days, gran, cache, f"[{i}/{len(uni)}]"))
+            df = cut(_degen_frame(p, days, gran, cache, f"[{i}/{len(uni)}]", source))
         except Exception as exc:  # noqa: BLE001 - one coin missing is reported, not fatal
             print(f"   {p}: {type(exc).__name__}: {exc}")
             continue
@@ -562,9 +606,9 @@ def _cmd_degen_backtest(args: argparse.Namespace) -> int:
         return 2
     bench = None
     if RULES[args.rule].get("beat_benchmark"):
-        bench = cut(_degen_frame(BENCHMARK, days, gran, cache, "[benchmark]"))
+        bench = cut(_degen_frame(BENCHMARK, days, gran, cache, "[benchmark]", source))
     venues = [v.strip() for v in args.venues.split(",") if v.strip()]
-    span = f"{args.start} -> {args.end or 'now'}" if args.start else f"{args.days}d"
+    span = f"{args.start} -> {args.end or 'now'}" if args.start else f"{days}d"
     print(f"rule {args.rule}: replaying {len(frames)} coins x {span} through {', '.join(venues)} ...", flush=True)
     rows = compare_venues(frames, venues, initial=args.cash, dollar_volume=dv, rule=args.rule, benchmark=bench)
     lines = [f"{'venue':<28}{'trades':>7}{'hit':>6}{'PF':>7}{'fees':>8}{'maxDD%':>8}{'P&L':>9}{'equity':>9}  exits"]
@@ -578,6 +622,8 @@ def _cmd_degen_backtest(args: argparse.Namespace) -> int:
         lines.append(f"  [{'x' if c['met'] else ' '}] {c['criterion']}")
     passed = all(c["met"] for c in crit)
     lines.append(f"\nverdict: {'PASS' if passed else 'FAIL'} (rule {args.rule}, pre-registered, {PREREG[args.rule]})")
+    lines.append(f"bars and coin list: {source}"
+                 + ("" if source == "coinbase" else "; information only, the pre-registered runs used Coinbase"))
     text = "\n".join(lines)
     print(text)
     if args.out:
@@ -589,6 +635,7 @@ def _cmd_degen_backtest(args: argparse.Namespace) -> int:
 def _cmd_degen_paper(args: argparse.Namespace) -> int:
     from .lock import JournalBusy, JournalLock
 
+    _degen_defaults(args)
     try:
         with JournalLock(args.state):
             return _degen_loop(args)
@@ -600,6 +647,8 @@ def _cmd_degen_paper(args: argparse.Namespace) -> int:
 def _degen_loop(args: argparse.Namespace) -> int:
     from .degen import BENCHMARK, WARMUP, DegenConfig, DegenTrader, features
 
+    _degen_defaults(args)
+    bars = _degen_bars(args)
     journal = Journal(args.state)
     rule = getattr(args, "rule", "10")
     cfg = DegenConfig.for_venue(args.venue, rule=rule, initial=args.cash)
@@ -607,7 +656,7 @@ def _degen_loop(args: argparse.Namespace) -> int:
     if getattr(args, "fee_bps", None) is not None:
         cfg.fee = args.fee_bps / 1e4        # e.g. your own rate from `espero fees`
     trader = DegenTrader(journal, cfg)
-    print(f"打板 paper loop, rule {rule} ({gran // 60}m bars) on {args.venue}: "
+    print(f"打板 paper loop, rule {rule} ({gran // 60}m {args.source} bars) on {args.venue}: "
           f"fees {1e4 * cfg.fee:.1f} bps per side"
           + (f", funding {1e4 * cfg.funding_8h:.2f} bps per 8h" if cfg.funding_8h else "")
           + f"; cash {trader.cash:.2f}, {len(trader.positions)} open -> {args.state}")
@@ -634,7 +683,7 @@ def _degen_loop(args: argparse.Namespace) -> int:
         errors = 0
         for p in products:
             try:
-                df = data.recent_closed_bars(p, gran, 300)
+                df = bars(p, gran, 300)
             except Exception as exc:  # noqa: BLE001 - skip the coin this cycle
                 errors += 1
                 print(f"   {p}: {type(exc).__name__}: {exc}")
@@ -671,7 +720,7 @@ def _degen_loop(args: argparse.Namespace) -> int:
         bench: dict = {}
         if cfg.beat_benchmark:
             try:
-                b = features(data.recent_closed_bars(BENCHMARK, gran, 300))
+                b = features(bars(BENCHMARK, gran, 300))
                 bench = {int(r["ts"]): r for r in b.to_dict("records")}
             except Exception as exc:  # noqa: BLE001 - no benchmark means no entries this cycle
                 print(f"   {BENCHMARK}: {type(exc).__name__}: {exc} (no entries this cycle)")
@@ -1159,7 +1208,11 @@ def build_parser() -> argparse.ArgumentParser:
                         ("paper", _cmd_degen_paper, "live-market paper loop on 5m bars")):
         q = dgs.add_parser(name, help=h)
         q.add_argument("--top", type=int, default=60, help="universe: top N altcoins by 24h dollar volume")
-        q.add_argument("--venue", choices=sorted(VENUES), default="binanceus")
+        q.add_argument("--source", choices=["hyperliquid", "coinbase"], default="hyperliquid",
+                       help="coin list and bars: Hyperliquid perps (default) or Coinbase spot, which "
+                       "the pre-registered #10/#13 runs used")
+        q.add_argument("--venue", choices=sorted(VENUES), default=None,
+                       help="whose fees to charge (default: hyperliquid, or binanceus with --source coinbase)")
         q.add_argument("--cash", type=float, default=500.0)
         q.set_defaults(func=fn)
         if name != "scan":
@@ -1169,11 +1222,13 @@ def build_parser() -> argparse.ArgumentParser:
             q.add_argument("--days", type=int, default=30)
             q.add_argument("--start", default="", help="fixed window start, UTC date (as pre-registered)")
             q.add_argument("--end", default="", help="fixed window end, exclusive")
-            q.add_argument("--venues", default="binanceus,kraken,coinbase,perp")
+            q.add_argument("--venues", default="binanceus,kraken,coinbase,perp,hyperliquid",
+                           help="fee rows to replay; the verdict reads binanceus and kraken")
             q.add_argument("--cache", default="data/degen", help="where the fetched candles are kept")
             q.add_argument("-o", "--out", default="", help="write the table and verdict here")
         if name == "paper":
-            q.add_argument("--state", default="degen.db")
+            q.add_argument("--state", default=None,
+                           help="paper journal (default: degen-hl.db, or degen.db with --source coinbase)")
             q.add_argument("--fee-bps", type=float, default=None,
                            help="per side; overrides the venue's taker fee (see `espero fees`)")
             q.add_argument("--loop", action="store_true")

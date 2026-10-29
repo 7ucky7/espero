@@ -226,6 +226,34 @@ def listed(fetch: Optional[Fetch] = None) -> set:
     return names
 
 
+def _per_thousand(name: str) -> bool:
+    """kPEPE, kBONK, kSHIB: perps quoted per 1,000 coins."""
+    return len(name) > 1 and name[0] == "k" and name[1:].isupper()
+
+
+def degen_universe(top: int = 60, exclude=("BTC", "ETH"), fetch: Optional[Fetch] = None) -> List[dict]:
+    """The perps people are trading on Hyperliquid now, ranked by 24h dollar volume, top
+    `top`, in `data.degen_universe`'s rows: product (`BASE-USD`), last, volume (coins),
+    dollar_volume. A perp quoted per 1,000 coins is named for its coin and registered in
+    COIN/UNIT, all of them and not only the top, so `closed_bars` prices a held one per
+    coin even after it leaves the list. One call for the whole list."""
+    rows = []
+    for c in asset_contexts(fetch):
+        name = c["coin"]
+        k = 1000.0 if _per_thousand(name) else 1.0
+        base = name[1:] if k != 1.0 else name
+        if k != 1.0:
+            COIN.setdefault(base, name)
+            UNIT.setdefault(name, k)
+        if base in exclude or c["mark"] <= 0:
+            continue
+        last = c["mark"] / k
+        rows.append({"product": f"{base}-USD", "last": last, "volume": c["day_volume"] / last,
+                     "dollar_volume": c["day_volume"]})
+    rows.sort(key=lambda r: -r["dollar_volume"])
+    return rows[:top]
+
+
 def closed_bars(product: str, granularity: int = 3600, limit: int = 300,
                 fetch: Optional[Fetch] = None, now: Optional[float] = None) -> pd.DataFrame:
     """The most recent completed bars, oldest first, in `data.recent_closed_bars`' frame:

@@ -103,6 +103,33 @@ def ic_decay(factor: pd.DataFrame, close: pd.DataFrame,
                       for h in horizons})
 
 
+def fama_macbeth(fwd: pd.DataFrame, regressors: Dict[str, pd.DataFrame], min_obs: int = 5) -> pd.DataFrame:
+    """Per date, the cross-sectional OLS of the forward return's rank on each
+    regressor's rank, every rank centred and scaled to unit variance; one
+    coefficient column per regressor. A date needs `min_obs` assets with every
+    value present, and some spread in each, or it is skipped."""
+    names = list(regressors)
+    frames = {k: v.reindex_like(fwd) for k, v in regressors.items()}
+    rows = {}
+    for dt in fwd.index:
+        cols = [fwd.loc[dt]] + [frames[k].loc[dt] for k in names]
+        ok = np.logical_and.reduce([c.notna().to_numpy() for c in cols])
+        if ok.sum() < max(min_obs, len(names) + 2):
+            continue
+        z = []
+        for c in cols:
+            rk = c[ok].rank()
+            sd = rk.std(ddof=0)
+            if sd == 0:
+                break
+            z.append(((rk - rk.mean()) / sd).to_numpy(dtype=float))
+        else:
+            x = np.column_stack([np.ones(len(z[0]))] + z[1:])
+            coef = np.linalg.lstsq(x, z[0], rcond=None)[0]
+            rows[dt] = dict(zip(names, coef[1:]))
+    return pd.DataFrame(rows, index=names, dtype=float).T.sort_index()
+
+
 def quantile_returns(factor: pd.DataFrame, fwd: pd.DataFrame, q: int = 5) -> pd.DataFrame:
     """Mean forward return per factor quantile per date (columns 1..q, q = best)."""
     f, r = factor.align(fwd, join="inner")
@@ -188,7 +215,7 @@ def deflated_sharpe(sr: float, n_trials: int, n_obs: int, skew: float = 0.0,
 # ---------------------------------------------------------------- the table
 def evaluate(p: MarketPanel, names: Iterable[str] = None, horizon: int = 5, q: int = 5,
              mask: pd.DataFrame = None, n_splits: int = 4, embargo: int = 5,
-             factors: Dict[str, Factor] = None) -> pd.DataFrame:
+             factors: Dict[str, Factor] = None, min_train: int = 180) -> pd.DataFrame:
     """One row per factor: in-sample and out-of-sample IC statistics under the
     purged split, the quantile spread, turnover, and the pass flag.
 
@@ -203,7 +230,8 @@ def evaluate(p: MarketPanel, names: Iterable[str] = None, horizon: int = 5, q: i
     # dates before anything is eligible carry no information; splitting them
     # would make the first training block empty
     dates = p.index if mask is None else p.index[mask.reindex(p.index).fillna(False).any(axis=1)]
-    splits = purged_walk_forward(dates, n_splits=n_splits, horizon=horizon, embargo=embargo)
+    splits = purged_walk_forward(dates, n_splits=n_splits, horizon=horizon, embargo=embargo,
+                                 min_train=min_train)
     test_dates = pd.DatetimeIndex(sorted(set().union(*[set(t) for _, t in splits])))
     train_dates = splits[0][0]
     rows = []
@@ -228,6 +256,7 @@ def evaluate(p: MarketPanel, names: Iterable[str] = None, horizon: int = 5, q: i
         })
     out = pd.DataFrame(rows).set_index("factor")
     out.attrs["n_trials"] = len(names)
+    out.attrs["test_dates"] = test_dates
     out.attrs["splits"] = [(str(tr[0].date()), str(tr[-1].date()), str(te[0].date()), str(te[-1].date()))
                            for tr, te in splits]
     return out
