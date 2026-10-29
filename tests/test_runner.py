@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from espero import board as brd
 from espero import runner
 
 
@@ -21,6 +22,10 @@ class RunnerCase(unittest.TestCase):
         mf = mock.patch.object(runner.mfm, "run", return_value={"note": "mark", "equity": 100.0})
         self.mf_run = mf.start()
         self.addCleanup(mf.stop)
+        # the dashboard's signal board fetches 55 Yahoo series: no network in tests
+        board = mock.patch.object(brd, "fetch_frames", return_value=({}, {}))
+        board.start()
+        self.addCleanup(board.stop)
 
     def tearDown(self):
         self.tmp.cleanup()

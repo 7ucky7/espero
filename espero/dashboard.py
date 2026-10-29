@@ -14,6 +14,7 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 from . import tca
 from . import tsmom as tsm
@@ -77,9 +78,11 @@ def esc(v) -> str:
 
 
 def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
-           live_db: Path = Path("live.db"), xs_db: Path = Path("xs.db"), offline: bool = False) -> str:
-    """`offline=True` (the daily job's dry run) skips the live-signal preview,
-    the only network call here."""
+           live_db: Path = Path("live.db"), xs_db: Path = Path("xs.db"), offline: bool = False,
+           mf_db: Optional[Path] = None, board: bool = False) -> str:
+    """`offline=True` (the daily job's dry run) skips the live-signal preview and the
+    signal board, the only network calls here. `mf_db` and `board` are opt-in, so a
+    render pointed at test databases never picks up the real ones."""
     rows = _read_account(tsmom_db)
     cards = []
     total = 0.0
@@ -262,6 +265,12 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
           </table>
         </section>""")
 
+    if mf_db is not None and Path(mf_db).exists():
+        cards.append(_mf_card(Path(mf_db)))
+        total += _mf_equity(Path(mf_db))
+    if board and not offline:
+        cards.append(_board_card())
+
     for name, path, label in (("Paper (bar strategy)", paper_db, "paper"),
                               ("Live (dry run)", live_db, "live")):
         if not path.exists():
@@ -324,6 +333,91 @@ def render(tsmom_db: Path = Path("tsmom.db"), paper_db: Path = Path("paper.db"),
   {''.join(cards)}
   <div class="muted">Not investment advice. Paper only — no exchange keys, no orders.</div>
 </div></body></html>"""
+
+
+def _mf_rows(path: Path) -> list:
+    con = sqlite3.connect(path)
+    con.row_factory = sqlite3.Row
+    try:
+        return [dict(r) for r in con.execute("SELECT * FROM mf_account ORDER BY ts, id")]
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        con.close()
+
+
+def _mf_equity(path: Path) -> float:
+    rows = _mf_rows(path)
+    return float(rows[-1]["equity"]) if rows else 0.0
+
+
+def _mf_card(path: Path) -> str:
+    """#8's forward test: research/FORWARD_MF.md."""
+    from . import mf
+    rows = _mf_rows(path)
+    if not rows:
+        return ""
+    latest = rows[-1]
+    equity = float(latest["equity"])
+    pos = json.loads(latest.get("positions") or "{}")
+    w = json.loads(latest.get("weights") or "{}")
+    deposited = sum(float(r["deposit"] or 0) for r in rows)
+    pnl = equity - deposited
+    cum, curve = 0.0, []
+    for r in rows:
+        cum += float(r["deposit"] or 0)
+        curve.append(float(r["equity"]) - cum)
+    body = "".join(f"<tr><td>{esc(c)}</td><td class='num'>{100 * w.get(c, 0):.1f}%</td>"
+                   f"<td class='num'>{v:,.2f}</td></tr>"
+                   for c, v in sorted(pos.items(), key=lambda kv: -kv[1])) \
+        or "<tr><td colspan='3' class='muted'>all cash</td></tr>"
+    decided = (f"last decision: Sunday {esc(latest['decision'])}" if latest.get("decision")
+               else f"holding cash until the first fill on {mf.FORWARD_START.date()}")
+    as_of = datetime.fromtimestamp(int(latest["ts"]), timezone.utc).date()
+    window = f"{mf.FORWARD_START.date()} → {mf.FORWARD_END.date()}"
+    return f"""
+        <section class="card">
+          <h2>#8 multifactor, forward test <span class="pill">paper · {window}</span></h2>
+          <div class="big">${equity:,.2f}</div>
+          <div class="sub">as of {as_of} · {decided} · last action: {esc(latest.get('note', ''))}</div>
+          <div class="sub">deposited ${deposited:,.2f} · P&amp;L
+            <span class="{'pos' if pnl >= 0 else 'neg'}">{pnl:+,.2f}</span></div>
+          {_sparkline(curve)}
+          <table>
+            <thead><tr><th>coin</th><th class="num">weight</th><th class="num">value</th></tr></thead>
+            <tbody>{body}</tbody>
+          </table>
+        </section>"""
+
+
+def _board_card() -> str:
+    """#15's trend readings (espero board): a scanner, since #15 failed its test."""
+    try:
+        import pandas as pd
+
+        from . import board as brd
+        from . import trend
+        frames, errors = brd.fetch_frames(trend.symbols())
+        v = brd.view(frames, pd.Timestamp.now(tz="UTC").tz_localize(None))
+    except Exception as exc:  # noqa: BLE001 - the board is context, never a reason to lose the page
+        return (f'<section class="card"><h2>Signal board</h2>'
+                f'<div class="sub">unavailable: {esc(type(exc).__name__)}: {esc(str(exc)[:160])}</div></section>')
+    body = "".join(f"<tr><td>{esc(ln.cls)}</td><td>{esc(ln.symbol)}</td><td class='num'>{esc(brd.price(ln.last))}</td>"
+                   f"<td>{esc(ln.arrows)}</td><td class='num'>{esc(ln.today)}</td><td>{esc(ln.change)}</td>"
+                   f"<td>{esc(ln.flip)}</td></tr>" for ln in v["lines"])
+    failed = f" · {len(errors)} symbols failed to load" if errors else ""
+    return f"""
+        <section class="card">
+          <h2>Signal board <span class="pill">scanner · #15 failed its test</span></h2>
+          <div class="sub">1/3/12-month trend per asset: above (▲) or below (▽) the close then. No sizes, no
+            alerts: the timing added no return beyond volatility sizing (research/RESULTS_TREND.md).
+            Bars through {(v['today'] - pd.Timedelta(days=1)).date()}; next reading {v['next'].date()}{failed}.</div>
+          <table>
+            <thead><tr><th>class</th><th>asset</th><th class="num">last</th><th>1m 3m 12m</th>
+            <th class="num">up</th><th>change</th><th>nearest flip</th></tr></thead>
+            <tbody>{body}</tbody>
+          </table>
+        </section>"""
 
 
 def write(out: str | Path = "dashboard.html", **paths) -> Path:

@@ -851,7 +851,7 @@ def _cmd_dashboard(args: argparse.Namespace) -> int:
     out = dash.write(args.out, tsmom_db=pathlib.Path(args.tsmom_db),
                      paper_db=pathlib.Path(args.paper_db),
                      live_db=pathlib.Path(args.live_db),
-                     xs_db=pathlib.Path(args.xs_db))
+                     xs_db=pathlib.Path(args.xs_db), mf_db=pathlib.Path(args.mf_db), board=True)
     print(f"wrote {out}")
     if args.open:
         import subprocess
@@ -1165,6 +1165,7 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--paper-db", default="paper.db")
     d.add_argument("--live-db", default="live.db")
     d.add_argument("--xs-db", default="xs.db")
+    d.add_argument("--mf-db", default="mf.db")
     d.add_argument("--open", action="store_true")
     d.set_defaults(func=_cmd_dashboard)
 
