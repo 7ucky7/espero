@@ -1,6 +1,6 @@
 """`espero daily`: the one command a scheduler runs.
 
-    tsmom mark/rebalance  ->  xs mark/rebalance  ->  mf (#8 forward test)  ->  dashboard  ->  health.json
+    tsmom -> xs -> mf (#8) -> mf-hl -> liqfwd (#22 paper ledger) -> dashboard -> health.json
 
 Rules:
 
@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Callable, Dict, Optional
 
 from . import dashboard as dash
+from . import liqfwd as lfm
 from . import mf as mfm
 from . import notify as notifier
 from . import tsmom as tsm
@@ -209,7 +210,7 @@ def run_daily(state_dir: Path = Path("."), cash_tsmom: float = 100.0, cash_xs: f
 
     with Lock(state_dir / "daily.lock"):
         if dry_run:
-            for name in ("tsmom", "xs", "mf", "mf-hl"):
+            for name in ("tsmom", "xs", "mf", "mf-hl", "liqfwd"):
                 result.steps[name] = StepResult(True, 0.0, note="skipped (dry run)", skipped=True)
                 log.info("%s skipped (dry run)", name)
         else:
@@ -221,6 +222,8 @@ def run_daily(state_dir: Path = Path("."), cash_tsmom: float = 100.0, cash_xs: f
             # #8 on Hyperliquid prices beside it, information only (FORWARD_MF.md, amendment 2026-10-29)
             _step("mf-hl", lambda: mfm.run(str(state_dir / "mf-hl.db"), cash_mf, fetch=_hl_daily()),
                   result, notify)
+            # #22's forward paper test: record aggr's hourly bars, rebuild the ledger (FORWARD_LIQ.md)
+            _step("liqfwd", lambda: lfm.run(state_dir), result, notify)
 
         def render():
             out = dash.write(state_dir / "dashboard.html", tsmom_db=tsmom_db, paper_db=paper_db,

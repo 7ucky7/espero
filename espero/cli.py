@@ -463,6 +463,18 @@ def _carry_loop(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_liqfwd(args: argparse.Namespace) -> int:
+    """#22: record the days not yet saved, rebuild the paper ledger, show it."""
+    from . import liqfwd as lfm
+
+    sd = state_dir(args.state_dir)
+    out = lfm.run(sd)
+    print(f"recorded: {', '.join(out['saved']) or 'nothing new'}")
+    print(out["note"])
+    print(f"ledger: {sd / 'liqfwd_trades.csv'}  (research/FORWARD_LIQ.md; judged once after 2027-03-31)")
+    return 0
+
+
 def _cmd_carry_screen(args: argparse.Namespace) -> int:
     """#12's forward test on one screen. Read-only: the books are read from copies."""
     from . import carry_view as cv
@@ -1268,6 +1280,10 @@ def build_parser() -> argparse.ArgumentParser:
     dy.add_argument("--dry-run", action="store_true", help="preflight: no network, no account changes")
     dy.add_argument("--no-notify", action="store_true")
     dy.set_defaults(func=_cmd_daily)
+
+    lf = sub.add_parser("liqfwd", help="#22 forward paper test: record aggr's bars, show the ledger")
+    lf.add_argument("--state-dir", default=None)
+    lf.set_defaults(func=_cmd_liqfwd)
 
     bd = sub.add_parser("board", help="1/3/12-month trend for stocks, bonds, commodities, crypto (#15 scanner)")
     bd.add_argument("--alts", action="store_true", help="list every altcoin instead of one summary row")

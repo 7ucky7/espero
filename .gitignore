@@ -66,3 +66,5 @@ data/liq/
 data/settle/
 # #20's downloads: 5-minute bars, about a gigabyte, re-downloadable (research/lows.py)
 data/lows/
+# #22 paper ledger, rebuilt daily from data/aggr/forward
+liqfwd_trades.csv
