@@ -350,8 +350,16 @@ information: after the close the session's move reverses, −6.0 bps in 15 minut
 trading days and not on weekends, larger on bigger days, in every year since 2024. It is under
 costs as a trade and is now a forward test (#29).
 
-Scoreboard: twenty-nine tests. Four passes (#4, #8, #12 provisional, #26), two real but not
-tradable (#19, #20), the rest failed (#28 the latest) or are running (#22–#24, #27, #29). Two are risk construction; the third is income (carry at
+The thirtieth changed how a known effect is traded rather than what is predicted. #20's bounce dies
+on taker costs, so it rested a maker bid one ATR under each breakdown and sold back at the breakdown
+price. On 13,252 breakdowns from April to October 2026, months no breakdown test had used, it earned
++1.7 bps net per fill (t 1.0). FAIL: [research/RESULTS_BIDS.md](research/RESULTS_BIDS.md). It
+measured why: the breakdowns that came down to the bid went on to fall 22 bps, while those that
+never did bounced 64. Deeper bids, which fill only on capitulation, earned +12.5 to +20 bps net per
+fill in every month and on most coins, as information. That lead runs forward as #31.
+
+Scoreboard: thirty-one tests. Four passes (#4, #8, #12 provisional, #26), two real but not
+tradable (#19, #20), the rest failed (#30 the latest) or are running (#22–#24, #27, #29, #31). Two are risk construction; the third is income (carry at
 maker fees) with a forward test still attached. No predictive edge has been found at any horizon,
 and across #4, #8 and #15 the one effect that survives is volatility sizing.
 
