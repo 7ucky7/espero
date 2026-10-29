@@ -1,7 +1,7 @@
 """`espero daily`: the one command a scheduler runs.
 
     tsmom -> xs -> mf (#8) -> mf-hl -> liqfwd (#22/#23) -> lowsfwd (#24) -> liqbreak (#27)
-          -> fundsplit (#32) -> postclose (#29) -> bidsfwd (#31)
+          -> fundsplit (#32) -> postclose (#29) -> levpush (#34) -> bidsfwd (#31)
           -> dashboard -> health.json
 
 Rules:
@@ -34,6 +34,7 @@ from typing import Callable, Dict, Optional
 from . import bidsfwd as bfw
 from . import dashboard as dash
 from . import fundsplit as fsp
+from . import levpush as lpu
 from . import liqbreak as lbk
 from . import liqfwd as lfm
 from . import lowsfwd as lwf
@@ -218,7 +219,7 @@ def run_daily(state_dir: Path = Path("."), cash_tsmom: float = 100.0, cash_xs: f
     with Lock(state_dir / "daily.lock"):
         if dry_run:
             for name in ("tsmom", "xs", "mf", "mf-hl", "liqfwd", "lowsfwd", "liqbreak", "fundsplit", "postclose",
-                         "bidsfwd"):
+                         "levpush", "bidsfwd"):
                 result.steps[name] = StepResult(True, 0.0, note="skipped (dry run)", skipped=True)
                 log.info("%s skipped (dry run)", name)
         else:
@@ -243,6 +244,8 @@ def run_daily(state_dir: Path = Path("."), cash_tsmom: float = 100.0, cash_xs: f
             # #29: the US session's move after 16:00 ET (FORWARD_POSTCLOSE.md); reads lowsfwd's files,
             # downloads nothing
             _step("postclose", lambda: pcl.run(state_dir), result, notify)
+            # #34 part B: SOL and XRP's push into the close, read from the rows postclose just wrote
+            _step("levpush", lambda: lpu.run(state_dir), result, notify)
             # #31: 2-ATR resting bids under breakdowns (FORWARD_BIDS2.md); reads lowsfwd's files too
             _step("bidsfwd", lambda: bfw.run(state_dir), result, notify)
 

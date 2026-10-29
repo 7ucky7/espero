@@ -557,6 +557,8 @@ def _cmd_liqfwd(args: argparse.Namespace) -> int:
     print("#32 (FORWARD_FUNDSPLIT.md): " + fsp.run(sd)["note"] + f" -> {sd / fsp.LEDGER}")
     from . import postclose as pc
     print("#29 (FORWARD_POSTCLOSE.md): " + pc.run(sd)["note"] + f" -> {sd / pc.LEDGER}")
+    from . import levpush as lpu
+    print("#34 (PREREGISTRATION_LEVPUSH.md, part B): " + lpu.run(sd)["note"])
     from . import bidsfwd as bfw
     print("#31 (FORWARD_BIDS2.md): " + bfw.run(sd)["note"] + f" -> {sd / bfw.LEDGER}")
     return 0

@@ -625,6 +625,7 @@ FORWARD = [   # (tests, the daily step that keeps them, what they record)
     ("#27", "liqbreak", "#26's rule live: forced down-breaks bought for an hour"),
     ("#32", "fundsplit", "#27's forced down-breaks: after crowded funding against not"),
     ("#29", "postclose", "the US session's move after 16:00 ET: does it reverse?"),
+    ("#34", "levpush", "SOL and XRP pushed into 16:00 ET by their 2x funds?"),
     ("#31", "bidsfwd", "bids 2 ATR under breakdowns, out at the breakdown price or after 4 hours"),
 ]
 
@@ -693,7 +694,7 @@ MENU: List[Tuple[str, Callable]] = [
     ("Fast screen: resting orders on the live book (semi-auto, paper)", act_fast),
     ("Paper trading: run a loop, buy or close by hand, see positions", act_paper),
     ("Carry (#12): the forward books, their loops, funding vs the 15% bar", act_carry),
-    ("Forward tests (#22–#24, #27, #29, #31, #32): the paper ledgers, judged after March 2027", act_forward),
+    ("Forward tests (#22–#24, #27, #29, #31, #32, #34): the paper ledgers, judged after March 2027", act_forward),
     ("Factor IC table (research)", act_factors),
     ("Run the tests", act_tests),
     ("Quit", None),

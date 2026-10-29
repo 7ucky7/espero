@@ -39,6 +39,9 @@ class RunnerCase(unittest.TestCase):
         fsp = mock.patch.object(runner.fsp, "run", return_value={"note": "mark: no breaks yet", "equity": None})
         self.fsp_run = fsp.start()
         self.addCleanup(fsp.stop)
+        lpu = mock.patch.object(runner.lpu, "run", return_value={"note": "mark: 0 trading days", "equity": None})
+        self.lpu_run = lpu.start()
+        self.addCleanup(lpu.stop)
         bf = mock.patch.object(runner.bfw, "run", return_value={"note": "mark: 0 fills", "equity": None})
         self.bf_run = bf.start()
         self.addCleanup(bf.stop)
@@ -71,6 +74,7 @@ class TestDryRun(RunnerCase):
         self.pc_run.assert_not_called()
         self.assertTrue(res.steps["bidsfwd"].skipped)
         self.assertTrue(res.steps["fundsplit"].skipped)
+        self.assertTrue(res.steps["levpush"].skipped)
         self.fsp_run.assert_not_called()
         self.bf_run.assert_not_called()
         self.mf_run.assert_not_called()
@@ -137,12 +141,13 @@ class TestIsolation(RunnerCase):
         runner.lwf.run.side_effect = lambda *a, **k: order.append("lowsfwd") or {"note": "mark", "equity": None}
         self.pc_run.side_effect = lambda *a, **k: order.append("postclose") or {"note": "mark", "equity": None}
         self.bf_run.side_effect = lambda *a, **k: order.append("bidsfwd") or {"note": "mark", "equity": None}
+        self.lpu_run.side_effect = lambda *a, **k: order.append("levpush") or {"note": "mark", "equity": None}
         with mock.patch.object(runner.tsm, "run", return_value={"note": "mark", "equity": 1.0}), \
              mock.patch.object(runner.xsm, "run", return_value={"note": "mark", "equity": 1.0}):
             res = self.run_daily()
         self.assertTrue(res.steps["postclose"].ok)
         self.assertTrue(res.steps["bidsfwd"].ok)
-        self.assertEqual(order, ["lowsfwd", "postclose", "bidsfwd"])
+        self.assertEqual(order, ["lowsfwd", "postclose", "levpush", "bidsfwd"])
         self.assertEqual(Path(self.pc_run.call_args.args[0]), self.state)
 
     def test_trade_note_without_equity_does_not_crash_the_run(self):

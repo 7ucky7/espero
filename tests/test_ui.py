@@ -85,7 +85,7 @@ class TestRender(unittest.TestCase):
         buf = io.StringIO()
         Console(file=buf, width=200, force_terminal=False).print(ui.forward_table(self.state))
         out = buf.getvalue()
-        for text in ("#22 #23", "#24", "#27", "#29", "#31", "#32", "mark: 3 trading days", "aggr down", "not run yet"):
+        for text in ("#22 #23", "#24", "#27", "#29", "#31", "#32", "#34", "mark: 3 trading days", "aggr down", "not run yet"):
             self.assertIn(text, out)
         self.assertIn(ui.act_forward, [fn for _, fn in ui.MENU])
 
