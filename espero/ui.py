@@ -186,7 +186,9 @@ def header(state: Path) -> Panel:
     h = _health(state)
     t = _latest(state / "tsmom.db", "account")
     x = _latest(state / "xs.db", "xs_account")
-    total = sum(float(r["equity"]) for r in (t, x) if r)
+    m = _latest(state / "mf.db", "mf_account")
+    mh = _latest(state / "mf-hl.db", "mf_account")
+    total = sum(float(r["equity"]) for r in (t, x, m, mh) if r)
     paused = (state / "KILL").exists()
 
     line1 = Text()
@@ -276,6 +278,16 @@ def accounts_table(state: Path) -> Table:
         tbl.add_row("XS     weekly top-10", eq, delta, pnl, Text(spark, style=ACCENT), holds)
     else:
         tbl.add_row("XS     weekly top-10", "-", "", "", "", "not started")
+
+    for db, label in (("mf.db", "#8     multifactor fwd"), ("mf-hl.db", "#8 HL  shadow (info)")):
+        rows = _history(state / db, "mf_account", limit=400)
+        if rows:
+            from . import mf
+            rows = list(reversed(rows))
+            pos = {k: v for k, v in json.loads(rows[-1].get("positions") or "{}").items() if v > 0}
+            holds = ", ".join(sorted(pos)) or f"cash until its first fill {mf.FORWARD_START.date()}"
+            eq, delta, pnl, spark = _account_row(rows)
+            tbl.add_row(label, eq, delta, pnl, Text(spark, style=ACCENT), holds)
     return tbl
 
 
@@ -450,6 +462,10 @@ def act_paper(console, state):
                    "--loop", "--interval", "60"], state)
 
 
+def act_board(console, state):
+    _run(console, ["board", "--state-dir", str(state)], state)
+
+
 def act_scan(console, state):
     _run(console, ["scan", "--state-dir", str(state)], state)
 
@@ -523,6 +539,7 @@ MENU: List[Tuple[str, Callable]] = [
     ("Open the dashboard", act_dashboard),
     ("Why: the last decision, as the bot saw it", act_why),
     ("Preview what each rule would do now (no writes)", act_preview),
+    ("Signal board: 1/3/12-month trend, stocks to altcoins (scanner, no writes)", act_board),
     ("Account history", act_history),
     ("Run the daily job now", act_daily),
     ("Deposit paper capital", act_deposit),
@@ -545,11 +562,15 @@ def main(state: Optional[Path] = None) -> int:
         return 2
     state = Path(state or ".").resolve()
     console = Console()
+    empty = not any((state / name).exists() for name in ("tsmom.db", "xs.db", "mf.db", "health.json"))
     actions: Dict[str, Callable] = {label: fn for label, fn in MENU}
     while True:
         console.clear()
         console.print(header(state))
         console.print(accounts_table(state))
+        if empty:
+            console.print(Text(f"no accounts in {state}: start from the project folder or pass --state-dir",
+                               style="bold yellow"))
         console.print()
         try:
             choice = questionary.select("What do you want to do?", choices=[m[0] for m in MENU],

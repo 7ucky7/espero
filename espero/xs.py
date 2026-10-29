@@ -16,6 +16,10 @@ endpoint:
   to rebalance -- a shrunken universe would silently change the top-N
 * a held coin that stops reporting is marked at its last known price, never
   dropped from equity
+* a series that traded under MIN_WEEK_VOLUME in its last 7 bars is not a market
+  and is not ranked: Yahoo's `ARB-USD` is "ARbit", a dead token, not Arbitrum,
+  and the account bought it on its first day (research/ERRATA.md, 2026-10-29).
+  YAHOO maps a coin to the right series where `{coin}-USD` is the wrong one
 """
 from __future__ import annotations
 
@@ -47,6 +51,9 @@ MIN_HISTORY = 180
 COST = 0.0010
 MIN_UNIVERSE = 30        # fewer rankable coins than this: mark, do not trade
 MAX_STALE_DAYS = 2       # a close older than this is not a price, it is a memory
+MIN_WEEK_VOLUME = 10_000.0   # dollars in the last 7 bars (Yahoo quotes crypto volume in USD)
+YAHOO = {"ARB": "ARB11841-USD"}   # ARB-USD is "ARbit USD"; Arbitrum is ARB11841-USD
+SOURCE = "hyperliquid"   # since 2026-10-29 (research/ERRATA.md); "yahoo" is what the account ran on before
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS xs_account (
@@ -55,25 +62,41 @@ CREATE TABLE IF NOT EXISTS xs_account (
     signals TEXT, positions TEXT, deposit REAL, note TEXT, last_px TEXT, traded REAL,
     UNIQUE(ts, note)
 );
+CREATE TABLE IF NOT EXISTS xs_meta (key TEXT PRIMARY KEY, value TEXT);
 """
 
 
+def yahoo_symbol(coin: str) -> str:
+    return YAHOO.get(coin, f"{coin}-USD")
+
+
 def load_prices(span: str = "2y",
-                fetch: Callable[[str, str], pd.DataFrame] = None,
+                fetch: Callable[[str, str], pd.DataFrame] = None, source: str = SOURCE,
                 ) -> Tuple[Dict[str, pd.Series], Dict[str, str]]:
     """Daily closes per coin, plus a dict of the coins that could not be loaded
-    and why. The caller decides whether the gaps are survivable."""
-    fetch = fetch or data.yahoo_daily
+    and why. The caller decides whether the gaps are survivable. `source` is
+    "hyperliquid" (perp closes, completed bars only, volume in coins) or "yahoo"
+    (spot, volume in dollars, ARB re-mapped)."""
+    if source == "hyperliquid":
+        from . import hyperliquid as hl
+        fetch, symbol = fetch or hl.daily, (lambda c: f"{c}-USD")
+    else:
+        fetch, symbol = fetch or data.yahoo_daily, yahoo_symbol
     out: Dict[str, pd.Series] = {}
     errors: Dict[str, str] = {}
     for c in UNIVERSE:
         try:
-            df = fetch(f"{c}-USD", span)
+            df = fetch(symbol(c), span)
         except Exception as exc:  # noqa: BLE001 - recorded, then judged by run()
             errors[c] = f"{type(exc).__name__}: {exc}"
             continue
         if df.empty:
             errors[c] = "empty"
+            continue
+        dollars = df["volume"] if source == "yahoo" else df["close"] * df["volume"]
+        week = float(dollars.tail(7).sum())
+        if week < MIN_WEEK_VOLUME:
+            errors[c] = f"${week:,.0f} traded in 7 days: a dead or mis-mapped series"
             continue
         df["dt"] = pd.to_datetime(df["dt"], utc=True).dt.tz_localize(None)
         s = df.set_index("dt")["close"].sort_index()
@@ -143,6 +166,27 @@ class XSAccount:
             self.units = json.loads(row["units"])
             self.last_px = json.loads(row["last_px"] or "{}")
 
+    def correct_symbols(self) -> list:
+        """Once per account. Units of a coin now priced from a YAHOO series were bought on
+        the old one, which was another token: they are closed to cash at that series' last
+        print, at no cost (there was no market to trade them in), before any mark at the new
+        series' prices could revalue them. Returns what was closed; an account created after
+        the mapping has nothing to correct."""
+        if self.db.execute("SELECT 1 FROM xs_meta WHERE key = 'symbols'").fetchone():
+            return []
+        started = self.db.execute("SELECT 1 FROM xs_account LIMIT 1").fetchone() is not None
+        closed = []
+        for c in sorted(YAHOO) if started else []:
+            u = self.units.get(c, 0.0)
+            if u > 0 and c in self.last_px:
+                value = u * self.last_px[c]
+                self.cash += value
+                del self.units[c]
+                closed.append((c, value, self.last_px.pop(c)))
+        self.db.execute("INSERT OR REPLACE INTO xs_meta(key, value) VALUES ('symbols', ?)", (json.dumps(YAHOO),))
+        self.db.commit()
+        return closed
+
     def mark_prices(self, px: pd.Series) -> pd.Series:
         """Today's prices, falling back to the last known price for anything held
         that did not report. A position must never evaporate from equity."""
@@ -194,8 +238,8 @@ class XSAccount:
 
 def run(state: str, cash: float, force: bool = False, deposit: float = 0.0,
         now: Optional[datetime] = None,
-        fetch: Callable[[str, str], pd.DataFrame] = None) -> dict:
-    prices, errors = load_prices(fetch=fetch)
+        fetch: Callable[[str, str], pd.DataFrame] = None, source: str = SOURCE) -> dict:
+    prices, errors = load_prices(fetch=fetch, source=source)
     fresh_px, stale_px = split_stale(prices)
     for c, why in errors.items():
         log.warning("xs: %s not loaded: %s", c, why)
@@ -207,6 +251,16 @@ def run(state: str, cash: float, force: bool = False, deposit: float = 0.0,
     latest = pd.Series({c: s.iloc[-1] for c, s in prices.items()})
     ts = int(max(s.index[-1] for s in prices.values()).timestamp())
     acc = XSAccount(Path(state))
+    closed = acc.correct_symbols()         # before anything is marked at the new series' prices
+    if closed:
+        prev = acc.db.execute(
+            "SELECT weights, signals FROM xs_account ORDER BY ts DESC, id DESC LIMIT 1").fetchone()
+        px = acc.mark_prices(latest)
+        note = "correction: closed " + ", ".join(
+            f"{c} ${v:,.2f} at {p:.6g}" for c, v, p in closed) + ", bought on the wrong Yahoo series"
+        log.warning("xs: %s", note)
+        acc.save(ts, acc.equity(latest), json.loads(prev["weights"]), json.loads(prev["signals"]),
+                 {c: u * float(px[c]) for c, u in acc.units.items()}, 0.0, note)
     fresh = acc.cash == 0.0 and not acc.units
     if fresh:
         acc.cash = cash

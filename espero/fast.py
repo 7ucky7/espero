@@ -35,6 +35,19 @@ from .book import BookSnapshot, CoinbaseBook, Recorder, replay
 from .execution import Fill, PaperExchange
 from .venues import VENUES
 
+SOURCES = ("hyperliquid", "coinbase")      # where the candles and the live book come from
+
+
+def source_feed(source: str):
+    """(closed-bars fetch, live-book class) for a price source. Hyperliquid's are perp
+    prices from mainnet; Coinbase's are spot."""
+    if source == "hyperliquid":
+        from . import hyperliquid as hl
+        return hl.closed_bars, hl.HyperliquidBook
+    if source == "coinbase":
+        return data.recent_closed_bars, CoinbaseBook
+    raise ValueError(f"source {source!r} not in {SOURCES}")
+
 # Measured, not assumed: RESULTS_LEADLAG2.md, Q5-Q1 spread of the reversal/lead-lag
 # family at a 3h horizon on Coinbase hourly data. Update when a new result lands.
 MEASURED_EDGE_BPS = 3.7
@@ -167,12 +180,15 @@ def sort_scan(rows: List[ScanRow]) -> List[ScanRow]:
 
 
 def scan_status(st: SignalState, threshold: float) -> str:
+    """A signal past the threshold is a candidate only while it has been working on that
+    coin: a negative 2-week IC (`cold`) has pointed the wrong way lately, and the scan
+    says so before the screen does."""
     if st.value is None:
         return "no signal"
     if st.value >= threshold:
-        return "BUY candidate"
+        return "BUY (cold)" if st.cold else "BUY candidate"
     if st.value <= -threshold:
-        return "sell if held"
+        return "sell (cold)" if st.cold else "sell if held"
     if abs(st.value) >= 0.7 * threshold:
         return "near"
     return ""
@@ -201,13 +217,17 @@ def scan_table(rows: List[ScanRow], threshold: float, title: str = ""):
                   f"{1e4 * st.r_leader:+.0f}", f"{1e4 * st.r_coin:+.0f}", ic,
                   "" if st.vol_ratio is None else f"{st.vol_ratio:.1f}×",
                   Text(status, style="bold green" if status == "BUY candidate"
-                       else ("red" if status == "sell if held" else MUTED)))
+                       else ("red" if status in ("sell if held", "BUY (cold)", "sell (cold)") else MUTED)))
     return t
 
 
-def scan_products() -> List[str]:
-    """The XS universe, quoted in USD, minus the coins Coinbase does not list."""
+def scan_products(source: str = "hyperliquid", listed: Optional[set] = None) -> List[str]:
+    """The XS universe, quoted in USD, minus the coins the source does not list."""
     from .xs import UNIVERSE
+    if source == "hyperliquid":
+        from . import hyperliquid as hl
+        names = hl.listed() if listed is None else listed
+        return [f"{c}-USD" for c in UNIVERSE if hl.hl_coin(c) in names]
     missing = {"RUNE", "THETA", "TRX"}           # RESULTS_LEADLAG2.md: not on Coinbase
     return [f"{c}-USD" for c in UNIVERSE if c not in missing]
 
@@ -624,10 +644,13 @@ def render(fb: FastBook, mode: str):
             working.append("   SIGNAL COLD", style="bold red")
         vr = "n/a" if s.vol_ratio is None else f"{s.vol_ratio:.2f}× median"
         hour = datetime.now(timezone.utc).hour
-        nxt = (8 - hour % 8) % 8 or 8
-        settle = ((hour // 8 + 1) * 8) % 24
+        if VENUES[fb.venue].funding_period_s == 3600:          # Hyperliquid settles every hour
+            settles = "funding settles hourly"
+        else:
+            nxt = (8 - hour % 8) % 8 or 8
+            settles = f"funding settles in {nxt}h (UTC {((hour // 8 + 1) * 8) % 24:02d}:00)"
         why_rows = [("signal", gap), ("working", working),
-                    ("regime", Text(f"hourly vol {vr}   ·   funding settles in {nxt}h (UTC {settle:02d}:00)"))]
+                    ("regime", Text(f"hourly vol {vr}   ·   {settles}"))]
     cost = fb.cost_bps()
     ratio = MEASURED_EDGE_BPS / cost if cost > 0 else math.inf
     edge = Text(f"{MEASURED_EDGE_BPS:.1f} bps edge vs {cost:.1f} bps cost  →  ratio {ratio:.1f}",
@@ -739,9 +762,10 @@ def render(fb: FastBook, mode: str):
     return layout
 
 
-def run(product: str, cash: float = 500.0, venue: str = "coinbase", record: bool = False,
+def run(product: str, cash: float = 500.0, venue: str = "hyperliquid", record: bool = False,
         replay_path: Optional[Path] = None, speed: float = 10.0, interval: float = 1.0,
-        state_dir: Path = Path("."), threshold: float = 0.003, order_notional: float = 50.0) -> int:
+        state_dir: Path = Path("."), threshold: float = 0.003, order_notional: float = 50.0,
+        source: str = "hyperliquid") -> int:
     from rich.console import Console
     from rich.live import Live
 
@@ -749,16 +773,17 @@ def run(product: str, cash: float = 500.0, venue: str = "coinbase", record: bool
     ex = PaperExchange(cash=cash)
     fb = FastBook(product, ex, venue=venue, threshold=threshold, order_notional=order_notional,
                   journal_path=Path(state_dir) / "fast.db", check_feed_age=replay_path is None)
-    mode = f"PAPER · {VENUES[venue].name} maker {VENUES[venue].maker_bps:.0f} bps"
+    bars, Book = source_feed(source)
+    mode = f"PAPER · {source} book · {VENUES[venue].name} maker {VENUES[venue].maker_bps:g} bps"
     rec = None
     if replay_path:
         feed = replay(Path(replay_path))
         mode = f"REPLAY {speed:.0f}× · {Path(replay_path).name}"
-        signal = CandleSignal(product)          # live candles still drive the signal in replay
+        signal = CandleSignal(product, fetch=bars)   # live candles still drive the signal in replay
     else:
-        live_book = CoinbaseBook(product)
+        live_book = Book(product)
         feed = None
-        signal = CandleSignal(product)
+        signal = CandleSignal(product, fetch=bars)
         if record:
             stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M")
             rec = Recorder(Path(state_dir) / "data" / "book" / f"{product}_{stamp}.jsonl")

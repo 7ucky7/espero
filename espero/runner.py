@@ -129,6 +129,11 @@ class Lock:
         return False
 
 
+def _hl_daily():
+    from . import hyperliquid as hl
+    return hl.daily
+
+
 # -------------------------------------------------------------------- steps
 def _step(name: str, fn: Callable[[], dict], result: DailyResult, notify: bool) -> Optional[dict]:
     t0 = time.time()
@@ -147,7 +152,11 @@ def _step(name: str, fn: Callable[[], dict], result: DailyResult, notify: bool) 
     log.info("%s ok in %.1fs: %s equity=%s", name, time.time() - t0, note,
              f"{equity:.2f}" if equity is not None else "-")
     if notify and note.split(" ")[0] in TRADE_NOTES:
-        notifier.notify(f"espero {name}: {note}", f"equity ${equity:,.2f}")
+        # a step may say what it did; outside the try above, so it must not raise
+        message = out.get("message") if isinstance(out, dict) else None
+        if not message:
+            message = f"equity ${equity:,.2f}" if isinstance(equity, (int, float)) else note
+        notifier.notify(f"espero {name}: {note}", str(message))
     return out
 
 
@@ -200,7 +209,7 @@ def run_daily(state_dir: Path = Path("."), cash_tsmom: float = 100.0, cash_xs: f
 
     with Lock(state_dir / "daily.lock"):
         if dry_run:
-            for name in ("tsmom", "xs", "mf"):
+            for name in ("tsmom", "xs", "mf", "mf-hl"):
                 result.steps[name] = StepResult(True, 0.0, note="skipped (dry run)", skipped=True)
                 log.info("%s skipped (dry run)", name)
         else:
@@ -209,10 +218,14 @@ def run_daily(state_dir: Path = Path("."), cash_tsmom: float = 100.0, cash_xs: f
             _step("xs", lambda: xsm.run(str(xs_db), cash_xs, force=force, now=now), result, notify)
             # no --force: #8's calendar is frozen (FORWARD_MF.md); it fills only its own Mondays
             _step("mf", lambda: mfm.run(str(mf_db), cash_mf), result, notify)
+            # #8 on Hyperliquid prices beside it, information only (FORWARD_MF.md, amendment 2026-10-29)
+            _step("mf-hl", lambda: mfm.run(str(state_dir / "mf-hl.db"), cash_mf, fetch=_hl_daily()),
+                  result, notify)
 
         def render():
             out = dash.write(state_dir / "dashboard.html", tsmom_db=tsmom_db, paper_db=paper_db,
-                             live_db=live_db, xs_db=xs_db, offline=dry_run)
+                             live_db=live_db, xs_db=xs_db, mf_db=mf_db, mf_hl_db=state_dir / "mf-hl.db",
+                             board=True, offline=dry_run)
             return {"note": f"wrote {out}"}
 
         _step("dashboard", render, result, notify)

@@ -11,6 +11,13 @@ the track record exists independently of anyone's memory:
     espero tsmom --report                           # history
 
 Fills are simulated at the latest close with 10 bps per side. No keys, no orders.
+
+Holdings earn total return: before each run marks or trades, every position's
+value at the last run is rolled forward by its dividend- and split-adjusted
+close, then turned back into shares at today's price. Dividends are reinvested
+on the ex-date, and a split Yahoo restates into the history cannot multiply a
+share count (USO did a 1:8 reverse split in 2020). The signal still reads raw
+closes, as the rule was registered (research/ERRATA.md, 2026-10-29).
 """
 from __future__ import annotations
 
@@ -19,7 +26,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
 import pandas as pd
 
@@ -53,6 +60,13 @@ def load_series(span: str = "2y") -> Dict[str, pd.Series]:
         df = data.yahoo_daily(symbol, span)
         out[name] = df.set_index("dt")["close"].sort_index()
     return out
+
+
+def load_frames(span: str = "2y", fetch: Callable[[str, str], pd.DataFrame] = None) -> Dict[str, pd.DataFrame]:
+    """Each asset's raw close (the signal) and adjusted close (the P&L), from one fetch."""
+    fetch = fetch or (lambda symbol, sp: data.yahoo_daily(symbol, sp, adjusted=True))
+    return {name: fetch(symbol, span).set_index("dt")[["close", "adj_close"]].sort_index()
+            for symbol, name in UNIVERSE.items()}
 
 
 def closes(series: Dict[str, pd.Series]) -> pd.DataFrame:
@@ -113,6 +127,25 @@ class Account:
             self.units = json.loads(row["units"])
             self.vehicle = row["vehicle"] or "USD"
             self.carry_total = float(row["carry"] or 0.0)
+
+    def roll_forward(self, frames: Dict[str, pd.DataFrame], latest: pd.Series) -> None:
+        """Each held asset's dollar value at the last run, grown by its total return since
+        (adjusted close now / adjusted close then, both from today's fetch, so a later
+        restatement cancels out), re-expressed as shares at today's raw close."""
+        prev = self.last()
+        if not prev or not self.units:
+            return
+        then = pd.Timestamp(int(prev["ts"]), unit="s", tz="UTC")
+        marked = json.loads(prev.get("positions") or "{}")
+        for a in list(self.units):
+            f, value = frames.get(a), marked.get(a)
+            if f is None or value is None or a not in latest or pd.isna(latest[a]):
+                continue
+            adj = f["adj_close"].dropna()
+            old = adj[adj.index <= then]
+            if adj.empty or old.empty:
+                continue
+            self.units[a] = value * float(adj.iloc[-1] / old.iloc[-1]) / float(latest[a])
 
     def last(self) -> Optional[dict]:
         row = self.db.execute("SELECT * FROM account ORDER BY ts DESC, id DESC LIMIT 1").fetchone()
@@ -183,12 +216,15 @@ def rebalance_due(acc: Account, now: Optional[datetime] = None) -> bool:
 
 
 def run(state: str, cash: float, force: bool = False, span: str = "2y",
-        deposit: float = 0.0, now: Optional[datetime] = None) -> dict:
-    series = load_series(span)
+        deposit: float = 0.0, now: Optional[datetime] = None,
+        fetch: Callable[[str, str], pd.DataFrame] = None) -> dict:
+    frames = load_frames(span, fetch)
+    series = {name: f["close"] for name, f in frames.items()}
     px = closes(series)
     latest = px.iloc[-1]
     ts = int(px.index[-1].timestamp())
     acc = Account(Path(state))
+    acc.roll_forward(frames, latest)       # dividends and splits since the last run, before any mark
     fresh = acc.cash == 0.0 and not acc.units
     if fresh:
         acc.cash = cash

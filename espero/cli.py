@@ -8,6 +8,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 
@@ -314,9 +315,16 @@ def _cmd_hl_account(args: argparse.Namespace) -> int:
                else os.environ.get("HL_NETWORK", "testnet").strip().lower() != "mainnet")
     url = hl.info_url(testnet=testnet)
     st = hl.user_state(address, fetch=lambda body: hl.post(body, url))
-    print(f"{'testnet' if testnet else 'MAINNET'}  {address}")
-    print(f"equity {st['equity']:,.2f}  margin used {st['margin_used']:,.2f}  "
+    mm = hl.margin_mode(address, fetch=lambda body: hl.post(body, url))
+    unified = mm["mode"] in ("unifiedAccount", "portfolioMargin")
+    print(f"{'testnet' if testnet else 'MAINNET'}  {address}  ({mm['mode']})")
+    if unified:
+        print(f"margin (spot USDC) {mm['spot_usdc']:,.2f}  on hold {mm['spot_hold']:,.2f}  "
+              f"-- a unified account margins perps with spot USDC, so the perp-only figures below stay 0")
+    print(f"{'perp ' if unified else ''}equity {st['equity']:,.2f}  margin used {st['margin_used']:,.2f}  "
           f"notional {st['notional']:,.2f}  withdrawable {st['withdrawable']:,.2f}")
+    if not unified and mm["spot_usdc"]:
+        print(f"spot USDC {mm['spot_usdc']:,.2f} (not perp margin until transferred)")
     if not st["positions"]:
         print("no open positions")
     for p in st["positions"]:
@@ -796,10 +804,11 @@ def _cmd_tsmom(args: argparse.Namespace) -> int:
 
 def _cmd_fast(args: argparse.Namespace) -> int:
     from .fast import run as fast_run
-    return fast_run(args.product, cash=args.cash, venue=args.venue, record=args.record,
+    venue = args.venue or ("hyperliquid" if args.source == "hyperliquid" else "coinbase")
+    return fast_run(args.product, cash=args.cash, venue=venue, record=args.record,
                     replay_path=Path(args.replay) if args.replay else None, speed=args.speed,
                     interval=args.interval, state_dir=Path(args.state_dir),
-                    threshold=args.threshold / 1e4, order_notional=args.order_notional)
+                    threshold=args.threshold / 1e4, order_notional=args.order_notional, source=args.source)
 
 
 def _cmd_scan(args: argparse.Namespace) -> int:
@@ -809,18 +818,22 @@ def _cmd_scan(args: argparse.Namespace) -> int:
 
     console = Console()
     threshold = args.threshold / 1e4
-    products = [p.strip().upper() for p in args.products.split(",") if p.strip()] or fst.scan_products()
+    bars, _ = fst.source_feed(args.source)
+    venue = args.venue or ("hyperliquid" if args.source == "hyperliquid" else "binanceus")
+    products = [p.strip().upper() for p in args.products.split(",") if p.strip()] or fst.scan_products(args.source)
     products = [p if "-" in p else f"{p}-USD" for p in products]
     while True:
-        with console.status(f"scanning {len(products)} coins against BTC ...", spinner="dots"):
-            rows = fst.scan(products)
+        with console.status(f"scanning {len(products)} coins against BTC on {args.source} ...", spinner="dots"):
+            rows = fst.scan(products, fetch=bars)
         stamp = time.strftime("%H:%M UTC", time.gmtime())
         mins = fst.next_signal_minutes()
-        console.print(fst.scan_table(rows, threshold, title=f"lead-lag signal · {stamp} · "
+        console.print(fst.scan_table(rows, threshold, title=f"lead-lag signal · {args.source} · {stamp} · "
                                      f"acts at ±{args.threshold:.0f} bps · next update in {mins}m"))
-        n_buy = sum(1 for r in rows if fst.scan_status(r.state, threshold) == "BUY candidate")
-        console.print(f"[grey58]{n_buy} buy candidate(s). pctile = how unusual this gap is for that coin over "
-                      f"two weeks. 2w IC red = signal cold on that coin.[/]")
+        status = [fst.scan_status(r.state, threshold) for r in rows]
+        n_buy, n_cold = status.count("BUY candidate"), status.count("BUY (cold)")
+        console.print(f"[grey58]{n_buy} buy candidate(s), {n_cold} more past the threshold but cold. pctile = how "
+                      f"unusual this gap is for that coin over two weeks. cold = 2-week IC below zero: the "
+                      f"signal has pointed the wrong way on that coin lately.[/]")
         if args.once or not sys.stdin.isatty():
             return 0
         try:
@@ -828,8 +841,9 @@ def _cmd_scan(args: argparse.Namespace) -> int:
         except ImportError:
             return 0
         from .ui import STYLE
-        choices = [questionary.Choice(f"{r.coin:6s} {1e4 * r.state.value:+5.0f} bps  "
-                                      f"{fst.scan_status(r.state, threshold)}", value=r.product)
+        choices = [questionary.Choice(f"{r.coin:6s} {1e4 * r.state.value:+5.0f} bps  IC "
+                                      + ("  n/a" if r.state.rolling_ic is None else f"{r.state.rolling_ic:+.2f}")
+                                      + f"  {fst.scan_status(r.state, threshold)}", value=r.product)
                    for r in rows if r.state.value is not None][:15]
         choices += [questionary.Choice("rescan", value="__rescan"), questionary.Choice("quit", value=None)]
         pick = questionary.select("Open the fast screen on:", choices=choices, style=STYLE, pointer="❯").ask()
@@ -838,20 +852,38 @@ def _cmd_scan(args: argparse.Namespace) -> int:
         if not pick:
             return 0
         from .fast import run as fast_run
-        fast_run(pick, cash=args.cash, venue=args.venue, record=args.record, state_dir=Path(args.state_dir),
-                 threshold=threshold, order_notional=args.order_notional)
+        fast_run(pick, cash=args.cash, venue=venue, record=args.record, state_dir=Path(args.state_dir),
+                 threshold=threshold, order_notional=args.order_notional, source=args.source)
+
+
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+STATE_FILES = ("tsmom.db", "xs.db", "mf.db", "health.json")
+
+
+def state_dir(given: Optional[str] = None) -> Path:
+    """Where the accounts live. An explicit --state-dir wins; otherwise the current folder if
+    it holds any account, else the project folder. Started from anywhere else, the screens
+    used to read an empty folder and show $0.00 as if the accounts had gone."""
+    if given:
+        return Path(given)
+    if any((Path.cwd() / name).exists() for name in STATE_FILES):
+        return Path(".")
+    if (PROJECT_DIR / "pyproject.toml").exists():
+        return PROJECT_DIR
+    return Path(".")
 
 
 def _cmd_ui(args: argparse.Namespace) -> int:
     from .ui import main as ui_main
-    return ui_main(Path(args.state_dir))
+    return ui_main(state_dir(args.state_dir))
 
 
 def _cmd_dashboard(args: argparse.Namespace) -> int:
     out = dash.write(args.out, tsmom_db=pathlib.Path(args.tsmom_db),
                      paper_db=pathlib.Path(args.paper_db),
                      live_db=pathlib.Path(args.live_db),
-                     xs_db=pathlib.Path(args.xs_db))
+                     xs_db=pathlib.Path(args.xs_db), mf_db=pathlib.Path(args.mf_db),
+                     mf_hl_db=pathlib.Path(args.mf_db).with_name("mf-hl.db"), board=True)
     print(f"wrote {out}")
     if args.open:
         import subprocess
@@ -904,6 +936,29 @@ def _cmd_factors(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_board(args: argparse.Namespace) -> int:
+    """#15's trend readings for stocks, bonds, commodities and crypto. Read-only: a
+    scanner, since #15 failed its test (research/RESULTS_TREND.md)."""
+    from . import board, trend
+
+    frames, errors = board.fetch_frames(trend.symbols())
+    v = board.view(frames, pd.Timestamp.now(tz="UTC").tz_localize(None), alts=args.alts)
+    try:
+        from rich.console import Console
+        Console().print(board.table(v))
+    except ImportError:
+        print(board.format_plain(v))
+    for line in board.context(state_dir(args.state_dir)):
+        print(line)
+    if errors:
+        print(f"\n{len(errors)} symbols failed to load: {', '.join(sorted(errors))}")
+    if args.carry:
+        args.top = 10
+        print()
+        return _cmd_carry_scan(args)
+    return 0
+
+
 def _cmd_mf(args: argparse.Namespace) -> int:
     from . import mf as mfm
     res = mfm.run(args.state, args.cash)
@@ -923,7 +978,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="cmd", required=False)
 
     u = sub.add_parser("ui", help="interactive home screen (the default when no command is given)")
-    u.add_argument("--state-dir", default=".")
+    u.add_argument("--state-dir", default=None, help="default: here if it holds accounts, else the project folder")
     u.set_defaults(func=_cmd_ui)
 
     f = sub.add_parser("fetch", help="download public Coinbase candles to CSV")
@@ -1025,8 +1080,10 @@ def build_parser() -> argparse.ArgumentParser:
     fs = sub.add_parser("fast", help="semi-automatic resting-order screen on the live book (paper)")
     fs.add_argument("--product", default="ETH-USD")
     fs.add_argument("--cash", type=float, default=500.0)
-    fs.add_argument("--venue", choices=["binanceus", "kraken", "coinbase"], default="coinbase",
-                    help="whose maker fee to charge; the book is always Coinbase's")
+    fs.add_argument("--source", choices=["hyperliquid", "coinbase"], default="hyperliquid",
+                    help="whose candles and live book to use (Hyperliquid: perp prices, paper only)")
+    fs.add_argument("--venue", choices=["hyperliquid", "binanceus", "kraken", "coinbase"], default=None,
+                    help="whose maker fee to charge (default: the source's own)")
     fs.add_argument("--order-notional", type=float, default=50.0)
     fs.add_argument("--threshold", type=float, default=30.0, help="signal gap in bps that triggers a proposal")
     fs.add_argument("--record", action="store_true", help="record the book to data/book/ for replay")
@@ -1037,9 +1094,14 @@ def build_parser() -> argparse.ArgumentParser:
     fs.set_defaults(func=_cmd_fast)
 
     sc = sub.add_parser("scan", help="the lead-lag signal for every coin, then open the fast screen on one")
-    sc.add_argument("--products", default="", help="comma-separated, e.g. ETH,SOL,LINK (default: the 39 on Coinbase)")
+    sc.add_argument("--products", default="", help="comma-separated, e.g. ETH,SOL,LINK (default: the XS coins "
+                    "the source lists)")
+    sc.add_argument("--source", choices=["hyperliquid", "coinbase"], default="hyperliquid",
+                    help="whose candles (and, once you pick a coin, live book) to use")
     sc.add_argument("--threshold", type=float, default=30.0, help="bps gap that makes a buy candidate")
-    sc.add_argument("--venue", choices=["binanceus", "kraken", "coinbase"], default="binanceus")
+    sc.add_argument("--venue", choices=["hyperliquid", "binanceus", "kraken", "coinbase"], default=None,
+                    help="whose maker fee the fast screen charges (default: hyperliquid, or binanceus "
+                    "with --source coinbase)")
     sc.add_argument("--cash", type=float, default=500.0)
     sc.add_argument("--order-notional", type=float, default=50.0)
     sc.add_argument("--record", action="store_true")
@@ -1130,12 +1192,19 @@ def build_parser() -> argparse.ArgumentParser:
     dy.add_argument("--no-notify", action="store_true")
     dy.set_defaults(func=_cmd_daily)
 
+    bd = sub.add_parser("board", help="1/3/12-month trend for stocks, bonds, commodities, crypto (#15 scanner)")
+    bd.add_argument("--alts", action="store_true", help="list every altcoin instead of one summary row")
+    bd.add_argument("--carry", action="store_true", help="also show Hyperliquid funding now (#12's market)")
+    bd.add_argument("--state-dir", default=None, help="where mf.db and carry-*.db live (default as for ui)")
+    bd.set_defaults(func=_cmd_board)
+
     d = sub.add_parser("dashboard", help="static HTML dashboard for the paper accounts")
     d.add_argument("-o", "--out", default="dashboard.html")
     d.add_argument("--tsmom-db", default="tsmom.db")
     d.add_argument("--paper-db", default="paper.db")
     d.add_argument("--live-db", default="live.db")
     d.add_argument("--xs-db", default="xs.db")
+    d.add_argument("--mf-db", default="mf.db")
     d.add_argument("--open", action="store_true")
     d.set_defaults(func=_cmd_dashboard)
 
@@ -1151,7 +1220,7 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     if args.cmd is None:
         if sys.stdin.isatty():
-            return _cmd_ui(argparse.Namespace(state_dir="."))
+            return _cmd_ui(argparse.Namespace(state_dir=None))
         parser.print_help()
         return 0
     return args.func(args)

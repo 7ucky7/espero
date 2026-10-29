@@ -5,6 +5,80 @@ change its verdict; the code that produced it stays as it ran, marked with a com
 points here. Numbers below were reproduced from cached data during the 2026-10-27 audit
 (docs/AUDIT_2026-10-27.md, section D) unless stated.
 
+## 2026-10-29: the XS account moves to Hyperliquid prices; the scan and fast screen too
+
+**No verdict changes.** At the user's request, crypto prices for the live tools come from
+Hyperliquid's mainnet perps instead of Yahoo (spot) and Coinbase:
+
+- **XS account** (`xs.SOURCE`): 35 of its 42 coins (MKR, YFI, XTZ, EOS, KSM, VET and THETA are not
+  listed), daily closes of completed bars only. The record's first two days stand on Yahoo. The first
+  Hyperliquid mark is about +2.5% above the last Yahoo mark (\$102.03 vs \$99.58 on a copy at
+  06:40 UTC), mostly timing rather than source: Yahoo's marks used the day still forming,
+  Hyperliquid's use the last completed bar. Perp prices track spot but are not spot.
+- **Scan and fast screen**: Hyperliquid candles, live book and prints, fills at its maker fee
+  (1.5 bps), paper only: Hyperliquid's mainnet excludes US persons. `--source coinbase` keeps the
+  old feed; #9b's results were measured on Coinbase.
+- **The board's coins** come from Hyperliquid; its ETFs stay on Yahoo. #15's frozen result reads
+  its own snapshot and does not change.
+- **#8 stays on Yahoo**; a Hyperliquid shadow runs beside it, information only (FORWARD_MF.md,
+  amendment 2026-10-29).
+
+## 2026-10-29: the #4 TSMOM paper account ignored dividends and could break on a split
+
+**#4's verdict is untouched; the live account's accounting is fixed from 2026-10-29.**
+
+- `tsmom.py` held share counts marked at Yahoo's raw closes, so SPY, TLT, GLD and USO earned price
+  only. Over ten years that is TLT ×0.62 instead of ×0.83 with its coupons, SPY ×3.62 instead of
+  ×4.24. And a split Yahoo restates into the history would have multiplied a share count bought
+  before it (USO, held now, did a 1:8 reverse split in 2020).
+- Now each run first rolls every position's value at the last run forward by its adjusted close
+  (now ÷ then, both from the same fetch, so a restatement cancels), then turns it back into shares
+  at today's price: dividends are reinvested on the ex-date and splits cancel. The signal still
+  reads raw closes, as #4 was registered. The first run after the fix marked exactly as before
+  ($200.81): no dividend or split fell between 2026-10-27 and the fix, so nothing before it is
+  restated.
+
+## 2026-10-29: #8's forward test books Monday fills at a price its schedule cannot trade
+
+Disclosed before the first fill, rule unchanged: research/FORWARD_MF.md, amendment 2026-10-29. The
+00:00 UTC open is information-equivalent to the decision (nothing after Sunday's close is read), but
+the job runs at 07:30 New York; the verdict will report the open-to-run gap for every Monday.
+
+## 2026-10-29: Yahoo ticker collisions in `xs.UNIVERSE` (found by #15)
+
+**No verdict changes; two live accounts read wrong series for some coins.**
+
+- **`ARB-USD` on Yahoo is not Arbitrum.** It is a dead token: last close $0.0006 on zero volume.
+  `TIA-USD`, `WLD-USD` and `OP-USD` are other tokens until Yahoo switches them to the real coin,
+  with one-day jumps of +68,063,639% (2024-03-26), +31,092% (2023-08-02) and +200,020%
+  (2022-10-06). Found in #15's snapshot (research/RESULTS_TREND.md, transparency).
+- **#8 (multifactor, `mf.py`)** filters coins on $1M of 30-day dollar volume, which keeps the dead
+  `ARB-USD` and the impostor periods out. Its lookbacks are 30 days, and its holdout
+  (2024-07-01 → 2026-10-27) starts after all three switches, so no holdout window straddles one;
+  the OP and WLD switches fall in its design period. Verdict unaffected; the forward test from
+  2026-11-02 trades only coins that pass the filter.
+- **The XS account (`xs.py`, #7's rule) held the dead token from its first day.** It has no
+  liquidity filter, and on 2026-10-27 ARbit's flat 0.0% week ranked #2 of 42 because most coins
+  fell, so 10% of the book ($9.99 at init) sat in a series with no trades, marked at $0.000629.
+  Fixed 2026-10-29, without rewriting its history:
+  - `xs.YAHOO` maps ARB to `ARB11841-USD` ("Arbitrum USD" in Yahoo's metadata; `ARB-USD` is
+    "ARbit USD"). TIA, WLD and OP need no mapping: Yahoo now serves Celestia, Worldcoin and
+    Optimism under them, and their wrong histories end before the account's two-year window.
+  - A series that traded under $10,000 in its last 7 bars is not ranked (Yahoo quotes crypto
+    volume in dollars; the smallest real coin in the list, KSM, trades about $14M a week). This
+    catches the next silent swap; it excluded none of the 42 coins on 2026-10-29.
+  - Once per account, before any mark at the new prices, units bought on a re-mapped series are
+    closed to cash at that series' last print, at no cost (there was no market to trade them in),
+    and saved as a `correction` row. Without it the ARbit units would have been marked at
+    Arbitrum's $0.1655, a 263× jump. The cash waits for the next Monday rebalance.
+  - The record's first two days stand as they ran: ARB contributed nothing to them (its price
+    never moved), which is what holding a token nobody trades looks like.
+- **Not changed:** #8 keeps `ARB-USD` (its forward test must run the universe its backtest ran, and
+  the $1M filter already excludes it), as does #15's frozen universe; `espero board --alts` lists
+  it as failing the liquidity rule.
+- **`SHIB-USD`** is printed as exactly 0 on 258 days (2020-08-01 → 2021-04-15): any lookback that
+  reaches back to them compares against zero.
+
 ## 2026-10-28 (later): degen replay clock
 
 **#10's verdict (FAIL) stands; two of its explanations do not.**

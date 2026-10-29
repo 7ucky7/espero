@@ -81,6 +81,21 @@ class TestScan(unittest.TestCase):
         self.assertEqual(fast.scan_status(fast.SignalState(value=0.0025), 0.003), "near")
         self.assertEqual(fast.scan_status(fast.SignalState(value=0.0001), 0.003), "")
 
+    def test_sources(self):
+        from espero import hyperliquid as hl
+        self.assertEqual(fast.source_feed("hyperliquid"), (hl.closed_bars, hl.HyperliquidBook))
+        self.assertIs(fast.source_feed("coinbase")[1], fast.CoinbaseBook)
+        coins = fast.scan_products("hyperliquid", listed={"BTC", "ETH", "kSHIB"})
+        self.assertEqual(coins, ["BTC-USD", "ETH-USD", "SHIB-USD"])
+        with self.assertRaises(ValueError):
+            fast.source_feed("binance")
+
+    def test_a_cold_signal_is_never_called_a_candidate(self):
+        cold = dict(rolling_ic=-0.022)                 # LTC on 2026-10-29: +98 bps, IC -0.022
+        self.assertEqual(fast.scan_status(fast.SignalState(value=0.0098, **cold), 0.003), "BUY (cold)")
+        self.assertEqual(fast.scan_status(fast.SignalState(value=-0.004, **cold), 0.003), "sell (cold)")
+        self.assertEqual(fast.scan_status(fast.SignalState(value=0.0098, rolling_ic=0.05), 0.003), "BUY candidate")
+
     @unittest.skipUnless(HAVE_RICH, "tui extra not installed")
     def test_scan_table_renders(self):
         import io
@@ -94,7 +109,7 @@ class TestScan(unittest.TestCase):
         self.assertIn("OSError", out)
 
     def test_scan_products_skip_coins_coinbase_does_not_list(self):
-        ps = fast.scan_products()
+        ps = fast.scan_products("coinbase")
         self.assertIn("ETH-USD", ps)
         self.assertNotIn("TRX-USD", ps)
 

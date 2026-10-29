@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from espero import board as brd
 from espero import runner
 
 
@@ -21,6 +22,10 @@ class RunnerCase(unittest.TestCase):
         mf = mock.patch.object(runner.mfm, "run", return_value={"note": "mark", "equity": 100.0})
         self.mf_run = mf.start()
         self.addCleanup(mf.stop)
+        # the dashboard's signal board fetches 55 Yahoo series: no network in tests
+        board = mock.patch.object(brd, "fetch_frames", return_value=({}, {}))
+        board.start()
+        self.addCleanup(board.stop)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -86,6 +91,28 @@ class TestIsolation(RunnerCase):
             self.run_daily(notify=True)
         self.assertTrue(any("rebalance" in t for t in sent))
         self.assertTrue(any("failed" in t for t in sent))
+
+    def test_mf_runs_twice_once_on_hyperliquid_prices(self):
+        from espero import hyperliquid as hl
+        with mock.patch.object(runner.tsm, "run", return_value={"note": "mark", "equity": 1.0}), \
+             mock.patch.object(runner.xsm, "run", return_value={"note": "mark", "equity": 1.0}):
+            res = self.run_daily()
+        self.assertTrue(res.steps["mf-hl"].ok)
+        calls = self.mf_run.call_args_list
+        self.assertEqual([Path(c.args[0]).name for c in calls], ["mf.db", "mf-hl.db"])
+        self.assertIsNone(calls[0].kwargs.get("fetch"))           # #8 itself stays on Yahoo
+        self.assertIs(calls[1].kwargs["fetch"], hl.daily)
+
+    def test_trade_note_without_equity_does_not_crash_the_run(self):
+        sent = []
+        with mock.patch.object(runner.notifier, "notify", side_effect=lambda t, m: sent.append((t, m))), \
+             mock.patch.object(runner.tsm, "run", return_value={"note": "rebalance", "equity": None}), \
+             mock.patch.object(runner.xsm, "run", return_value={"note": "init", "equity": 5.0,
+                                                                "message": "bought 3 coins"}):
+            res = self.run_daily(notify=True)
+        self.assertTrue(res.ok)
+        self.assertIn(("espero tsmom: rebalance", "rebalance"), sent)
+        self.assertIn(("espero xs: init", "bought 3 coins"), sent)
 
 
 class TestGuards(RunnerCase):

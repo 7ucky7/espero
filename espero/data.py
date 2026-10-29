@@ -228,13 +228,15 @@ def fred_series(series_id: str) -> pd.DataFrame:
     return df[["dt", "ts", "open", "high", "low", "close", "volume"]].sort_values("dt").reset_index(drop=True)
 
 
-def cache_path(symbol: str, span: str, directory: Path = None) -> Path:
+def cache_path(symbol: str, span: str, directory: Path = None, adjusted: bool = False) -> Path:
     directory = Path(directory) if directory is not None else CACHE_DIR
-    return directory / f"{symbol.replace('=', '_').replace('^', '')}_{span}.csv"
+    suffix = "_adj" if adjusted else ""      # never mixed: an adjusted series is a different series
+    return directory / f"{symbol.replace('=', '_').replace('^', '')}_{span}{suffix}.csv"
 
 
-def _cached(symbol: str, span: str, directory: Path, max_age_days: float) -> Optional[pd.DataFrame]:
-    p = cache_path(symbol, span, directory)
+def _cached(symbol: str, span: str, directory: Path, max_age_days: float,
+            adjusted: bool = False) -> Optional[pd.DataFrame]:
+    p = cache_path(symbol, span, directory, adjusted)
     if not p.exists():
         return None
     age_days = (time.time() - p.stat().st_mtime) / 86400.0
@@ -247,21 +249,31 @@ def _cached(symbol: str, span: str, directory: Path, max_age_days: float) -> Opt
 
 
 def yahoo_daily(symbol: str, span: str = "5y", cache_dir: Path = None,
-                max_cache_age_days: float = MAX_CACHE_AGE_DAYS) -> pd.DataFrame:
+                max_cache_age_days: float = MAX_CACHE_AGE_DAYS, adjusted: bool = False) -> pd.DataFrame:
     """Daily OHLCV from Yahoo's public chart endpoint (futures, ETFs, crypto).
 
     Every successful fetch is written to a CSV cache. When the fetch fails after
     its retries, a cache younger than `max_cache_age_days` is returned instead,
     with a warning, so a transient outage produces a stale-but-honest mark
     rather than no mark. Callers that rank assets must still check staleness.
+
+    `adjusted=True` adds an `adj_close` column: the close adjusted for splits and
+    dividends, so an ETF's return includes what it paid out (TLT over ten years:
+    x0.62 on price, x0.83 with dividends). It is cached in its own file and falls
+    back only to that file; a payload without it is an error, never a silent
+    unadjusted series. The default leaves the request, columns and cache as they were.
     """
-    q = urllib.parse.urlencode({"range": span, "interval": "1d"})
+    params = {"range": span, "interval": "1d"}
+    if adjusted:
+        params["events"] = "div,split"
+    q = urllib.parse.urlencode(params)
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(symbol)}?{q}"
     try:
         payload = http_json(url, headers={"User-Agent": "Mozilla/5.0"})
         result = payload["chart"]["result"][0]
+        adj = result["indicators"]["adjclose"][0]["adjclose"] if adjusted else None
     except (FetchError, KeyError, IndexError, TypeError, ValueError) as exc:
-        cached = _cached(symbol, span, cache_dir, max_cache_age_days)
+        cached = _cached(symbol, span, cache_dir, max_cache_age_days, adjusted)
         if cached is None:
             raise FetchError(f"yahoo {symbol}: {exc}; no usable cache") from exc
         log.warning("yahoo %s failed (%s); using cache from %s", symbol, exc,
@@ -272,18 +284,21 @@ def yahoo_daily(symbol: str, span: str = "5y", cache_dir: Path = None,
     rows = []
     for i, t in enumerate(ts):
         o, h, l, c = (quote[k][i] for k in ("open", "high", "low", "close"))
-        if None in (o, h, l, c):
+        if None in (o, h, l, c) or (adjusted and adj[i] is None):
             continue
-        rows.append({
+        row = {
             "dt": dt.datetime.fromtimestamp(t, dt.timezone.utc),
             "ts": int(t),
             "open": float(o), "high": float(h), "low": float(l), "close": float(c),
             "volume": float(quote["volume"][i] or 0),
-        })
+        }
+        if adjusted:
+            row["adj_close"] = float(adj[i])
+        rows.append(row)
     df = pd.DataFrame(rows).sort_values("dt").reset_index(drop=True)
     if not df.empty:
         try:
-            save(df, cache_path(symbol, span, cache_dir))
+            save(df, cache_path(symbol, span, cache_dir, adjusted))
         except OSError as exc:  # a read-only disk must not stop a mark
             log.warning("could not write cache for %s: %s", symbol, exc)
     return df

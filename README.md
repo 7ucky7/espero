@@ -282,8 +282,19 @@ funding rarely reaches the 15% bar, and when it did the basis took the funding b
 months it makes +5.1% a year against #12's +10.9% on Hyperliquid. #12's edge is recorded as
 Hyperliquid-only, pending its forward test: [research/RESULTS_CARRY3.md](research/RESULTS_CARRY3.md).
 
-Scoreboard: fifteen tests, three passes. Two are risk construction; the third is income (carry at
-maker fees) with a forward test still attached. No predictive edge has been found at any horizon.
+The fifteenth took the published trend rule (Hurst-Ooi-Pedersen's equal-weighted 1-, 3- and 12-month
+lookbacks), long/flat, every position sized to the same volatility, across index, bond and commodity
+ETFs, BTC/ETH/SOL and an altcoin sleeve, 2018–2026, and asked whether the timing adds anything to the
+sizing. It does not: +6.6% CAGR, Sharpe 0.87, max drawdown −14%, against +8.9%, 0.90 and −24% for the
+same book always invested. It cut the drawdown beyond the vol-matched book, beat 60/40, and survived
+doubled costs, but its excess return over the sizing was −0.4 bps a week (t −0.18). FAIL:
+[research/RESULTS_TREND.md](research/RESULTS_TREND.md). Its snapshot also exposed Yahoo ticker
+collisions in the crypto universe (ARB, TIA, WLD, OP), recorded in [ERRATA](research/ERRATA.md).
+`espero board` shows the rule's trend readings as a scanner, without sizes.
+
+Scoreboard: sixteen tests, three passes. Two are risk construction; the third is income (carry at
+maker fees) with a forward test still attached. No predictive edge has been found at any horizon,
+and across #4, #8 and #15 the one effect that survives is volatility sizing.
 
 ## The numbers
 
