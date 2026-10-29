@@ -54,13 +54,14 @@ highs. It is the same direction #18 found (forced breaks fade more), the same re
 pre-registration cited: nobody chose those trades, and once they are done the price comes back.
 
 The biggest single example: 2026-06-25 13:00, $144M of BTC longs liquidated in an hour that fell
-4.97%. It was up 2.04% one hour later and 3.22% a day later.
+4.85%. It was up 2.06% one hour later and 3.27% a day later.
 
 ## Why this is not a result
 
 - **Six numbers were looked at** (two sides, three horizons), with t-statistics from 2.2 to 2.6:
   about what the best of six would be with nothing there plus a little luck.
-- **Three months, one regime**: a falling market (BTC from about 85,000 to 58,000), mostly majors.
+- **Three months, one stretch of market**: BTC went from 68,288 (April 1) up to 82,485 in May and
+  down to 58,605 by June 30, with most spikes in the June sell-off; mostly majors.
 - **The spike threshold uses each coin's whole three months**, so it knew in April how big June's
   liquidations would be. A live rule must use only the past.
 - **Feeds**: Binance's liquidation stream is sampled (at most one a second per coin), so its
