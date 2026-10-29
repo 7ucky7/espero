@@ -3,6 +3,7 @@ next open as "manual", or closed at once when no loop holds the journal."""
 from __future__ import annotations
 
 import contextlib
+import importlib.util
 import io
 import unittest
 from pathlib import Path
@@ -149,3 +150,22 @@ class TestManualOpen(PaperTestCase):
         self.assertIn("filled BUY", text)
         self.assertIn("holding", text)
         self.assertFalse(Path(str(self.db) + ".open").exists())
+
+
+@unittest.skipUnless(importlib.util.find_spec("rich") and importlib.util.find_spec("questionary"), "tui extra")
+class TestPaperBooks(PaperTestCase):
+    def test_lists_open_positions_queued_orders_and_whether_a_loop_runs(self):
+        from espero import ui
+        t = TestManualClose.opened(self)                 # writes paper.db with an open position
+        t.request_close(bar(3, 0)["ts"])
+        t.journal.close()
+        Path(self.db).rename(Path(self.tmp.name) / "paper-x.db")
+        db = Path(self.tmp.name) / "paper-x.db"
+        with JournalLock(db):
+            books = ui.paper_books(Path(self.tmp.name))
+        self.assertEqual(len(books), 1)
+        b = books[0]
+        self.assertTrue(b["running"])
+        self.assertIsNotNone(b["position"])
+        self.assertEqual(b["queued"], "SELL")
+        self.assertFalse(ui.paper_books(Path(self.tmp.name))[0]["running"])

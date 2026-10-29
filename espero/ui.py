@@ -455,11 +455,115 @@ def act_deposit(console, state):
         _run(console, [which, "--state", str(state / f"{which}.db"), "--deposit", f"{amt}"], state)
 
 
+PAPER_DIR = Path("/tmp")
+
+
+def paper_books(folder: Path = PAPER_DIR) -> List[dict]:
+    """Every paper journal in `folder`: its loop running or not, the open position with its
+    P&L at the last recorded close, and its cash. Read from copies (the loops own the files)."""
+    from .board import copied
+    from .lock import JournalBusy, JournalLock
+
+    out = []
+    for db in sorted(Path(folder).glob("paper-*.db")):
+        try:
+            with JournalLock(db):
+                running = False
+        except JournalBusy:
+            running = True
+        book = {"path": db, "running": running, "product": "", "position": None, "last": None, "cash": None,
+                "queued": None}
+        with copied(db) as dst:
+            if dst is None:
+                continue
+            con = sqlite3.connect(dst)
+            con.row_factory = sqlite3.Row
+            try:
+                pos = con.execute("SELECT * FROM positions WHERE exit_ts IS NULL "
+                                  "ORDER BY entry_ts DESC LIMIT 1").fetchone()
+                bar = con.execute("SELECT product, close FROM bars ORDER BY ts DESC LIMIT 1").fetchone()
+                eq = con.execute("SELECT cash FROM equity ORDER BY ts DESC LIMIT 1").fetchone()
+                queued = con.execute("SELECT side FROM orders WHERE status='pending' "
+                                     "ORDER BY created_ts LIMIT 1").fetchone()
+            except sqlite3.Error:
+                continue
+            finally:
+                con.close()
+        book["product"] = (pos["product"] if pos else bar["product"] if bar else "")
+        book["position"] = dict(pos) if pos else None
+        book["last"] = float(bar["close"]) if bar else None
+        book["cash"] = float(eq["cash"]) if eq else None
+        book["queued"] = queued["side"] if queued else None
+        out.append(book)
+    return out
+
+
+def paper_table(books: List[dict]):
+    tbl = Table(box=None, header_style=MUTED, padding=(0, 2))
+    for col in ("book", "loop", "position", "entry", "last", "P&L", "cash"):
+        tbl.add_column(col, justify="left" if col in ("book", "loop", "position") else "right")
+    for b in books:
+        p, last = b["position"], b["last"]
+        if p:
+            pnl = (last - p["entry_px"]) * p["size"] - (p["entry_fee"] or 0) if last else 0.0
+            pos_txt, entry = f"{p['size']:.6f} {b['product']}", f"{p['entry_px']:.2f}"
+            pnl_txt = Text(f"{pnl:+.2f} ({100 * (last / p['entry_px'] - 1):+.2f}%)",
+                           style="green" if pnl >= 0 else "red")
+        else:
+            pos_txt, entry, pnl_txt = Text("flat", style=MUTED), "", Text("")
+        if b.get("queued"):
+            pos_txt = Text(f"{b['queued']} queued (next open)", style="yellow")
+        tbl.add_row(b["path"].name, Text("running", style="green") if b["running"] else Text("stopped", style=MUTED),
+                    pos_txt, entry, "" if last is None else f"{last:.2f}", pnl_txt,
+                    "" if b["cash"] is None else f"{b['cash']:.2f}")
+    return tbl
+
+
 def act_paper(console, state):
-    product = questionary.text("Product:", default="BTC-USD", style=STYLE).ask() or "BTC-USD"
-    console.print(Text("ctrl-c returns to the menu; state is kept in /tmp", style=MUTED))
-    _run(console, ["paper", "--product", product, "--state", f"/tmp/paper-{product.lower()}.db",
-                   "--loop", "--interval", "60"], state)
+    what = questionary.select("Paper trading", style=STYLE, pointer="❯", choices=[
+        "Show paper positions", "Run a paper loop (stays here; ctrl-c returns)",
+        "Buy by hand in a running loop", "Close a position by hand", "Back"]).ask()
+    if not what or what == "Back":
+        return
+    if what.startswith("Show"):
+        books = paper_books()
+        console.print(paper_table(books) if books else Text("no paper books in /tmp yet", style=MUTED))
+        return
+    if what.startswith("Run"):
+        product = (questionary.text("Product:", default="BTC-USD", style=STYLE).ask() or "BTC-USD").upper()
+        bars = questionary.select("Bar size:", choices=["5 minutes (fills and P&L every 5 min)", "1 hour"],
+                                  style=STYLE, pointer="❯").ask() or "1 hour"
+        five = bars.startswith("5")
+        venue = questionary.select("Charge whose fees?", choices=["binanceus", "coinbase", "kraken", "hyperliquid"],
+                                   default="binanceus", style=STYLE, pointer="❯").ask() or "binanceus"
+        db = PAPER_DIR / f"paper-{product.lower()}{'-5m' if five else ''}.db"
+        console.print(Text(f"ctrl-c returns to the menu; the book is {db}. Buy and close by hand from a second "
+                           "espero ui window (Paper trading)", style=MUTED))
+        _run(console, ["paper", "--product", product, "--granularity", "300" if five else "3600", "--venue", venue,
+                       "--state", str(db), "--loop", "--interval", "30" if five else "60"], state)
+        return
+    books = paper_books()
+    if what.startswith("Buy"):
+        books = [b for b in books if b["running"] and not b["position"]]
+        if not books:
+            console.print(Text("no running loop without a position: run one first (in another window)", style=MUTED))
+            return
+        pick = questionary.select("Which book?", choices=[b["path"].name for b in books], style=STYLE,
+                                  pointer="❯").ask()
+        if not pick:
+            return
+        usd = questionary.text("Dollars to buy:", default="100", style=STYLE).ask() or "100"
+        _run(console, ["paper-open", "--state", str(PAPER_DIR / pick), "--usd", usd], state)
+        return
+    books = [b for b in books if b["position"]]
+    if not books:
+        console.print(Text("no open paper position", style=MUTED))
+        return
+    console.print(paper_table(books))
+    pick = questionary.select("Close which?", choices=[b["path"].name for b in books], style=STYLE,
+                              pointer="❯").ask()
+    if pick:
+        _run(console, ["paper-close", "--state", str(PAPER_DIR / pick)], state)
 
 
 def act_board(console, state):
@@ -549,7 +653,7 @@ MENU: List[Tuple[str, Callable]] = [
     ("Show the log", act_logs),
     ("Scan: lead-lag signal across all coins, pick one to trade", act_scan),
     ("Fast screen: resting orders on the live book (semi-auto, paper)", act_fast),
-    ("Watch the single-coin paper loop", act_paper),
+    ("Paper trading: run a loop, buy or close by hand, see positions", act_paper),
     ("Carry (#12): the forward books, their loops, funding vs the 15% bar", act_carry),
     ("Factor IC table (research)", act_factors),
     ("Run the tests", act_tests),
