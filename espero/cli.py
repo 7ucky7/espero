@@ -883,6 +883,7 @@ def _cmd_scan(args: argparse.Namespace) -> int:
         console.print(f"[grey58]{n_buy} buy candidate(s), {n_cold} more past the threshold but cold. pctile = how "
                       f"unusual this gap is for that coin over two weeks. cold = 2-week IC below zero: the "
                       f"signal has pointed the wrong way on that coin lately.[/]")
+        console.print(f"[grey58]{fst.REFERENCE_NOTE}[/]")
         if args.once or not sys.stdin.isatty():
             return 0
         try:

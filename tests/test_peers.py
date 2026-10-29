@@ -150,3 +150,20 @@ class TestMinTrain(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestScanSaysWhy(unittest.TestCase):
+    def test_the_scan_says_why_btc_is_its_only_leader(self):
+        import contextlib
+        import io
+
+        from espero import cli
+        from espero import fast as fst
+        buf = io.StringIO()
+        with mock.patch.object(fst, "scan", return_value=[]), \
+                mock.patch.object(fst, "source_feed", return_value=(None, None)), \
+                contextlib.redirect_stdout(buf):
+            self.assertEqual(cli.main(["scan", "--products", "ETH", "--once"]), 0)
+        text = " ".join(buf.getvalue().split())
+        self.assertIn("RESULTS_PEERS.md", text)
+        self.assertIn("BTC is the only leader", text)

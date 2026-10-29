@@ -53,6 +53,10 @@ def source_feed(source: str):
 MEASURED_EDGE_BPS = 3.7
 MEASURED_EDGE_SOURCE = "research/RESULTS_LEADLAG2.md (rev_1 family, 3h, OOS)"
 HORIZON_H = 3
+# why the scan has no leader but BTC (research/PREREGISTRATION_PEERS.md, outcome on FAIL)
+REFERENCE_NOTE = ("BTC is the only leader: an alt-basket leader (#16) and ETH for its ecosystem (#17) were tested "
+                  "on a year this repo had never seen and failed, research/RESULTS_PEERS.md; this BTC signal "
+                  "failed too (#9b), so read it as a picture of the hour, not an edge.")
 MIN_EDGE_RATIO = 2.0          # below this the proposal defaults to "no"
 
 

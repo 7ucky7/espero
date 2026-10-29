@@ -292,7 +292,15 @@ doubled costs, but its excess return over the sizing was −0.4 bps a week (t �
 collisions in the crypto universe (ARB, TIA, WLD, OP), recorded in [ERRATA](research/ERRATA.md).
 `espero board` shows the rule's trend readings as a scanner, without sizes.
 
-Scoreboard: sixteen tests, three passes. Two are risk construction; the third is income (carry at
+The sixteenth and seventeenth asked why the scan measures every coin against BTC only, and whether
+a coin's own peers, or ETH for Ethereum tokens, would lead it better. On a year of Coinbase hourly
+bars no test here had seen (2024-10 → 2025-10), neither did: a coin's beta to its leave-one-out peer
+basket times the basket's last hour has an out-of-sample IC t of −0.9, and the same with ETH −2.5,
+the wrong sign. Both FAIL on all four criteria: [research/RESULTS_PEERS.md](research/RESULTS_PEERS.md).
+One-hour reversal replicated on the new year (t 10.7, +4 bps per three hours): the bid-ask bounce
+again. The scan keeps BTC as its only leader and says why.
+
+Scoreboard: eighteen tests, three passes. Two are risk construction; the third is income (carry at
 maker fees) with a forward test still attached. No predictive edge has been found at any horizon,
 and across #4, #8 and #15 the one effect that survives is volatility sizing.
 
