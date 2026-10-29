@@ -5,6 +5,24 @@ change its verdict; the code that produced it stays as it ran, marked with a com
 points here. Numbers below were reproduced from cached data during the 2026-10-27 audit
 (docs/AUDIT_2026-10-27.md, section D) unless stated.
 
+## 2026-10-29: Yahoo ticker collisions in `xs.UNIVERSE` (found by #15)
+
+**No verdict changes; two live accounts read wrong series for some coins.**
+
+- **`ARB-USD` on Yahoo is not Arbitrum.** It is a dead token: last close $0.0006 on zero volume.
+  `TIA-USD`, `WLD-USD` and `OP-USD` are other tokens until Yahoo switches them to the real coin,
+  with one-day jumps of +68,063,639% (2024-03-26), +31,092% (2023-08-02) and +200,020%
+  (2022-10-06). Found in #15's snapshot (research/RESULTS_TREND.md, transparency).
+- **#8 (multifactor, `mf.py`)** filters coins on $1M of 30-day dollar volume, which keeps the dead
+  `ARB-USD` and the impostor periods out. Its lookbacks are 30 days, and its holdout
+  (2024-07-01 → 2026-10-27) starts after all three switches, so no holdout window straddles one;
+  the OP and WLD switches fall in its design period. Verdict unaffected; the forward test from
+  2026-11-02 trades only coins that pass the filter.
+- **The XS account (`xs.py`, #7's rule)** has no liquidity filter: a dead token's sporadic prints
+  can rank in its 7-day top 10. Not fixed here; the account's own record stands as it ran.
+- **`SHIB-USD`** is printed as exactly 0 on 258 days (2020-08-01 → 2021-04-15): any lookback that
+  reaches back to them compares against zero.
+
 ## 2026-10-28 (later): degen replay clock
 
 **#10's verdict (FAIL) stands; two of its explanations do not.**

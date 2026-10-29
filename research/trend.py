@@ -97,7 +97,7 @@ def buy_and_hold(frames: Dict[str, pd.DataFrame], sym: str, start=trend.START, e
 
 # -------------------------------------------------------------------- metrics
 def weekly(eq: pd.Series) -> pd.Series:
-    return eq[eq.index.weekday == 0].pct_change().dropna()
+    return eq[eq.index.day_of_week == 0].pct_change().dropna()
 
 
 def sharpe(r: pd.Series) -> float:

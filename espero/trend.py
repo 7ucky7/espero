@@ -177,11 +177,13 @@ def ann_vol(px: pd.Series, days: int = VOL_DAYS) -> Optional[float]:
     tail = px.iloc[px.index.searchsorted(t - pd.Timedelta(days=HISTORY_DAYS), side="right"):]
     if len(tail) < 2:
         return None
-    rets = np.diff(np.log(tail.to_numpy(dtype=float)))
+    with np.errstate(divide="ignore", invalid="ignore"):     # Yahoo prints SHIB's 2020 prices as 0
+        rets = np.diff(np.log(tail.to_numpy(dtype=float)))
     window = rets[tail.index[1:] > t - pd.Timedelta(days=days)]
     if window.size < MIN_VOL_RETURNS:
         return None
-    return float(np.std(window, ddof=1) * math.sqrt(len(tail)))
+    vol = float(np.std(window, ddof=1) * math.sqrt(len(tail)))
+    return vol if math.isfinite(vol) else None              # NaN would slip past `if vol`
 
 
 def alt_liquid(df: pd.DataFrame) -> bool:

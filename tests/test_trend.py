@@ -112,6 +112,11 @@ class TestSignal(unittest.TestCase):
             px = pd.Series(100 * np.exp(a * (np.arange(len(cal)) % 2)), index=cal)
             self.assertAlmostEqual(trend.ann_vol(px), 0.20, delta=0.01)
 
+    def test_vol_of_a_series_with_a_zero_print_is_none_not_nan(self):
+        px = pd.Series(100 * np.exp(0.01 * (np.arange(80) % 2)), index=pd.date_range("2026-01-01", periods=80))
+        px.iloc[-5] = 0.0                                   # Yahoo rounds SHIB's 2020 prices to 0
+        self.assertIsNone(trend.ann_vol(px))
+
     def test_vol_needs_twenty_returns(self):
         px = pd.Series(100 + np.arange(15.0), index=pd.date_range("2026-01-01", periods=15))
         self.assertIsNone(trend.ann_vol(px))
