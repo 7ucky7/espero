@@ -58,29 +58,38 @@ def load(data: Path = DATA) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=aggr.COLUMNS)
 
 
-def ledger(p: Dict[str, pd.DataFrame]) -> pd.DataFrame:
-    """Every long-liquidation spike in the forward window whose 4-hour exit is recorded."""
+LEDGERS = {"long": "liqfwd_trades.csv", "short": "liqfwd_short_trades.csv"}   # #22, #23
+
+
+def ledger(p: Dict[str, pd.DataFrame], side: str = "long") -> pd.DataFrame:
+    """Every spike on `side` in the forward window whose 4-hour exit is recorded. `ret` is
+    the paper trade's: a long for long-liquidation spikes (#22), a short for short ones (#23)."""
     rows = []
     for c, df in p.items():
         close = df["close"].to_numpy()
-        for t in liqspike.spikes(df, "long", FORWARD_FROM, FORWARD_TO):
+        for t in liqspike.spikes(df, side, FORWARD_FROM, FORWARD_TO):
             i = df.index.get_loc(t)
             if i + HOLD_H >= len(df) or not (np.isfinite(close[i]) and np.isfinite(close[i + HOLD_H])):
                 continue
+            move = float(close[i + HOLD_H] / close[i] - 1)
             rows.append({"coin": c, "spike_hour": t, "day": t.strftime("%Y-%m-%d"),
-                         "usd": float(df["long"].iat[i]), "entry": float(close[i]),
-                         "exit": float(close[i + HOLD_H]), "ret": float(close[i + HOLD_H] / close[i] - 1)})
+                         "usd": float(df[side].iat[i]), "entry": float(close[i]),
+                         "exit": float(close[i + HOLD_H]), "ret": move if side == "long" else -move})
     return pd.DataFrame(rows, columns=["coin", "spike_hour", "day", "usd", "entry", "exit", "ret"])
 
 
 def run(state_dir: Path, data: Path = DATA, now: Optional[pd.Timestamp] = None,
         fetch: Callable = aggr.fetch) -> dict:
     saved = record(data, now, fetch)
-    led = ledger(aggr.panel(load(data)))
-    led.to_csv(Path(state_dir) / "liqfwd_trades.csv", index=False, float_format="%.8g")
-    days = led["day"].nunique()
-    mean = float(led.groupby("day")["ret"].mean().mean()) if days else float("nan")
-    note = f"mark: {len(led)} paper trades on {days} days"
-    if days:
-        note += f", mean {1e4 * mean:+.1f} bps a day (gross; decides nothing)"
+    p = aggr.panel(load(data))
+    parts = []
+    for side, name in LEDGERS.items():
+        led = ledger(p, side)
+        led.to_csv(Path(state_dir) / name, index=False, float_format="%.8g")
+        days = led["day"].nunique()
+        part = f"{side}s {len(led)} trades on {days} days"
+        if days:
+            part += f" ({1e4 * float(led.groupby('day')['ret'].mean().mean()):+.1f} bps a day)"
+        parts.append(part)
+    note = "mark: " + "; ".join(parts) + " (paper, gross; decides nothing)"
     return {"note": note, "equity": None, "saved": saved}

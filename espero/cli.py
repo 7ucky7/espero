@@ -471,7 +471,8 @@ def _cmd_liqfwd(args: argparse.Namespace) -> int:
     out = lfm.run(sd)
     print(f"recorded: {', '.join(out['saved']) or 'nothing new'}")
     print(out["note"])
-    print(f"ledger: {sd / 'liqfwd_trades.csv'}  (research/FORWARD_LIQ.md; judged once after 2027-03-31)")
+    print(f"ledgers: {sd / lfm.LEDGERS['long']} (#22, FORWARD_LIQ.md), {sd / lfm.LEDGERS['short']} "
+          f"(#23, FORWARD_LIQSHORT.md); each judged once after 2027-03-31")
     return 0
 
 

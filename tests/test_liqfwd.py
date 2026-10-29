@@ -51,6 +51,16 @@ class TestLedger(unittest.TestCase):
         self.assertEqual(e["spike_hour"], idx[h])
         self.assertAlmostEqual(e["ret"], close[h + 4] / close[h] - 1)
 
+    def test_a_short_spike_is_a_paper_short_in_its_own_ledger(self):
+        idx = pd.date_range("2026-09-01", periods=24 * 70, freq="h", tz="UTC")
+        close = 100 * np.exp(np.cumsum(np.random.default_rng(1).normal(0, 0.002, len(idx))))
+        df = pd.DataFrame({"open": close, "close": close, "volume": 1e6, "long": 1e3, "short": 1e3}, index=idx)
+        h = idx.get_loc(pd.Timestamp("2026-11-05 09:00", tz="UTC"))
+        df.iloc[h, df.columns.get_loc("short")] = 9e4
+        self.assertEqual(len(lf.ledger({"BTC": df}, "long")), 0)
+        e = lf.ledger({"BTC": df}, "short").iloc[0]
+        self.assertAlmostEqual(e["ret"], -(close[h + 4] / close[h] - 1))      # a short gains when it falls
+
     def test_spikes_before_the_forward_window_are_not_trades(self):
         idx = pd.date_range("2026-09-01", periods=24 * 70, freq="h", tz="UTC")
         df = pd.DataFrame({"open": 1.0, "close": 1.0, "volume": 1e6, "long": 1e3, "short": 1e3}, index=idx)
