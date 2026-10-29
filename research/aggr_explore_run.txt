@@ -1,0 +1,27 @@
+downloading hourly bars from api.aggr.trade (cached in data/aggr/) ...
+/Users/fredp/Espero Trading QuantBot/espero/research/aggr_explore.py:202: RuntimeWarning: Mean of empty slice
+  per_day = [np.nanmean(np.array(v), axis=0) for v in days.values()]
+
+## exploration: 14 coins, 2026-04-01 00:00 -> 2026-06-30 23:00 UTC (July-October sealed, unread)
+
+liquidations, all coins and venues: longs $7.46B, shorts $4.60B
+spikes (top 2% of each coin's hours by liquidation share, one per cascade): 400 long, 478 short
+
+| after a spike in | n | the spike hour itself | +1h | +4h | +24h |
+|---|---|---|---|---|---|
+| longs liquidated | 400 | -71 bps | +15 bps (t 2.5) | +29 bps (t 2.2) | +65 bps (t 2.4) |
+| shorts liquidated | 478 | +72 bps | +4 bps (t 0.6) | -26 bps (t -2.6) | -56 bps (t -2.6) |
+
+forward returns are in excess of the average hour (1h -0.9 bps, 4h -4.2 bps, 24h -25.9 bps); t counts each day once
+
+the biggest spikes:
+  2026-06-25 13:00 BTC   long  $ 143.7M (3.7% of volume)  hour  -497 bps  then 1h  +204  4h  +239  24h  +322
+  2026-05-17 23:00 ETH   long  $ 118.3M (6.1% of volume)  hour  -226 bps  then 1h   -73  4h   -58  24h    -4
+  2026-06-07 22:00 BTC   short $  97.8M (4.7% of volume)  hour  +173 bps  then 1h   +74  4h   +42  24h   +91
+  2026-06-25 13:00 ETH   long  $  90.9M (4.6% of volume)  hour  -617 bps  then 1h  +196  4h  +239  24h  +205
+  2026-05-23 07:00 BTC   long  $  85.4M (4.5% of volume)  hour  -106 bps  then 1h   +11  4h   +25  24h  +291
+  2026-04-17 13:00 BTC   short $  78.1M (2.1% of volume)  hour  +143 bps  then 1h   +68  4h   +22  24h  -158
+  2026-05-17 23:00 BTC   long  $  70.3M (3.6% of volume)  hour   -68 bps  then 1h   -33  4h   -69  24h   -61
+  2026-05-23 07:00 ETH   long  $  62.3M (3.8% of volume)  hour  -164 bps  then 1h    +9  4h   +15  24h  +447
+
+-> research/aggr_explore/ (btc, eth, sol, doge, paths .svg; spikes.csv)
