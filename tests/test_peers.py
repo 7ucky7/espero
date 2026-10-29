@@ -3,6 +3,7 @@ the Fama-MacBeth control, the past-window fetch and evaluate's minimum training.
 from __future__ import annotations
 
 import datetime as dt
+import importlib.util
 import unittest
 from unittest import mock
 
@@ -152,7 +153,11 @@ if __name__ == "__main__":
     unittest.main(verbosity=2)
 
 
+HAVE_RICH = importlib.util.find_spec("rich") is not None
+
+
 class TestScanSaysWhy(unittest.TestCase):
+    @unittest.skipUnless(HAVE_RICH, "tui extra not installed")
     def test_the_scan_says_why_btc_is_its_only_leader(self):
         import contextlib
         import io
