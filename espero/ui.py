@@ -550,11 +550,15 @@ def main(state: Optional[Path] = None) -> int:
         return 2
     state = Path(state or ".").resolve()
     console = Console()
+    empty = not any((state / name).exists() for name in ("tsmom.db", "xs.db", "mf.db", "health.json"))
     actions: Dict[str, Callable] = {label: fn for label, fn in MENU}
     while True:
         console.clear()
         console.print(header(state))
         console.print(accounts_table(state))
+        if empty:
+            console.print(Text(f"no accounts in {state}: start from the project folder or pass --state-dir",
+                               style="bold yellow"))
         console.print()
         try:
             choice = questionary.select("What do you want to do?", choices=[m[0] for m in MENU],

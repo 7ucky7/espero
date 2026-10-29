@@ -127,3 +127,32 @@ class TestRender(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestStateDir(unittest.TestCase):
+    """Started from the wrong folder, the screens showed $0.00 as if the accounts were gone."""
+
+    def setUp(self):
+        import os
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        self.old = os.getcwd()
+        os.chdir(self.tmp.name)
+
+    def tearDown(self):
+        import os
+        os.chdir(self.old)
+        self.tmp.cleanup()
+
+    def test_an_empty_folder_falls_back_to_the_project(self):
+        from espero import cli
+        self.assertEqual(cli.state_dir(), cli.PROJECT_DIR)
+
+    def test_a_folder_with_accounts_is_used(self):
+        from espero import cli
+        Path(self.tmp.name, "xs.db").write_text("")
+        self.assertEqual(cli.state_dir(), Path("."))
+
+    def test_an_explicit_folder_wins(self):
+        from espero import cli
+        self.assertEqual(cli.state_dir("/somewhere"), Path("/somewhere"))

@@ -8,6 +8,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 
@@ -845,9 +846,26 @@ def _cmd_scan(args: argparse.Namespace) -> int:
                  threshold=threshold, order_notional=args.order_notional)
 
 
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+STATE_FILES = ("tsmom.db", "xs.db", "mf.db", "health.json")
+
+
+def state_dir(given: Optional[str] = None) -> Path:
+    """Where the accounts live. An explicit --state-dir wins; otherwise the current folder if
+    it holds any account, else the project folder. Started from anywhere else, the screens
+    used to read an empty folder and show $0.00 as if the accounts had gone."""
+    if given:
+        return Path(given)
+    if any((Path.cwd() / name).exists() for name in STATE_FILES):
+        return Path(".")
+    if (PROJECT_DIR / "pyproject.toml").exists():
+        return PROJECT_DIR
+    return Path(".")
+
+
 def _cmd_ui(args: argparse.Namespace) -> int:
     from .ui import main as ui_main
-    return ui_main(Path(args.state_dir))
+    return ui_main(state_dir(args.state_dir))
 
 
 def _cmd_dashboard(args: argparse.Namespace) -> int:
@@ -919,7 +937,7 @@ def _cmd_board(args: argparse.Namespace) -> int:
         Console().print(board.table(v))
     except ImportError:
         print(board.format_plain(v))
-    for line in board.context(Path(args.state_dir)):
+    for line in board.context(state_dir(args.state_dir)):
         print(line)
     if errors:
         print(f"\n{len(errors)} symbols failed to load: {', '.join(sorted(errors))}")
@@ -949,7 +967,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="cmd", required=False)
 
     u = sub.add_parser("ui", help="interactive home screen (the default when no command is given)")
-    u.add_argument("--state-dir", default=".")
+    u.add_argument("--state-dir", default=None, help="default: here if it holds accounts, else the project folder")
     u.set_defaults(func=_cmd_ui)
 
     f = sub.add_parser("fetch", help="download public Coinbase candles to CSV")
@@ -1159,7 +1177,7 @@ def build_parser() -> argparse.ArgumentParser:
     bd = sub.add_parser("board", help="1/3/12-month trend for stocks, bonds, commodities, crypto (#15 scanner)")
     bd.add_argument("--alts", action="store_true", help="list every altcoin instead of one summary row")
     bd.add_argument("--carry", action="store_true", help="also show Hyperliquid funding now (#12's market)")
-    bd.add_argument("--state-dir", default=".", help="where mf.db and carry-*.db live (read-only)")
+    bd.add_argument("--state-dir", default=None, help="where mf.db and carry-*.db live (default as for ui)")
     bd.set_defaults(func=_cmd_board)
 
     d = sub.add_parser("dashboard", help="static HTML dashboard for the paper accounts")
@@ -1184,7 +1202,7 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     if args.cmd is None:
         if sys.stdin.isatty():
-            return _cmd_ui(argparse.Namespace(state_dir="."))
+            return _cmd_ui(argparse.Namespace(state_dir=None))
         parser.print_help()
         return 0
     return args.func(args)
