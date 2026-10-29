@@ -561,6 +561,8 @@ def _cmd_liqfwd(args: argparse.Namespace) -> int:
     print("#34 (PREREGISTRATION_LEVPUSH.md, part B): " + lpu.run(sd)["note"])
     from . import bidsfwd as bfw
     print("#31 (FORWARD_BIDS2.md): " + bfw.run(sd)["note"] + f" -> {sd / bfw.LEDGER}")
+    from . import settlefwd as sfw
+    print("#38 (FORWARD_SHORTSPAY.md): " + sfw.run(sd)["note"] + f" -> {sd / sfw.LEDGER}")
     return 0
 
 
