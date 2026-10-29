@@ -463,6 +463,22 @@ def _carry_loop(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_carry_screen(args: argparse.Namespace) -> int:
+    """#12's forward test on one screen. Read-only: the books are read from copies."""
+    from . import carry_view as cv
+
+    view = cv.gather(state_dir(args.state_dir), top=args.top, with_funding=not args.no_funding)
+    try:
+        from rich.console import Console
+    except ImportError:  # plain text is fine
+        print(cv.format_plain(view))
+        return 0
+    console = Console()
+    for r in cv.renderables(view):
+        console.print(r)
+    return 0
+
+
 def _cmd_carry_status(args: argparse.Namespace) -> int:
     import sqlite3
 
@@ -1174,6 +1190,11 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--execute-testnet", action="store_true",
                    help="mirror the perp leg with real resting orders on the Hyperliquid TESTNET (spot stays paper)")
     q.set_defaults(func=_cmd_carry_paper)
+    q = crs.add_parser("screen", help="#12 on one screen: the launchd loops, both books, funding vs the bar")
+    q.add_argument("--state-dir", default=None, help="where carry-*.db live (default as for ui)")
+    q.add_argument("--top", type=int, default=20, help="the loops' universe: top N perps by open interest")
+    q.add_argument("--no-funding", action="store_true", help="skip the live funding table (no network)")
+    q.set_defaults(func=_cmd_carry_screen)
     q = crs.add_parser("status", help="summary of a carry paper book")
     q.add_argument("--state", required=True)
     q.add_argument("--costs", choices=("taker", "maker"))

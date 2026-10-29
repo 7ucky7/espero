@@ -491,38 +491,28 @@ def daily_time(plist: Path = Path.home() / "Library" / "LaunchAgents" / "com.esp
         return "07:30"
 
 
-def act_degen(console, state):
-    what = questionary.select("打板 — altcoins breaking out on volume (paper, hypothesis #10)",
-                              choices=["scan: who is moving right now", "paper: run the 5m loop",
-                                       "backtest: last 30 days"],
-                              style=STYLE, pointer="❯").ask()
-    if not what:
-        return
-    source = questionary.select("Coin list and prices from?", choices=["hyperliquid", "coinbase"],
-                                default="hyperliquid", style=STYLE, pointer="❯").ask() or "hyperliquid"
-    hl = source == "hyperliquid"
-    venue = "hyperliquid" if hl else "binanceus"
-    if not what.startswith("backtest"):         # the backtest replays every venue's fees side by side
-        venue = questionary.select("Charge whose taker fee?",
-                                   choices=["hyperliquid", "binanceus", "kraken", "coinbase", "perp"],
-                                   default=venue, style=STYLE, pointer="❯").ask() or venue
-    src = ["--source", source]
-    if what.startswith("scan"):
-        _run(console, ["degen", "scan", *src, "--venue", venue], state)
-    elif what.startswith("paper"):
-        # degen.db is the #10 forward test (Coinbase bars, Binance.US fees); every other
-        # source and venue gets its own book
-        if hl:
-            db = "degen-hl.db" if venue == "hyperliquid" else f"degen-hl-{venue}.db"
-        else:
-            db = "degen.db" if venue == "binanceus" else f"degen-{venue}.db"
-        console.print(Text(f"ctrl-c returns to the menu; state is kept in {db} here", style=MUTED))
-        _run(console, ["degen", "paper", *src, "--venue", venue, "--state", str(state / db), "--loop"], state)
-    else:
-        console.print(Text("fetches 17 days of 5m Hyperliquid bars for 60 coins the first time (its 5,000-bar limit)"
-                           if hl else "fetches 30 days of 5m candles for 60 coins the first time (about ten minutes)",
-                           style=MUTED))
-        _run(console, ["degen", "backtest", *src], state)
+def act_carry(console, state):
+    """#12's forward test: the launchd loops, both books, funding against the bar."""
+    from . import carry_view as cv
+    while True:
+        _run(console, ["carry", "screen", "--state-dir", str(state)], state)
+        stopped = [c for c in cv.BOOKS if not cv.agent(c).get("pid")]
+        choices = ["Refresh", "Follow the maker log", "Follow the taker log"]
+        if stopped:
+            choices.append(f"Start the loops ({', '.join(stopped)} stopped)")
+        choices.append("Back to the menu")
+        what = questionary.select("Carry (#12)", choices=choices, style=STYLE, pointer="❯").ask()
+        if not what or what.startswith("Back"):
+            return
+        if what.startswith("Follow"):
+            path = cv.log_path("maker" if "maker" in what else "taker")
+            console.print(Text(f"following {path}: ctrl-c stops following; the loop keeps running", style=MUTED))
+            try:
+                subprocess.run(["tail", "-n", "20", "-F", str(path)])
+            except KeyboardInterrupt:
+                pass
+        elif what.startswith("Start"):
+            subprocess.run([str(cv.INSTALLER)])
 
 
 def act_factors(console, state):
@@ -560,7 +550,7 @@ MENU: List[Tuple[str, Callable]] = [
     ("Scan: lead-lag signal across all coins, pick one to trade", act_scan),
     ("Fast screen: resting orders on the live book (semi-auto, paper)", act_fast),
     ("Watch the single-coin paper loop", act_paper),
-    ("Degen altcoins: 打板 breakout scan, backtest, paper loop", act_degen),
+    ("Carry (#12): the forward books, their loops, funding vs the 15% bar", act_carry),
     ("Factor IC table (research)", act_factors),
     ("Run the tests", act_tests),
     ("Quit", None),

@@ -81,7 +81,11 @@ notes go to `fast.db` with the "why" as it stood at decision time.
 
 Kept because its journal loop is the template for the live path. Not scheduled, not a basket.
 
-## Drawer 6: degen altcoins, 打板 (hypothesis #10, paper)
+## Drawer 6: degen altcoins, 打板 (hypotheses #10 and #13, both failed; command line only)
+
+No longer in `espero ui`: the breakout chase lost before fees on every venue and in every window
+(`research/RESULTS_DEGEN.md`, `RESULTS_DEGEN2.md`), so its menu slot went to the carry screen. The
+commands stay for reruns.
 
 ```bash
 .venv/bin/python -m espero degen scan                                   # who is breaking out now: Hyperliquid perps, its fees
@@ -101,6 +105,7 @@ backtest **failed** before fees (`research/RESULTS_DEGEN.md`): use the scan as a
 ## Drawer 7: funding carry on Hyperliquid (hypothesis #11, paper)
 
 ```bash
+.venv/bin/python -m espero carry screen                                 # #12 on one screen: loops, books, funding vs the bar (also in espero ui)
 .venv/bin/python -m espero carry scan                                   # what perp shorts are being paid right now, top 20 by OI
 .venv/bin/python research/carry.py fetch                                # funding since 2023, perp and spot candles -> research/data/carry
 .venv/bin/python research/carry.py run                                  # #11: one replay, the five criteria, the verdict
