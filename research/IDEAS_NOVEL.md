@@ -104,7 +104,10 @@ that are new (2024–26 instruments) or where the data exists but nobody has sha
 - **Next.** Record funding beside #27's forward ledger from the start, and pre-register the split
   before reading it. No new data source: Binance's funding API is free.
 
-## 8. The prediction-market crowd on the hour
+## 8. The prediction-market crowd on the hour (#37 failed)
+
+**Tested** ([RESULTS_POLYHOUR.md](RESULTS_POLYHOUR.md)): at minute 30 the crowd beats a random walk (Brier 0.1702 against 0.1733) and the model's bets earn nothing after costs. Lead: at minute 15 the same bet earned +4.7 cents (t 4.3). The original note follows.
+
 
 - **Mechanism.** Polymarket runs hourly "Bitcoin up or down" markets. A fair price at the start of an
   hour is near 50%. Mid-hour it follows from the move so far and the volatility left. Retail crowds

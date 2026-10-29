@@ -376,8 +376,14 @@ shorts, redemptions close them. Over 138 weeks (2024–2026) the raw correlation
 is minted when funding is high, and high funding falls back on its own. FAIL:
 [research/RESULTS_ETHENA.md](research/RESULTS_ETHENA.md).
 
-Scoreboard: thirty-seven tests. Four passes (#4, #8, #12 provisional, #26), two real but not
-tradable (#19, #20), the rest failed (#36 the latest) or are running (#22–#24, #27, #29, #31, #32, #34). Two are risk construction; the third is income (carry at
+The thirty-eighth set Polymarket's hourly "Bitcoin Up or Down" crowd against a random-walk binary
+option at minute 30. Over 4,297 markets (May–October 2026), betting the model's side when they
+differed earned +0.9 cents a share (t 1.0), and the crowd was the better forecaster (Brier 0.1702
+against 0.1733). FAIL: [research/RESULTS_POLYHOUR.md](research/RESULTS_POLYHOUR.md). As
+information, the same bet at minute 15 earned +4.7 cents (t 4.3).
+
+Scoreboard: thirty-eight tests. Four passes (#4, #8, #12 provisional, #26), two real but not
+tradable (#19, #20), the rest failed (#37 the latest) or are running (#22–#24, #27, #29, #31, #32, #34). Two are risk construction; the third is income (carry at
 maker fees) with a forward test still attached. No predictive edge has been found at any horizon,
 and across #4, #8 and #15 the one effect that survives is volatility sizing.
 
