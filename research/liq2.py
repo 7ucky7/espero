@@ -119,6 +119,9 @@ def main() -> int:
                 out.append(ev)
             print(f"  {k}/{len(cm.COINS)} {meta}", flush=True)
     ev = pd.concat(out, ignore_index=True)
+    # empty per-day tables carry object columns into the concat; the measures are numbers
+    num = [c for c in ev.columns if c not in ("coin", "day")]
+    ev[num] = ev[num].apply(pd.to_numeric, errors="coerce")
     buf = io.StringIO()
     ev.to_csv(buf, index=False, float_format="%.6g")
     EVENTS.write_bytes(gzip.compress(buf.getvalue().encode(), mtime=0))
