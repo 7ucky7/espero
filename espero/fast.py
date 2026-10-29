@@ -11,6 +11,7 @@ Nothing is placed until Enter. The worst a bug can do is show a bad proposal.
     espero fast --replay data/book/ETH-USD_....jsonl --speed 10
 
 Keys while running:  Enter place · n decline · r reprice to the touch
+                     x close the position (proposes selling it all at the ask; Enter places it)
                      c cancel resting · j journal note · k kill (cancel all, halt) · q quit
 """
 from __future__ import annotations
@@ -395,7 +396,7 @@ class FastBook:
     def accept(self) -> Optional[str]:
         """Enter: place the proposal post-only at its price."""
         p, snap = self.proposal, self.snap
-        if p is None or snap is None or self.halted:
+        if p is None or snap is None or (self.halted and p.reason != "manual close"):
             return None
         age = time.time() - snap.ts
         if self.check_feed_age and age > self.limits.stale_feed_s:
@@ -420,6 +421,25 @@ class FastBook:
         self.why_by_order[order.id] = self.why()
         self.say(f"resting {p.side} {p.size:.6f} @ {px(p.price)}  queue ahead {order.queue_ahead:.4f}")
         return order.id
+
+    def close_position(self) -> None:
+        """x: propose selling the whole position at the ask, post-only like every order here,
+        replacing any open proposal and cancelling resting buys. Enter places it; it follows
+        the touch until then, and r reprices it once resting. Allowed after a kill."""
+        snap, inv = self.snap, self.exchange.inventory
+        if snap is None or snap.best_ask is None:
+            return
+        if inv <= 1e-12:
+            self.say("nothing to close: no position")
+            return
+        if any(o.side == "sell" for o in self.exchange.resting()):
+            self.say("a sell is already resting for the position; r moves it to the touch")
+            return                          # left alone: cancelling would lose its queue place
+        if self.exchange.cancel_all():      # only buys can be resting here
+            self.say("cancelled the resting buy")
+        self.proposal = Proposal("sell", snap.best_ask, inv, "manual close", MEASURED_EDGE_BPS,
+                                 self.cost_bps(), snap.ts)
+        self.say(f"close proposed: sell {inv:.6f} @ {px(snap.best_ask)} (Enter places it)")
 
     def decline(self) -> None:
         if self.proposal:
@@ -701,7 +721,8 @@ def render(fb: FastBook, mode: str):
     fills_p = Panel(fills, title="fills · TCA vs mid at decision", title_align="left", border_style=MUTED)
 
     # ----------------------------------------------------------- proposal
-    keys = Text("Enter place · n decline · r reprice · c cancel · j note · k kill · q quit", style=MUTED)
+    keys = Text("Enter place · n decline · x close position · r reprice · c cancel · j note · k kill · q quit",
+                style=MUTED)
     if fb.proposal:
         p = fb.proposal
         body = Text()
@@ -817,6 +838,8 @@ def run(product: str, cash: float = 500.0, venue: str = "hyperliquid", record: b
                         fb.accept()
                     elif k == "n":
                         fb.decline()
+                    elif k == "x":
+                        fb.close_position()
                     elif k == "r":
                         fb.reprice()
                     elif k == "c":

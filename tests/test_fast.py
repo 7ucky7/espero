@@ -291,3 +291,52 @@ class TestRiskAndJournal(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestManualClose(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def holding(self):
+        fb = book(self.tmp.name)
+        fb.on_snapshot(snap(), fast.SignalState(value=0.01, beta=1.0, r_leader=0.01, r_coin=0.0))
+        fb.accept()
+        fb.on_snapshot(snap(ts=5, trades=[("sell", 100.0, 5.0)]), fast.SignalState(value=0.0))
+        self.assertGreater(fb.exchange.inventory, 0)
+        return fb
+
+    def test_x_proposes_selling_everything_at_the_ask_and_enter_places_it(self):
+        fb = self.holding()
+        inv = fb.exchange.inventory
+        fb.close_position()
+        p = fb.proposal
+        self.assertEqual((p.side, p.price, p.reason), ("sell", 100.1, "manual close"))
+        self.assertAlmostEqual(p.size, inv)
+        self.assertIsNotNone(fb.accept())
+        rest = fb.exchange.resting()
+        self.assertEqual([(o.side, o.price) for o in rest], [("sell", 100.1)])
+        fb.on_snapshot(snap(ts=10, bid=100.1, ask=100.2, trades=[("buy", 100.1, 5.0)]), fast.SignalState(value=0.0))
+        self.assertLessEqual(fb.exchange.inventory, 1e-12)
+
+    def test_works_after_a_kill_and_not_without_a_position(self):
+        fb = book(self.tmp.name)
+        fb.on_snapshot(snap(), fast.SignalState(value=0.0))
+        fb.close_position()
+        self.assertIsNone(fb.proposal)
+        self.assertIn("nothing to close", fb.log[-1])
+        fb = self.holding()
+        fb.kill()
+        fb.close_position()
+        self.assertIsNotNone(fb.accept())            # a halted screen can still get out
+
+    def test_a_resting_exit_keeps_its_place(self):
+        fb = self.holding()
+        fb.close_position()
+        fb.accept()
+        first = fb.exchange.resting()[0]
+        fb.close_position()
+        self.assertIs(fb.exchange.resting()[0], first)
+        self.assertIsNone(fb.proposal)
