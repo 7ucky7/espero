@@ -455,11 +455,115 @@ def act_deposit(console, state):
         _run(console, [which, "--state", str(state / f"{which}.db"), "--deposit", f"{amt}"], state)
 
 
+PAPER_DIR = Path("/tmp")
+
+
+def paper_books(folder: Path = PAPER_DIR) -> List[dict]:
+    """Every paper journal in `folder`: its loop running or not, the open position with its
+    P&L at the last recorded close, and its cash. Read from copies (the loops own the files)."""
+    from .board import copied
+    from .lock import JournalBusy, JournalLock
+
+    out = []
+    for db in sorted(Path(folder).glob("paper-*.db")):
+        try:
+            with JournalLock(db):
+                running = False
+        except JournalBusy:
+            running = True
+        book = {"path": db, "running": running, "product": "", "position": None, "last": None, "cash": None,
+                "queued": None}
+        with copied(db) as dst:
+            if dst is None:
+                continue
+            con = sqlite3.connect(dst)
+            con.row_factory = sqlite3.Row
+            try:
+                pos = con.execute("SELECT * FROM positions WHERE exit_ts IS NULL "
+                                  "ORDER BY entry_ts DESC LIMIT 1").fetchone()
+                bar = con.execute("SELECT product, close FROM bars ORDER BY ts DESC LIMIT 1").fetchone()
+                eq = con.execute("SELECT cash FROM equity ORDER BY ts DESC LIMIT 1").fetchone()
+                queued = con.execute("SELECT side FROM orders WHERE status='pending' "
+                                     "ORDER BY created_ts LIMIT 1").fetchone()
+            except sqlite3.Error:
+                continue
+            finally:
+                con.close()
+        book["product"] = (pos["product"] if pos else bar["product"] if bar else "")
+        book["position"] = dict(pos) if pos else None
+        book["last"] = float(bar["close"]) if bar else None
+        book["cash"] = float(eq["cash"]) if eq else None
+        book["queued"] = queued["side"] if queued else None
+        out.append(book)
+    return out
+
+
+def paper_table(books: List[dict]):
+    tbl = Table(box=None, header_style=MUTED, padding=(0, 2))
+    for col in ("book", "loop", "position", "entry", "last", "P&L", "cash"):
+        tbl.add_column(col, justify="left" if col in ("book", "loop", "position") else "right")
+    for b in books:
+        p, last = b["position"], b["last"]
+        if p:
+            pnl = (last - p["entry_px"]) * p["size"] - (p["entry_fee"] or 0) if last else 0.0
+            pos_txt, entry = f"{p['size']:.6f} {b['product']}", f"{p['entry_px']:.2f}"
+            pnl_txt = Text(f"{pnl:+.2f} ({100 * (last / p['entry_px'] - 1):+.2f}%)",
+                           style="green" if pnl >= 0 else "red")
+        else:
+            pos_txt, entry, pnl_txt = Text("flat", style=MUTED), "", Text("")
+        if b.get("queued"):
+            pos_txt = Text(f"{b['queued']} queued (next open)", style="yellow")
+        tbl.add_row(b["path"].name, Text("running", style="green") if b["running"] else Text("stopped", style=MUTED),
+                    pos_txt, entry, "" if last is None else f"{last:.2f}", pnl_txt,
+                    "" if b["cash"] is None else f"{b['cash']:.2f}")
+    return tbl
+
+
 def act_paper(console, state):
-    product = questionary.text("Product:", default="BTC-USD", style=STYLE).ask() or "BTC-USD"
-    console.print(Text("ctrl-c returns to the menu; state is kept in /tmp", style=MUTED))
-    _run(console, ["paper", "--product", product, "--state", f"/tmp/paper-{product.lower()}.db",
-                   "--loop", "--interval", "60"], state)
+    what = questionary.select("Paper trading", style=STYLE, pointer="❯", choices=[
+        "Show paper positions", "Run a paper loop (stays here; ctrl-c returns)",
+        "Buy by hand in a running loop", "Close a position by hand", "Back"]).ask()
+    if not what or what == "Back":
+        return
+    if what.startswith("Show"):
+        books = paper_books()
+        console.print(paper_table(books) if books else Text("no paper books in /tmp yet", style=MUTED))
+        return
+    if what.startswith("Run"):
+        product = (questionary.text("Product:", default="BTC-USD", style=STYLE).ask() or "BTC-USD").upper()
+        bars = questionary.select("Bar size:", choices=["5 minutes (fills and P&L every 5 min)", "1 hour"],
+                                  style=STYLE, pointer="❯").ask() or "1 hour"
+        five = bars.startswith("5")
+        venue = questionary.select("Charge whose fees?", choices=["binanceus", "coinbase", "kraken", "hyperliquid"],
+                                   default="binanceus", style=STYLE, pointer="❯").ask() or "binanceus"
+        db = PAPER_DIR / f"paper-{product.lower()}{'-5m' if five else ''}.db"
+        console.print(Text(f"ctrl-c returns to the menu; the book is {db}. Buy and close by hand from a second "
+                           "espero ui window (Paper trading)", style=MUTED))
+        _run(console, ["paper", "--product", product, "--granularity", "300" if five else "3600", "--venue", venue,
+                       "--state", str(db), "--loop", "--interval", "30" if five else "60"], state)
+        return
+    books = paper_books()
+    if what.startswith("Buy"):
+        books = [b for b in books if b["running"] and not b["position"]]
+        if not books:
+            console.print(Text("no running loop without a position: run one first (in another window)", style=MUTED))
+            return
+        pick = questionary.select("Which book?", choices=[b["path"].name for b in books], style=STYLE,
+                                  pointer="❯").ask()
+        if not pick:
+            return
+        usd = questionary.text("Dollars to buy:", default="100", style=STYLE).ask() or "100"
+        _run(console, ["paper-open", "--state", str(PAPER_DIR / pick), "--usd", usd], state)
+        return
+    books = [b for b in books if b["position"]]
+    if not books:
+        console.print(Text("no open paper position", style=MUTED))
+        return
+    console.print(paper_table(books))
+    pick = questionary.select("Close which?", choices=[b["path"].name for b in books], style=STYLE,
+                              pointer="❯").ask()
+    if pick:
+        _run(console, ["paper-close", "--state", str(PAPER_DIR / pick)], state)
 
 
 def act_board(console, state):
@@ -491,38 +595,68 @@ def daily_time(plist: Path = Path.home() / "Library" / "LaunchAgents" / "com.esp
         return "07:30"
 
 
-def act_degen(console, state):
-    what = questionary.select("打板 — altcoins breaking out on volume (paper, hypothesis #10)",
-                              choices=["scan: who is moving right now", "paper: run the 5m loop",
-                                       "backtest: last 30 days"],
-                              style=STYLE, pointer="❯").ask()
-    if not what:
-        return
-    source = questionary.select("Coin list and prices from?", choices=["hyperliquid", "coinbase"],
-                                default="hyperliquid", style=STYLE, pointer="❯").ask() or "hyperliquid"
-    hl = source == "hyperliquid"
-    venue = "hyperliquid" if hl else "binanceus"
-    if not what.startswith("backtest"):         # the backtest replays every venue's fees side by side
-        venue = questionary.select("Charge whose taker fee?",
-                                   choices=["hyperliquid", "binanceus", "kraken", "coinbase", "perp"],
-                                   default=venue, style=STYLE, pointer="❯").ask() or venue
-    src = ["--source", source]
-    if what.startswith("scan"):
-        _run(console, ["degen", "scan", *src, "--venue", venue], state)
-    elif what.startswith("paper"):
-        # degen.db is the #10 forward test (Coinbase bars, Binance.US fees); every other
-        # source and venue gets its own book
-        if hl:
-            db = "degen-hl.db" if venue == "hyperliquid" else f"degen-hl-{venue}.db"
+def act_carry(console, state):
+    """#12's forward test: the launchd loops, both books, funding against the bar."""
+    from . import carry_view as cv
+    while True:
+        _run(console, ["carry", "screen", "--state-dir", str(state)], state)
+        stopped = [c for c in cv.BOOKS if not cv.agent(c).get("pid")]
+        choices = ["Refresh", "Follow the maker log", "Follow the taker log"]
+        if stopped:
+            choices.append(f"Start the loops ({', '.join(stopped)} stopped)")
+        choices.append("Back to the menu")
+        what = questionary.select("Carry (#12)", choices=choices, style=STYLE, pointer="❯").ask()
+        if not what or what.startswith("Back"):
+            return
+        if what.startswith("Follow"):
+            path = cv.log_path("maker" if "maker" in what else "taker")
+            console.print(Text(f"following {path}: ctrl-c stops following; the loop keeps running", style=MUTED))
+            try:
+                subprocess.run(["tail", "-n", "20", "-F", str(path)])
+            except KeyboardInterrupt:
+                pass
+        elif what.startswith("Start"):
+            subprocess.run([str(cv.INSTALLER)])
+
+
+FORWARD = [   # (tests, the daily step that keeps them, what they record)
+    ("#22 #23", "liqfwd", "long- and short-liquidation spikes, held 4 hours (aggr's hourly bars)"),
+    ("#24", "lowsfwd", "new 4-hour lows bought, sold 4 hours later"),
+    ("#27", "liqbreak", "#26's rule live: forced down-breaks bought for an hour"),
+    ("#32", "fundsplit", "#27's forced down-breaks: after crowded funding against not"),
+    ("#29", "postclose", "the US session's move after 16:00 ET: does it reverse?"),
+    ("#34", "levpush", "SOL and XRP pushed into 16:00 ET by their 2x funds?"),
+    ("#31", "bidsfwd", "bids 2 ATR under breakdowns, out at the breakdown price or after 4 hours"),
+    ("#38", "settlefwd", "after settlements where shorts pay hard: does the price fall?"),
+]
+
+
+def forward_table(state: Path) -> "Table":
+    """The forward paper tests, as the last daily run left them. Reads health.json only."""
+    steps = _health(state).get("steps") or {}
+    tbl = Table(title="forward tests · paper · each judged once after 2027-03-31", box=None,
+                header_style=MUTED, padding=(0, 2))
+    for col in ("test", "records", "last daily run"):
+        tbl.add_column(col)
+    for tests, step, what in FORWARD:
+        s = steps.get(step) or {}
+        if s.get("error"):
+            last = Text(s["error"], style="bold red")
         else:
-            db = "degen.db" if venue == "binanceus" else f"degen-{venue}.db"
-        console.print(Text(f"ctrl-c returns to the menu; state is kept in {db} here", style=MUTED))
-        _run(console, ["degen", "paper", *src, "--venue", venue, "--state", str(state / db), "--loop"], state)
-    else:
-        console.print(Text("fetches 17 days of 5m Hyperliquid bars for 60 coins the first time (its 5,000-bar limit)"
-                           if hl else "fetches 30 days of 5m candles for 60 coins the first time (about ten minutes)",
-                           style=MUTED))
-        _run(console, ["degen", "backtest", *src], state)
+            last = Text(s.get("note") or "not run yet", style=None if s.get("note") else MUTED)
+        tbl.add_row(tests, what, last)
+    return tbl
+
+
+def act_forward(console, state):
+    """The forward paper tests: the daily job's last notes, and a refresh on request."""
+    console.print(forward_table(state))
+    console.print(Text("running numbers decide nothing; each verdict follows its research/FORWARD_*.md",
+                       style=MUTED))
+    what = questionary.select("Forward tests", choices=["Refresh now (fetches missing days; a minute)",
+                                                        "Back to the menu"], style=STYLE, pointer="❯").ask()
+    if what and what.startswith("Refresh"):
+        _run(console, ["liqfwd", "--state-dir", str(state)], state)
 
 
 def act_factors(console, state):
@@ -559,8 +693,9 @@ MENU: List[Tuple[str, Callable]] = [
     ("Show the log", act_logs),
     ("Scan: lead-lag signal across all coins, pick one to trade", act_scan),
     ("Fast screen: resting orders on the live book (semi-auto, paper)", act_fast),
-    ("Watch the single-coin paper loop", act_paper),
-    ("Degen altcoins: 打板 breakout scan, backtest, paper loop", act_degen),
+    ("Paper trading: run a loop, buy or close by hand, see positions", act_paper),
+    ("Carry (#12): the forward books, their loops, funding vs the 15% bar", act_carry),
+    ("Forward tests (#22–#24, #27, #29, #31, #32, #34, #38): the paper ledgers, judged after March 2027", act_forward),
     ("Factor IC table (research)", act_factors),
     ("Run the tests", act_tests),
     ("Quit", None),

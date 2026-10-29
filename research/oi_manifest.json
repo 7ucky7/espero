@@ -1,0 +1,296 @@
+[
+ {
+  "coin": "BTC",
+  "status": "ok",
+  "events": 3793,
+  "measured": 3788,
+  "oi_days_missing": 0
+ },
+ {
+  "coin": "ETH",
+  "status": "ok",
+  "events": 3754,
+  "measured": 3089,
+  "oi_days_missing": 310
+ },
+ {
+  "coin": "SOL",
+  "status": "ok",
+  "events": 3728,
+  "measured": 3083,
+  "oi_days_missing": 307
+ },
+ {
+  "coin": "BNB",
+  "status": "ok",
+  "events": 3506,
+  "measured": 2872,
+  "oi_days_missing": 300
+ },
+ {
+  "coin": "XRP",
+  "status": "ok",
+  "events": 3614,
+  "measured": 2989,
+  "oi_days_missing": 308
+ },
+ {
+  "coin": "ADA",
+  "status": "ok",
+  "events": 3519,
+  "measured": 2877,
+  "oi_days_missing": 309
+ },
+ {
+  "coin": "DOGE",
+  "status": "ok",
+  "events": 3506,
+  "measured": 2926,
+  "oi_days_missing": 302
+ },
+ {
+  "coin": "AVAX",
+  "status": "ok",
+  "events": 3532,
+  "measured": 2936,
+  "oi_days_missing": 307
+ },
+ {
+  "coin": "LINK",
+  "status": "ok",
+  "events": 3575,
+  "measured": 2944,
+  "oi_days_missing": 308
+ },
+ {
+  "coin": "DOT",
+  "status": "ok",
+  "events": 3474,
+  "measured": 2851,
+  "oi_days_missing": 310
+ },
+ {
+  "coin": "TRX",
+  "status": "ok",
+  "events": 3070,
+  "measured": 2531,
+  "oi_days_missing": 305
+ },
+ {
+  "coin": "SHIB",
+  "status": "ok",
+  "events": 3351,
+  "measured": 2960,
+  "oi_days_missing": 190
+ },
+ {
+  "coin": "LTC",
+  "status": "ok",
+  "events": 3436,
+  "measured": 2799,
+  "oi_days_missing": 307
+ },
+ {
+  "coin": "BCH",
+  "status": "ok",
+  "events": 3325,
+  "measured": 2739,
+  "oi_days_missing": 308
+ },
+ {
+  "coin": "ATOM",
+  "status": "ok",
+  "events": 3302,
+  "measured": 2732,
+  "oi_days_missing": 302
+ },
+ {
+  "coin": "ETC",
+  "status": "ok",
+  "events": 3456,
+  "measured": 2897,
+  "oi_days_missing": 304
+ },
+ {
+  "coin": "XLM",
+  "status": "ok",
+  "events": 3029,
+  "measured": 2489,
+  "oi_days_missing": 303
+ },
+ {
+  "coin": "NEAR",
+  "status": "ok",
+  "events": 3220,
+  "measured": 2721,
+  "oi_days_missing": 301
+ },
+ {
+  "coin": "ARB",
+  "status": "ok",
+  "events": 2014,
+  "measured": 2014,
+  "oi_days_missing": 0
+ },
+ {
+  "coin": "OP",
+  "status": "ok",
+  "events": 2536,
+  "measured": 2536,
+  "oi_days_missing": 0
+ },
+ {
+  "coin": "FIL",
+  "status": "ok",
+  "events": 3519,
+  "measured": 2945,
+  "oi_days_missing": 301
+ },
+ {
+  "coin": "INJ",
+  "status": "ok",
+  "events": 2221,
+  "measured": 2221,
+  "oi_days_missing": 1
+ },
+ {
+  "coin": "SEI",
+  "status": "ok",
+  "events": 1536,
+  "measured": 1536,
+  "oi_days_missing": 1
+ },
+ {
+  "coin": "TIA",
+  "status": "ok",
+  "events": 1675,
+  "measured": 1675,
+  "oi_days_missing": 0
+ },
+ {
+  "coin": "RUNE",
+  "status": "ok",
+  "events": 3119,
+  "measured": 2548,
+  "oi_days_missing": 305
+ },
+ {
+  "coin": "AAVE",
+  "status": "ok",
+  "events": 3182,
+  "measured": 2593,
+  "oi_days_missing": 309
+ },
+ {
+  "coin": "MKR",
+  "status": "ok",
+  "events": 2508,
+  "measured": 2064,
+  "oi_days_missing": 294
+ },
+ {
+  "coin": "CRV",
+  "status": "ok",
+  "events": 2118,
+  "measured": 1567,
+  "oi_days_missing": 307
+ },
+ {
+  "coin": "SNX",
+  "status": "ok",
+  "events": 2655,
+  "measured": 2099,
+  "oi_days_missing": 296
+ },
+ {
+  "coin": "SUSHI",
+  "status": "ok",
+  "events": 3013,
+  "measured": 2391,
+  "oi_days_missing": 310
+ },
+ {
+  "coin": "YFI",
+  "status": "ok",
+  "events": 3181,
+  "measured": 2582,
+  "oi_days_missing": 309
+ },
+ {
+  "coin": "ALGO",
+  "status": "ok",
+  "events": 2810,
+  "measured": 2277,
+  "oi_days_missing": 300
+ },
+ {
+  "coin": "XTZ",
+  "status": "ok",
+  "events": 2000,
+  "measured": 1502,
+  "oi_days_missing": 301
+ },
+ {
+  "coin": "EOS",
+  "status": "ok",
+  "events": 2118,
+  "measured": 1516,
+  "oi_days_missing": 308
+ },
+ {
+  "coin": "ZEC",
+  "status": "ok",
+  "events": 2849,
+  "measured": 2390,
+  "oi_days_missing": 296
+ },
+ {
+  "coin": "DASH",
+  "status": "ok",
+  "events": 2840,
+  "measured": 2326,
+  "oi_days_missing": 300
+ },
+ {
+  "coin": "KSM",
+  "status": "ok",
+  "events": 2855,
+  "measured": 2231,
+  "oi_days_missing": 309
+ },
+ {
+  "coin": "ICP",
+  "status": "ok",
+  "events": 2846,
+  "measured": 2367,
+  "oi_days_missing": 365
+ },
+ {
+  "coin": "HBAR",
+  "status": "ok",
+  "events": 2889,
+  "measured": 2502,
+  "oi_days_missing": 236
+ },
+ {
+  "coin": "VET",
+  "status": "ok",
+  "events": 3144,
+  "measured": 2554,
+  "oi_days_missing": 309
+ },
+ {
+  "coin": "THETA",
+  "status": "ok",
+  "events": 3148,
+  "measured": 2595,
+  "oi_days_missing": 300
+ },
+ {
+  "coin": "WLD",
+  "status": "ok",
+  "events": 1903,
+  "measured": 1902,
+  "oi_days_missing": 2
+ }
+]

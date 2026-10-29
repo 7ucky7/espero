@@ -1,0 +1,103 @@
+calendar matches SPY's sessions on every date 2020-01-01 -> 2026-10-28
+  BTC: loading 82 months + 29 days of 5-minute bars ...
+  ETH: loading 82 months + 29 days of 5-minute bars ...
+  SOL: loading 82 months + 29 days of 5-minute bars ...
+  XRP: loading 82 months + 29 days of 5-minute bars ...
+-> research/levetf_days.csv.gz (9972 rows), research/levetf_manifest.json
+
+## data
+
+BTC: 717696 bars 2020-01-01T00:00 -> 2026-10-27T23:55; missing 3: 2019-12, 2026-10-28, 2026-10-29
+ETH: 717696 bars 2020-01-01T00:00 -> 2026-10-27T23:55; missing 3: 2019-12, 2026-10-28, 2026-10-29
+SOL: 642156 bars 2020-09-14T07:00 -> 2026-10-27T23:55; missing 11: 2019-12, 2020-01, 2020-02, 2020-03, 2020-04, 2020-05, 2020-06, 2020-07, 2020-08, 2026-10-28, 2026-10-29
+XRP: 714716 bars 2020-01-06T08:20 -> 2026-10-27T23:55; missing 3: 2019-12, 2026-10-28, 2026-10-29
+
+dates with a primary y (BTC/ETH), by era and kind:
+era     kind   
+before  closed     396
+        trading    871
+ramp    closed     107
+        trading    234
+with    closed     274
+        trading    596
+
+## criteria (BTC and ETH, each date's mean one observation)
+
+| # | criterion | actual | met |
+|---|---|---|---|
+| 1 | the push: with-era trading days, mean y > 0, t >= 3 | -1.5 bps, t -1.44, 596 days | **no** |
+| 2 | only when the ETFs trade: minus closed days > 0, t >= 2 | -1.1 bps, t -0.81 | **no** |
+| 3 | only since the ETFs exist: minus before-era trading days > 0 | -2.6 bps, t -1.38 | **no** |
+| 4 | it pays: |r| >= 2% days, mean y > 18 bps, t > 2 | -0.8 bps, t -0.46, 379 days | **no** |
+
+verdict: FAIL
+
+## information only
+
+| variant | mean | t | dates |
+|---|---|---|---|
+| BTC+ETH, with, trading, 15:45 -> 16:00 | -1.50 bps | -1.44 | 596 |
+| BTC+ETH, with, closed, 15:45 -> 16:00 | -0.38 bps | -0.42 | 274 |
+| BTC+ETH, ramp, trading, 15:45 -> 16:00 | +3.87 bps | 2.62 | 234 |
+| BTC+ETH, ramp, closed, 15:45 -> 16:00 | +1.46 bps | 0.42 | 107 |
+| BTC+ETH, before, trading, 15:45 -> 16:00 | +1.05 bps | 0.69 | 871 |
+| BTC+ETH, before, closed, 15:45 -> 16:00 | -3.57 bps | -2.12 | 396 |
+| BTC, with, trading | -1.80 bps | -1.71 | 596 |
+| BTC, with, closed | -0.74 bps | -0.91 | 274 |
+| BTC, before, trading | +2.00 bps | 1.25 | 871 |
+| BTC, before, closed | -4.72 bps | -2.63 | 396 |
+| ETH, with, trading | -1.21 bps | -0.88 | 596 |
+| ETH, with, closed | -0.02 bps | -0.02 | 274 |
+| ETH, before, trading | +0.11 bps | 0.06 | 871 |
+| ETH, before, closed | -2.42 bps | -1.17 | 396 |
+| 15:30 -> 16:00, with, trading | -2.72 bps | -1.78 | 596 |
+| 15:30 -> 16:00, with, closed | -2.18 bps | -1.56 | 274 |
+| 15:30 -> 16:00, before, trading | +2.07 bps | 0.95 | 871 |
+| 15:30 -> 16:00, before, closed | -4.54 bps | -1.66 | 396 |
+| 15:55 -> 16:00, with, trading | +0.15 bps | 0.22 | 596 |
+| 15:55 -> 16:00, with, closed | -0.44 bps | -0.89 | 274 |
+| 15:55 -> 16:00, before, trading | +1.06 bps | 1.32 | 871 |
+| 15:55 -> 16:00, before, closed | -1.75 bps | -1.68 | 396 |
+| after: 16:00 -> 16:15, with, trading | -6.00 bps | -5.62 | 596 |
+| after: 16:00 -> 16:15, with, closed | -1.12 bps | -0.91 | 274 |
+| after: 16:00 -> 16:15, before, trading | -2.79 bps | -1.89 | 871 |
+| after: 16:00 -> 16:15, before, closed | +0.89 bps | 0.44 | 396 |
+| after: 16:00 -> 17:00, with, trading | -8.06 bps | -3.74 | 596 |
+| after: 16:00 -> 17:00, with, closed | -0.54 bps | -0.20 | 274 |
+| after: 16:00 -> 17:00, before, trading | -2.80 bps | -0.99 | 871 |
+| after: 16:00 -> 17:00, before, closed | +1.15 bps | 0.32 | 396 |
+| placebo 11:45 -> 12:00 ET, with, trading | +0.70 bps | 0.51 | 596 |
+| placebo 23:45 -> 00:00 UTC, with, every date | -0.22 bps | -0.33 | 875 |
+| placebo 11:45 -> 12:00 ET, before, trading | +1.10 bps | 0.67 | 871 |
+| placebo 23:45 -> 00:00 UTC, before, every date | +5.53 bps | 5.34 | 1273 |
+
+by year, 15:45 -> 16:00 (BTC+ETH):
+
+| year | trading | t | closed | t |
+|---|---|---|---|---|
+| 2020 | -0.51 bps | -0.19 | -2.25 bps | -0.63 |
+| 2021 | -0.02 bps | -0.00 | -5.54 bps | -1.41 |
+| 2022 | +0.30 bps | 0.11 | -2.63 bps | -1.16 |
+| 2023 | +5.20 bps | 2.82 | -2.25 bps | -1.59 |
+| 2024 | +2.74 bps | 1.67 | -0.24 bps | -0.07 |
+| 2025 | +0.22 bps | 0.12 | +0.49 bps | 0.32 |
+| 2026 | -5.05 bps | -3.56 | +0.50 bps | 0.37 |
+
+with-era trading days by quintile of |r| (coin-days, each date's mean one observation):
+
+| quintile | |r| range | mean y | t | dates |
+|---|---|---|---|---|
+| 1 | 0.00% - 0.76% | -1.30 bps | -0.73 | 178 |
+| 2 | 0.76% - 1.54% | +0.96 bps | 0.58 | 199 |
+| 3 | 1.54% - 2.56% | -2.35 bps | -1.21 | 200 |
+| 4 | 2.56% - 4.19% | +0.96 bps | 0.49 | 206 |
+| 5 | 4.26% - 20.85% | -4.03 bps | -1.42 | 179 |
+
+SOL and XRP from 2025-04-08:
+
+| coin | trading | t | closed | t |
+|---|---|---|---|---|
+| SOL | +3.27 bps | 1.92 | -0.61 bps | -0.36 |
+| XRP | +8.11 bps | 4.03 | -2.25 bps | -1.33 |
+
+net of one Hyperliquid round trip (9 bps): every with-era trading day -10.50 bps; |r| >= 2% days -9.75 bps

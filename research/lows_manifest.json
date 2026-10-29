@@ -1,0 +1,335 @@
+{
+ "months": [
+  "2019-12",
+  "2020-01",
+  "2020-02",
+  "2020-03",
+  "2020-04",
+  "2020-05",
+  "2020-06",
+  "2020-07",
+  "2020-08",
+  "2020-09",
+  "2020-10",
+  "2020-11",
+  "2020-12",
+  "2021-01",
+  "2021-02",
+  "2021-03",
+  "2021-04",
+  "2021-05",
+  "2021-06",
+  "2021-07",
+  "2021-08",
+  "2021-09",
+  "2021-10",
+  "2021-11",
+  "2021-12",
+  "2022-01",
+  "2022-02",
+  "2022-03",
+  "2022-04",
+  "2022-05",
+  "2022-06",
+  "2022-07",
+  "2022-08",
+  "2022-09",
+  "2022-10",
+  "2022-11",
+  "2022-12",
+  "2023-01",
+  "2023-02",
+  "2023-03",
+  "2023-04",
+  "2023-05",
+  "2023-06",
+  "2023-07",
+  "2023-08",
+  "2023-09",
+  "2023-10",
+  "2023-11",
+  "2023-12",
+  "2024-01",
+  "2024-02",
+  "2024-03",
+  "2024-04",
+  "2024-05",
+  "2024-06",
+  "2024-07",
+  "2024-08",
+  "2024-09",
+  "2024-10",
+  "2024-11",
+  "2024-12",
+  "2025-01",
+  "2025-02",
+  "2025-03",
+  "2025-04",
+  "2025-05",
+  "2025-06",
+  "2025-07",
+  "2025-08",
+  "2025-09",
+  "2025-10",
+  "2025-11",
+  "2025-12",
+  "2026-01",
+  "2026-02",
+  "2026-03"
+ ],
+ "coins": [
+  {
+   "coin": "BTC",
+   "symbol": "BTCUSDT",
+   "months_missing": 1,
+   "status": "ok"
+  },
+  {
+   "coin": "ETH",
+   "symbol": "ETHUSDT",
+   "months_missing": 1,
+   "status": "ok"
+  },
+  {
+   "coin": "SOL",
+   "symbol": "SOLUSDT",
+   "months_missing": 9,
+   "status": "ok"
+  },
+  {
+   "coin": "BNB",
+   "symbol": "BNBUSDT",
+   "months_missing": 2,
+   "status": "ok"
+  },
+  {
+   "coin": "XRP",
+   "symbol": "XRPUSDT",
+   "months_missing": 1,
+   "status": "ok"
+  },
+  {
+   "coin": "ADA",
+   "symbol": "ADAUSDT",
+   "months_missing": 1,
+   "status": "ok"
+  },
+  {
+   "coin": "DOGE",
+   "symbol": "DOGEUSDT",
+   "months_missing": 7,
+   "status": "ok"
+  },
+  {
+   "coin": "AVAX",
+   "symbol": "AVAXUSDT",
+   "months_missing": 9,
+   "status": "ok"
+  },
+  {
+   "coin": "LINK",
+   "symbol": "LINKUSDT",
+   "months_missing": 1,
+   "status": "ok"
+  },
+  {
+   "coin": "DOT",
+   "symbol": "DOTUSDT",
+   "months_missing": 8,
+   "status": "ok"
+  },
+  {
+   "coin": "TRX",
+   "symbol": "TRXUSDT",
+   "months_missing": 1,
+   "status": "ok"
+  },
+  {
+   "coin": "SHIB",
+   "symbol": "1000SHIBUSDT",
+   "months_missing": 17,
+   "status": "ok"
+  },
+  {
+   "coin": "LTC",
+   "symbol": "LTCUSDT",
+   "months_missing": 1,
+   "status": "ok"
+  },
+  {
+   "coin": "BCH",
+   "symbol": "BCHUSDT",
+   "months_missing": 1,
+   "status": "ok"
+  },
+  {
+   "coin": "ATOM",
+   "symbol": "ATOMUSDT",
+   "months_missing": 2,
+   "status": "ok"
+  },
+  {
+   "coin": "ETC",
+   "symbol": "ETCUSDT",
+   "months_missing": 1,
+   "status": "ok"
+  },
+  {
+   "coin": "XLM",
+   "symbol": "XLMUSDT",
+   "months_missing": 1,
+   "status": "ok"
+  },
+  {
+   "coin": "NEAR",
+   "symbol": "NEARUSDT",
+   "months_missing": 10,
+   "status": "ok"
+  },
+  {
+   "coin": "ARB",
+   "symbol": "ARBUSDT",
+   "months_missing": 39,
+   "status": "ok"
+  },
+  {
+   "coin": "OP",
+   "symbol": "OPUSDT",
+   "months_missing": 30,
+   "status": "ok"
+  },
+  {
+   "coin": "FIL",
+   "symbol": "FILUSDT",
+   "months_missing": 10,
+   "status": "ok"
+  },
+  {
+   "coin": "INJ",
+   "symbol": "INJUSDT",
+   "months_missing": 32,
+   "status": "ok"
+  },
+  {
+   "coin": "SEI",
+   "symbol": "SEIUSDT",
+   "months_missing": 44,
+   "status": "ok"
+  },
+  {
+   "coin": "TIA",
+   "symbol": "TIAUSDT",
+   "months_missing": 46,
+   "status": "ok"
+  },
+  {
+   "coin": "RUNE",
+   "symbol": "RUNEUSDT",
+   "months_missing": 9,
+   "status": "ok"
+  },
+  {
+   "coin": "AAVE",
+   "symbol": "AAVEUSDT",
+   "months_missing": 10,
+   "status": "ok"
+  },
+  {
+   "coin": "MKR",
+   "symbol": "MKRUSDT",
+   "months_missing": 8,
+   "status": "ok"
+  },
+  {
+   "coin": "CRV",
+   "symbol": "CRVUSDT",
+   "months_missing": 9,
+   "status": "ok"
+  },
+  {
+   "coin": "SNX",
+   "symbol": "SNXUSDT",
+   "months_missing": 8,
+   "status": "ok"
+  },
+  {
+   "coin": "SUSHI",
+   "symbol": "SUSHIUSDT",
+   "months_missing": 9,
+   "status": "ok"
+  },
+  {
+   "coin": "YFI",
+   "symbol": "YFIUSDT",
+   "months_missing": 8,
+   "status": "ok"
+  },
+  {
+   "coin": "ALGO",
+   "symbol": "ALGOUSDT",
+   "months_missing": 6,
+   "status": "ok"
+  },
+  {
+   "coin": "XTZ",
+   "symbol": "XTZUSDT",
+   "months_missing": 2,
+   "status": "ok"
+  },
+  {
+   "coin": "EOS",
+   "symbol": "EOSUSDT",
+   "months_missing": 11,
+   "status": "ok"
+  },
+  {
+   "coin": "ZEC",
+   "symbol": "ZECUSDT",
+   "months_missing": 2,
+   "status": "ok"
+  },
+  {
+   "coin": "DASH",
+   "symbol": "DASHUSDT",
+   "months_missing": 2,
+   "status": "ok"
+  },
+  {
+   "coin": "KSM",
+   "symbol": "KSMUSDT",
+   "months_missing": 10,
+   "status": "ok"
+  },
+  {
+   "coin": "ICP",
+   "symbol": "ICPUSDT",
+   "months_missing": 17,
+   "status": "ok"
+  },
+  {
+   "coin": "HBAR",
+   "symbol": "HBARUSDT",
+   "months_missing": 15,
+   "status": "ok"
+  },
+  {
+   "coin": "VET",
+   "symbol": "VETUSDT",
+   "months_missing": 2,
+   "status": "ok"
+  },
+  {
+   "coin": "THETA",
+   "symbol": "THETAUSDT",
+   "months_missing": 5,
+   "status": "ok"
+  },
+  {
+   "coin": "WLD",
+   "symbol": "WLDUSDT",
+   "months_missing": 43,
+   "status": "ok"
+  }
+ ],
+ "events": 251011
+}

@@ -103,6 +103,28 @@ stored decision, not a recomputation.
 
 The databases and logs are left in place.
 
+## The Hyperliquid collector
+
+`espero hlcollect --loop` records what Hyperliquid shows only in the present, for ideas 3, 4, 10 and
+14 in `research/IDEAS_NOVEL.md`:
+- every 5 minutes, each perp's funding, premium, open interest and prices;
+- every 15 minutes, the positions of HLP's sub-accounts;
+- every hour, the positions and liquidation prices of the top 2,000 accounts by account value;
+- every day, yesterday's 1-minute candles.
+
+It reads public data only and never signs or trades. Its own launchd agent keeps it running:
+
+```bash
+cd "/Users/fredp/Espero Trading QuantBot/espero" && ./scripts/install-hlcollect-launchd.sh
+```
+
+- Check it: `./scripts/install-hlcollect-launchd.sh --status`, and `espero hlcollect --status` for
+  what is on disk. Its log is `~/Library/Logs/espero/hlcollect.log`.
+- Stop and remove it: `./scripts/install-hlcollect-launchd.sh --uninstall`. The data stays.
+- Data goes to `data/hlcollect/` (not committed), roughly 12–17 MB a day.
+- A restart fetches only the slots not on disk. Slots missed while the Mac slept are lost:
+  Hyperliquid keeps no history of positions, and only about three days of 1-minute candles.
+
 ## Live trading
 
 Off, and out of scope for the scheduler. `espero live` is an experimental dry-run tool; see the

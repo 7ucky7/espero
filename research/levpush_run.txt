@@ -1,0 +1,25 @@
+ADA: 708960 bars, rows 2026-04-01 -> 2026-10-27
+XLM: 710688 bars, rows 2026-04-01 -> 2026-10-27
+LINK: 712992 bars, rows 2026-04-01 -> 2026-10-27
+AVAX: 641004 bars, rows 2026-05-15 -> 2026-10-27
+DOGE: 662580 bars, rows 2025-11-20 -> 2026-10-27
+
+## criteria
+
+| # | criterion | actual | met |
+|---|---|---|---|
+| 1 | the placebo is flat: coins with $1-3M 2x funds, mean y < 3 bps | +0.52 bps, t 0.25, 145 days | yes |
+| 2 | the push continues: SOL and XRP forward, mean y > 0, t >= 2 | +nan bps, t nan, 0 days | after 2027-03-31 |
+| 3 | only when the funds trade: above the closed-day mean | +nan bps, t nan | after 2027-03-31 |
+
+placebo: flat, the test goes on forward
+
+## information only
+
+| set | trading days | t | closed days | t | after the close (16:00 -> 16:15) | t |
+|---|---|---|---|---|---|---|
+| ADA since 2026-04-01 | -3.67 bps | -1.53 | -3.45 bps | -1.52 | -4.49 bps | -1.50 |
+| XLM since 2026-04-01 | +7.35 bps | 2.12 | -4.83 bps | -1.46 | -4.09 bps | -0.95 |
+| LINK since 2026-04-01 | -0.37 bps | -0.16 | -1.30 bps | -0.71 | -4.58 bps | -1.77 |
+| AVAX since 2026-05-15 | -1.00 bps | -0.37 | -9.79 bps | -1.91 | -7.15 bps | -1.81 |
+| DOGE since 2025-11-20 | +1.11 bps | 0.61 | -2.84 bps | -1.61 | -4.66 bps | -2.47 |

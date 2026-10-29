@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import pathlib
 import sys
@@ -150,6 +151,63 @@ def _cmd_paper(args: argparse.Namespace) -> int:
         return 3
 
 
+def _cmd_paper_open(args: argparse.Namespace) -> int:
+    """Buy by hand: the running paper loop queues a BUY of --usd dollars on its next step
+    and fills it at the next bar's open (fee, slippage, the usual stop and target)."""
+    from .lock import JournalBusy, JournalLock
+
+    try:
+        with JournalLock(args.state):
+            print(f"no paper loop is running on {args.state}: start it first, then run paper-open again")
+            return 2
+    except JournalBusy:
+        Path(str(args.state) + ".open").write_text(json.dumps({"usd": args.usd}))
+        print(f"queued: the running loop buys ${args.usd:,.2f} at the next bar's open, recorded as 'manual'.\n"
+              f"watch its window for 'holding ... P&L'; take it with espero paper-close --state {args.state}")
+        return 0
+
+
+def _cmd_paper_close(args: argparse.Namespace) -> int:
+    """Take profit (or cut) by hand. With a paper loop running on the journal, leave a
+    request it picks up on its next step: a SELL queued and filled at the next bar's
+    open. With none running, close now at the latest recorded bar's close."""
+    from .lock import JournalBusy, JournalLock
+
+    request = Path(str(args.state) + ".close")
+    try:
+        with JournalLock(args.state):
+            journal = Journal(args.state)
+            try:
+                opens = journal.open_positions()
+                product = args.product or (opens[0].product if len(opens) == 1 else None)
+                if product is None:
+                    print("no open position" if not opens else
+                          f"several open positions ({', '.join(p.product for p in opens)}): pass --product")
+                    return 0 if not opens else 2
+                cfg = (PaperConfig.for_venue(args.venue, product=product) if args.venue
+                       else PaperConfig(product=product))
+                if args.fee_bps is not None:
+                    cfg.fee = args.fee_bps / 1e4
+                trader = PaperTrader(journal, cfg)
+                row = journal.db.execute("SELECT ts, close FROM bars WHERE product=? ORDER BY ts DESC LIMIT 1",
+                                         (product,)).fetchone()
+                if row is None:
+                    print(f"no bars recorded for {product}")
+                    return 2
+                print(f"no loop is running on {args.state}: closing now at the latest bar's close "
+                      f"({row['close']:.2f}), fee {1e4 * cfg.fee:.1f} bps")
+                print("  ", trader.close_now(float(row["close"]), int(row["ts"])))
+            finally:
+                journal.close()
+            request.unlink(missing_ok=True)
+            return 0
+    except JournalBusy as exc:
+        request.write_text("manual close requested\n")
+        print(f"a loop is running on this journal ({exc}).\n"
+              f"queued: it sells at the next bar's open, recorded as 'manual' ({request.name})")
+        return 0
+
+
 def _paper_loop(args: argparse.Namespace) -> int:
     from .data import recent_closed_bars
 
@@ -165,8 +223,24 @@ def _paper_loop(args: argparse.Namespace) -> int:
     print(f"fees {1e4 * cfg.fee:.1f} bps per side"
           + (f", funding {1e4 * cfg.funding_8h:.2f} bps per 8h on longs" if cfg.funding_8h else ""))
     trader = PaperTrader(journal, cfg)
+    request = Path(str(args.state) + ".close")
+    open_request = Path(str(args.state) + ".open")
 
     def step() -> None:
+        if request.exists():
+            # `espero paper-close` asked for a manual close: queue it, fill at the next open
+            known = journal.last_bar_ts(args.product)
+            if known is not None:
+                print("  ", trader.request_close(known))
+                request.unlink()
+        if open_request.exists():
+            # `espero paper-open` asked for a manual buy of N dollars at the next open
+            row = journal.db.execute("SELECT ts, close FROM bars WHERE product=? ORDER BY ts DESC LIMIT 1",
+                                     (args.product,)).fetchone()
+            if row is not None:
+                usd = float(json.loads(open_request.read_text() or "{}").get("usd", 0))
+                print("  ", trader.request_open(int(row["ts"]), usd, float(row["close"])))
+                open_request.unlink()
         df = recent_closed_bars(args.product, args.granularity, args.seed)
         if df.empty:
             print("no candles returned")
@@ -190,6 +264,8 @@ def _paper_loop(args: argparse.Namespace) -> int:
             for event in trader.on_bar(bar):
                 print("  ", event)
         print(f"   cash={trader.cash:.2f}  equity={trader._equity(float(fresh[-1]['close'])):.2f}")
+        if trader.position is not None:
+            print("  ", trader.holding(float(fresh[-1]["close"])), " (espero paper-close to take it)")
 
     if args.loop:
         print(f"paper trading {args.product} {args.granularity}s -> {args.state} "
@@ -460,6 +536,69 @@ def _carry_loop(args: argparse.Namespace) -> int:
         return 0
     step()
     book.close()
+    return 0
+
+
+def _cmd_liqfwd(args: argparse.Namespace) -> int:
+    """#22: record the days not yet saved, rebuild the paper ledger, show it."""
+    from . import liqfwd as lfm
+
+    sd = state_dir(args.state_dir)
+    out = lfm.run(sd)
+    print(f"recorded: {', '.join(out['saved']) or 'nothing new'}")
+    print(out["note"])
+    print(f"ledgers: {sd / lfm.LEDGERS['long']} (#22, FORWARD_LIQ.md), {sd / lfm.LEDGERS['short']} "
+          f"(#23, FORWARD_LIQSHORT.md); each judged once after 2027-03-31")
+    from . import lowsfwd as lwf
+    print("#24 (FORWARD_LOWS.md): " + lwf.run(sd)["note"] + f" -> {sd / lwf.LEDGER}")
+    from . import liqbreak as lbk
+    print("#27 (FORWARD_LIQBREAK.md): " + lbk.run(sd)["note"] + f" -> {sd / lbk.LEDGER}")
+    from . import fundsplit as fsp
+    print("#32 (FORWARD_FUNDSPLIT.md): " + fsp.run(sd)["note"] + f" -> {sd / fsp.LEDGER}")
+    from . import postclose as pc
+    print("#29 (FORWARD_POSTCLOSE.md): " + pc.run(sd)["note"] + f" -> {sd / pc.LEDGER}")
+    from . import levpush as lpu
+    print("#34 (PREREGISTRATION_LEVPUSH.md, part B): " + lpu.run(sd)["note"])
+    from . import bidsfwd as bfw
+    print("#31 (FORWARD_BIDS2.md): " + bfw.run(sd)["note"] + f" -> {sd / bfw.LEDGER}")
+    from . import settlefwd as sfw
+    print("#38 (FORWARD_SHORTSPAY.md): " + sfw.run(sd)["note"] + f" -> {sd / sfw.LEDGER}")
+    return 0
+
+
+def _cmd_hlcollect(args: argparse.Namespace) -> int:
+    """Hyperliquid's positions, HLP, contexts and 1-minute candles, saved under data/hlcollect/."""
+    from . import hlcollect as hc
+
+    data = Path(args.data) if args.data else hc.DATA
+    if args.status:
+        for kind, s in hc.status(data).items():
+            print(f"{kind:10s} {s['files']:6d} files  {s['bytes'] / 1e6:8.1f} MB  latest {s['latest'] or '-'}")
+        return 0
+    c = hc.Collector(data, top=args.top)
+    if args.loop:
+        print(f"collecting into {data} (top {args.top} accounts hourly, HLP every 15 min, contexts every 5 min, "
+              f"1-minute candles daily); ctrl-c stops", flush=True)
+        c.loop()
+        return 0
+    for note in c.step() or ["nothing due"]:
+        print(note)
+    return 0
+
+
+def _cmd_carry_screen(args: argparse.Namespace) -> int:
+    """#12's forward test on one screen. Read-only: the books are read from copies."""
+    from . import carry_view as cv
+
+    view = cv.gather(state_dir(args.state_dir), top=args.top, with_funding=not args.no_funding)
+    try:
+        from rich.console import Console
+    except ImportError:  # plain text is fine
+        print(cv.format_plain(view))
+        return 0
+    console = Console()
+    for r in cv.renderables(view):
+        console.print(r)
     return 0
 
 
@@ -883,6 +1022,7 @@ def _cmd_scan(args: argparse.Namespace) -> int:
         console.print(f"[grey58]{n_buy} buy candidate(s), {n_cold} more past the threshold but cold. pctile = how "
                       f"unusual this gap is for that coin over two weeks. cold = 2-week IC below zero: the "
                       f"signal has pointed the wrong way on that coin lately.[/]")
+        console.print(f"[grey58]{fst.REFERENCE_NOTE}[/]")
         if args.once or not sys.stdin.isatty():
             return 0
         try:
@@ -1062,6 +1202,18 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("--interval", type=float, default=60.0)
     pp.set_defaults(func=_cmd_paper)
 
+    po = sub.add_parser("paper-open", help="buy by hand in a running paper loop (filled at the next open)")
+    po.add_argument("--state", default="paper.db")
+    po.add_argument("--usd", type=float, default=100.0, help="dollars to buy, at most the book's cash")
+    po.set_defaults(func=_cmd_paper_open)
+
+    px = sub.add_parser("paper-close", help="close the paper position by hand (take profit early)")
+    px.add_argument("--state", default="paper.db")
+    px.add_argument("--product", default=None, help="default: the journal's only open position")
+    px.add_argument("--venue", choices=sorted(VENUES), default=None, help="fees, when no loop is running")
+    px.add_argument("--fee-bps", type=float, default=None, help="per side, when no loop is running")
+    px.set_defaults(func=_cmd_paper_close)
+
     pc = sub.add_parser("paper-compare",
                         help="replay one paper journal's bars under each venue's fees and funding")
     pc.add_argument("journal", help="a paper .db whose bars to replay")
@@ -1173,6 +1325,11 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--execute-testnet", action="store_true",
                    help="mirror the perp leg with real resting orders on the Hyperliquid TESTNET (spot stays paper)")
     q.set_defaults(func=_cmd_carry_paper)
+    q = crs.add_parser("screen", help="#12 on one screen: the launchd loops, both books, funding vs the bar")
+    q.add_argument("--state-dir", default=None, help="where carry-*.db live (default as for ui)")
+    q.add_argument("--top", type=int, default=20, help="the loops' universe: top N perps by open interest")
+    q.add_argument("--no-funding", action="store_true", help="skip the live funding table (no network)")
+    q.set_defaults(func=_cmd_carry_screen)
     q = crs.add_parser("status", help="summary of a carry paper book")
     q.add_argument("--state", required=True)
     q.add_argument("--costs", choices=("taker", "maker"))
@@ -1246,6 +1403,17 @@ def build_parser() -> argparse.ArgumentParser:
     dy.add_argument("--dry-run", action="store_true", help="preflight: no network, no account changes")
     dy.add_argument("--no-notify", action="store_true")
     dy.set_defaults(func=_cmd_daily)
+
+    hc = sub.add_parser("hlcollect", help="record Hyperliquid's positions, HLP, contexts and 1m candles (public data)")
+    hc.add_argument("--loop", action="store_true", help="run forever (what launchd runs)")
+    hc.add_argument("--status", action="store_true", help="what is on disk, then exit")
+    hc.add_argument("--top", type=int, default=2000, help="accounts by account value, snapshotted hourly")
+    hc.add_argument("--data", default=None, help="folder (default data/hlcollect in the repo)")
+    hc.set_defaults(func=_cmd_hlcollect)
+
+    lf = sub.add_parser("liqfwd", help="#22 forward paper test: record aggr's bars, show the ledger")
+    lf.add_argument("--state-dir", default=None)
+    lf.set_defaults(func=_cmd_liqfwd)
 
     bd = sub.add_parser("board", help="1/3/12-month trend for stocks, bonds, commodities, crypto (#15 scanner)")
     bd.add_argument("--alts", action="store_true", help="list every altcoin instead of one summary row")

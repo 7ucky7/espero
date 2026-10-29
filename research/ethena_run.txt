@@ -1,0 +1,25 @@
+fetch failed (HTTP Error 429: Too Many Requests), retry 1/4 in 0.6s
+fetch failed (HTTP Error 429: Too Many Requests), retry 1/4 in 0.6s
+fetch failed (HTTP Error 429: Too Many Requests), retry 2/4 in 1.4s
+fetch failed (HTTP Error 429: Too Many Requests), retry 1/4 in 0.7s
+fetch failed (HTTP Error 429: Too Many Requests), retry 2/4 in 1.4s
+weeks 2024-03-04 -> 2026-10-19: 138; weekly USDe flow sd 8.2%, Binance funding mean 6.3% a year
+
+## criteria
+
+| # | criterion | actual | met |
+|---|---|---|---|
+| 1 | Binance: next week's funding change on this week's USDe flow, b < 0, t <= -2 | b +0.025, t 0.75, 138 weeks | **no** |
+| 2 | not one stretch: b < 0 in each half | b +0.038 (t 0.32), +0.028 (t 1.30) | **no** |
+| 3 | a second venue: b < 0 on Hyperliquid | b +0.064, t 0.90, 138 weeks | **no** |
+
+verdict: FAIL
+
+## information only
+
+no controls      b -0.144  t -2.22  (138 weeks)
+BTC alone        b +0.076  t 1.98  (138 weeks)
+ETH alone        b -0.007  t -0.15  (138 weeks)
+2-week horizon   b +0.022  t 0.39  (137 weeks)
+
+size: a one-sd weekly flow (8.2%) moves next week's funding by +0.21 percentage points a year

@@ -22,6 +22,32 @@ class RunnerCase(unittest.TestCase):
         mf = mock.patch.object(runner.mfm, "run", return_value={"note": "mark", "equity": 100.0})
         self.mf_run = mf.start()
         self.addCleanup(mf.stop)
+        # #22 records aggr's bars over the network
+        lf = mock.patch.object(runner.lfm, "run", return_value={"note": "mark", "equity": None})
+        self.lf_run = lf.start()
+        self.addCleanup(lf.stop)
+        lw = mock.patch.object(runner.lwf, "run", return_value={"note": "mark", "equity": None})
+        lw.start()
+        self.addCleanup(lw.stop)
+        lb = mock.patch.object(runner.lbk, "run", return_value={"note": "mark", "equity": None})
+        lb.start()
+        self.addCleanup(lb.stop)
+        # #29 reads the repo's recorded files: not in tests
+        pc = mock.patch.object(runner.pcl, "run", return_value={"note": "mark: 3 trading days", "equity": None})
+        self.pc_run = pc.start()
+        self.addCleanup(pc.stop)
+        fsp = mock.patch.object(runner.fsp, "run", return_value={"note": "mark: no breaks yet", "equity": None})
+        self.fsp_run = fsp.start()
+        self.addCleanup(fsp.stop)
+        lpu = mock.patch.object(runner.lpu, "run", return_value={"note": "mark: 0 trading days", "equity": None})
+        self.lpu_run = lpu.start()
+        self.addCleanup(lpu.stop)
+        sfw = mock.patch.object(runner.sfw, "run", return_value={"note": "mark: 0", "equity": None})
+        self.sfw_run = sfw.start()
+        self.addCleanup(sfw.stop)
+        bf = mock.patch.object(runner.bfw, "run", return_value={"note": "mark: 0 fills", "equity": None})
+        self.bf_run = bf.start()
+        self.addCleanup(bf.stop)
         # the dashboard's signal board fetches 55 Yahoo series: no network in tests
         board = mock.patch.object(brd, "fetch_frames", return_value=({}, {}))
         board.start()
@@ -45,7 +71,18 @@ class TestDryRun(RunnerCase):
         self.assertEqual(res.exit_code, 0)
         self.assertTrue(res.steps["tsmom"].skipped)
         self.assertTrue(res.steps["mf"].skipped)
+        self.assertTrue(res.steps["liqfwd"].skipped)
+        self.assertTrue(res.steps["lowsfwd"].skipped)
+        self.assertTrue(res.steps["postclose"].skipped)
+        self.pc_run.assert_not_called()
+        self.assertTrue(res.steps["bidsfwd"].skipped)
+        self.assertTrue(res.steps["fundsplit"].skipped)
+        self.assertTrue(res.steps["levpush"].skipped)
+        self.assertTrue(res.steps["settlefwd"].skipped)
+        self.fsp_run.assert_not_called()
+        self.bf_run.assert_not_called()
         self.mf_run.assert_not_called()
+        self.lf_run.assert_not_called()
         health = json.loads((self.state / "health.json").read_text())
         self.assertTrue(health["ok"])
         self.assertTrue(health["dry_run"])
@@ -102,6 +139,20 @@ class TestIsolation(RunnerCase):
         self.assertEqual([Path(c.args[0]).name for c in calls], ["mf.db", "mf-hl.db"])
         self.assertIsNone(calls[0].kwargs.get("fetch"))           # #8 itself stays on Yahoo
         self.assertIs(calls[1].kwargs["fetch"], hl.daily)
+
+    def test_postclose_runs_after_the_files_are_recorded(self):
+        order = []
+        runner.lwf.run.side_effect = lambda *a, **k: order.append("lowsfwd") or {"note": "mark", "equity": None}
+        self.pc_run.side_effect = lambda *a, **k: order.append("postclose") or {"note": "mark", "equity": None}
+        self.bf_run.side_effect = lambda *a, **k: order.append("bidsfwd") or {"note": "mark", "equity": None}
+        self.lpu_run.side_effect = lambda *a, **k: order.append("levpush") or {"note": "mark", "equity": None}
+        with mock.patch.object(runner.tsm, "run", return_value={"note": "mark", "equity": 1.0}), \
+             mock.patch.object(runner.xsm, "run", return_value={"note": "mark", "equity": 1.0}):
+            res = self.run_daily()
+        self.assertTrue(res.steps["postclose"].ok)
+        self.assertTrue(res.steps["bidsfwd"].ok)
+        self.assertEqual(order, ["lowsfwd", "postclose", "levpush", "bidsfwd"])
+        self.assertEqual(Path(self.pc_run.call_args.args[0]), self.state)
 
     def test_trade_note_without_equity_does_not_crash_the_run(self):
         sent = []

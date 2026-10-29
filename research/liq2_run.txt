@@ -1,0 +1,52 @@
+26 coins, 429 days 2023-06-26 -> 2024-10-14 (#18's days left out); COIN-M liquidations cached in data/liq2/ ...
+  1/26 {'coin': 'BTC', 'status': 'ok', 'files': 424, 'first_file': '2023-06-26', 'last_file': '2024-10-14', 'events': 1780}
+  2/26 {'coin': 'ETH', 'status': 'ok', 'files': 425, 'first_file': '2023-06-26', 'last_file': '2024-10-14', 'events': 1747}
+  3/26 {'coin': 'SOL', 'status': 'ok', 'files': 407, 'first_file': '2023-06-26', 'last_file': '2024-10-14', 'events': 1708}
+  4/26 {'coin': 'BNB', 'status': 'ok', 'files': 358, 'first_file': '2023-06-26', 'last_file': '2024-10-14', 'events': 1560}
+  5/26 {'coin': 'XRP', 'status': 'ok', 'files': 351, 'first_file': '2023-06-26', 'last_file': '2024-10-13', 'events': 1516}
+  6/26 {'coin': 'ADA', 'status': 'ok', 'files': 382, 'first_file': '2023-06-26', 'last_file': '2024-10-13', 'events': 1372}
+  7/26 {'coin': 'DOGE', 'status': 'ok', 'files': 370, 'first_file': '2023-06-26', 'last_file': '2024-10-14', 'events': 1487}
+  8/26 {'coin': 'AVAX', 'status': 'ok', 'files': 360, 'first_file': '2023-06-26', 'last_file': '2024-10-14', 'events': 1553}
+  9/26 {'coin': 'LINK', 'status': 'ok', 'files': 353, 'first_file': '2023-06-26', 'last_file': '2024-10-13', 'events': 1536}
+  10/26 {'coin': 'DOT', 'status': 'ok', 'files': 352, 'first_file': '2023-06-26', 'last_file': '2024-10-14', 'events': 1355}
+  11/26 {'coin': 'TRX', 'status': 'ok', 'files': 219, 'first_file': '2023-06-26', 'last_file': '2024-10-12', 'events': 1233}
+  12/26 {'coin': 'LTC', 'status': 'ok', 'files': 294, 'first_file': '2023-06-26', 'last_file': '2024-10-13', 'events': 1410}
+  13/26 {'coin': 'BCH', 'status': 'ok', 'files': 279, 'first_file': '2023-06-26', 'last_file': '2024-10-10', 'events': 1536}
+  14/26 {'coin': 'ATOM', 'status': 'ok', 'files': 305, 'first_file': '2023-06-26', 'last_file': '2024-10-14', 'events': 1380}
+  15/26 {'coin': 'ETC', 'status': 'ok', 'files': 280, 'first_file': '2023-06-26', 'last_file': '2024-10-10', 'events': 1441}
+  16/26 {'coin': 'XLM', 'status': 'ok', 'files': 276, 'first_file': '2023-06-27', 'last_file': '2024-10-09', 'events': 1228}
+  17/26 {'coin': 'NEAR', 'status': 'ok', 'files': 366, 'first_file': '2023-06-26', 'last_file': '2024-10-14', 'events': 1304}
+  18/26 {'coin': 'OP', 'status': 'ok', 'files': 370, 'first_file': '2023-06-26', 'last_file': '2024-10-13', 'events': 1542}
+  19/26 {'coin': 'FIL', 'status': 'ok', 'files': 370, 'first_file': '2023-06-26', 'last_file': '2024-10-13', 'events': 1436}
+  20/26 {'coin': 'RUNE', 'status': 'ok', 'files': 307, 'first_file': '2023-06-26', 'last_file': '2024-10-13', 'events': 1405}
+  21/26 {'coin': 'AAVE', 'status': 'ok', 'files': 269, 'first_file': '2023-06-26', 'last_file': '2024-10-14', 'events': 1356}
+  22/26 {'coin': 'EOS', 'status': 'ok', 'files': 274, 'first_file': '2023-06-26', 'last_file': '2024-10-13', 'events': 633}
+  23/26 {'coin': 'THETA', 'status': 'ok', 'files': 276, 'first_file': '2023-06-26', 'last_file': '2024-10-13', 'events': 1279}
+  24/26 {'coin': 'XTZ', 'status': 'ok', 'files': 154, 'first_file': '2023-06-26', 'last_file': '2024-05-20', 'events': 596}
+  25/26 {'coin': 'ALGO', 'status': 'ok', 'files': 310, 'first_file': '2023-06-26', 'last_file': '2024-10-10', 'events': 990}
+  26/26 {'coin': 'WLD', 'status': 'ok', 'files': 9, 'first_file': '2024-10-05', 'last_file': '2024-10-14', 'events': 1523}
+
+## data
+
+events: 35906 (16169 up, 19737 down); usable: 34202 on 429 days; with no liquidation on the break's side: 64.7%
+
+## criteria (#18's, halves split at 2024-02-16)
+
+| # | criterion | actual | met |
+|---|---|---|---|
+| 1 | forced breaks fade relative to organic: mean D < 0, t <= -3 | D -23.6 bps, t -4.06, 147 days | yes |
+| 2 | not the coin mix: D on coin-centred s < 0 | D -7.7 bps, t -3.25, 429 days | yes |
+| 3 | not one era: D < 0 in both halves | -22.6 bps (76 days), -24.7 bps (71 days) | yes |
+| 4 | a long leg earns > 18 bps an hour with t > 2 | a: buy forced down-breaks +23.5 bps, t 7.13, 415 days; b: buy organic up-breaks -4.5 bps, t -0.98, 147 days | yes |
+
+verdict: PASS
+
+## information only
+
+15-minute window: D -21.5 bps, t -3.29, 130 days
+15-minute horizon: D -6.2 bps, t -1.39, 147 days
+4-hour horizon: D -43.7 bps, t -5.65, 147 days
+global terciles: D +nan bps, t nan, 0 days
+taker-flow agreement instead of s: D +0.0 bps, t 0.02, 429 days
+  a: buy forced down-breaks: +23.5 bps (t 7.13); net Hyperliquid +14.5 bps
+  b: buy organic up-breaks: -4.5 bps (t -0.98); net Hyperliquid -13.5 bps

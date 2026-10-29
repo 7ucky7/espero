@@ -60,3 +60,28 @@ fast.db
 .env
 .env.*
 !.env.example
+# #18's downloads: a few hundred MB, re-downloadable (research/liq.py)
+data/liq/
+# #19's downloads: funding history and hourly bars, re-downloadable (research/settle.py)
+data/settle/
+# #20's downloads: 5-minute bars, about a gigabyte, re-downloadable (research/lows.py)
+data/lows/
+# #22 paper ledger, rebuilt daily from data/aggr/forward
+liqfwd_trades.csv
+liqfwd_short_trades.csv
+lows_fwd_trades.csv
+liqbreak_trades.csv
+# #25 open-interest downloads (research/oi.py)
+data/oi/
+# #26 COIN-M liquidation downloads (research/liq2.py)
+data/liq2/
+# #28's extra 5-minute months and days, re-downloadable (research/levetf.py)
+data/levetf/
+# #30 downloads: 5-minute months and days, re-downloadable (research/bids.py)
+data/bids/
+# the Hyperliquid collector, public data, re-collectable only going forward (espero/hlcollect.py)
+data/hlcollect/
+# #32's Binance funding cache (espero/fundsplit.py)
+data/funding/
+# #37 Polymarket downloads (research/polyhour.py)
+data/polymarket/

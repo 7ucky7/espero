@@ -1,0 +1,42 @@
+
+sweeps of yesterday's low: 40785 (27008 reclaimed, 13777 failed) on 2180 days -> research/sweeps_events.csv.gz
+
+## criteria (each UTC day's mean one observation)
+
+| # | criterion | actual | met |
+|---|---|---|---|
+| 1 | the reversal: reclaimed sweeps' long 1h > 0, t >= 3 | +15.3 bps, t 6.99, 2122 days, 27008 sweeps | yes |
+| 2 | the reclaim matters: reclaimed minus failed > 0, t >= 2 | -4.2 bps, t -1.24 (13777 failed) | **no** |
+| 3 | not one era: > 0 in both halves | +15.5 bps (2020 -> Apr 2023), +15.1 bps (May 2023 -> 2026) | yes |
+| 4 | it pays: > 18 bps, t > 2 | +15.3 bps, t 6.99 | **no** |
+
+verdict: FAIL
+
+## information only
+
+| set | mean | t | days | events |
+|---|---|---|---|---|
+| reclaimed, 4 hours | +39.1 bps | 9.31 | 2122 | 27007 |
+| failed, 1 hour | +19.5 bps | 7.50 | 1798 | 13776 |
+| failed, 4 hours | +44.1 bps | 9.46 | 1798 | 13776 |
+| reclaimed, not near a #20 trigger | +12.5 bps | 4.55 | 1780 | 9660 |
+| reclaimed, with a #20 trigger in the hour | +12.7 bps | 5.07 | 2010 | 17348 |
+| short side (yesterday's high), reclaimed, paper short | +8.0 bps | 3.54 | 2345 | 24835 |
+| short side, failed | +11.6 bps | 5.11 | 2157 | 16128 |
+| round numbers (BTC $1,000, ETH $100), reclaimed | +6.0 bps | 1.99 | 1167 | 1525 |
+| round numbers, failed | +5.6 bps | 1.44 | 807 | 983 |
+
+share of reclaimed sweeps with a #20 trigger in the hour: 64%
+reclaimed, 1 hour, net of one taker round trip with slippage (13 bps): +2.3 bps
+
+by year, 1 hour:
+
+| year | reclaimed | failed |
+|---|---|---|
+| 2020 | +24.1 bps | +23.1 bps |
+| 2021 | +14.1 bps | +32.3 bps |
+| 2022 | +8.7 bps | +17.6 bps |
+| 2023 | +19.0 bps | +16.6 bps |
+| 2024 | +19.5 bps | +24.0 bps |
+| 2025 | +12.6 bps | +11.4 bps |
+| 2026 | +9.7 bps | +13.5 bps |

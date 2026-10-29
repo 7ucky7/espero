@@ -1,0 +1,210 @@
+[
+ {
+  "coin": "BTC",
+  "status": "ok",
+  "files": 424,
+  "first_file": "2023-06-26",
+  "last_file": "2024-10-14",
+  "events": 1780
+ },
+ {
+  "coin": "ETH",
+  "status": "ok",
+  "files": 425,
+  "first_file": "2023-06-26",
+  "last_file": "2024-10-14",
+  "events": 1747
+ },
+ {
+  "coin": "SOL",
+  "status": "ok",
+  "files": 407,
+  "first_file": "2023-06-26",
+  "last_file": "2024-10-14",
+  "events": 1708
+ },
+ {
+  "coin": "BNB",
+  "status": "ok",
+  "files": 358,
+  "first_file": "2023-06-26",
+  "last_file": "2024-10-14",
+  "events": 1560
+ },
+ {
+  "coin": "XRP",
+  "status": "ok",
+  "files": 351,
+  "first_file": "2023-06-26",
+  "last_file": "2024-10-13",
+  "events": 1516
+ },
+ {
+  "coin": "ADA",
+  "status": "ok",
+  "files": 382,
+  "first_file": "2023-06-26",
+  "last_file": "2024-10-13",
+  "events": 1372
+ },
+ {
+  "coin": "DOGE",
+  "status": "ok",
+  "files": 370,
+  "first_file": "2023-06-26",
+  "last_file": "2024-10-14",
+  "events": 1487
+ },
+ {
+  "coin": "AVAX",
+  "status": "ok",
+  "files": 360,
+  "first_file": "2023-06-26",
+  "last_file": "2024-10-14",
+  "events": 1553
+ },
+ {
+  "coin": "LINK",
+  "status": "ok",
+  "files": 353,
+  "first_file": "2023-06-26",
+  "last_file": "2024-10-13",
+  "events": 1536
+ },
+ {
+  "coin": "DOT",
+  "status": "ok",
+  "files": 352,
+  "first_file": "2023-06-26",
+  "last_file": "2024-10-14",
+  "events": 1355
+ },
+ {
+  "coin": "TRX",
+  "status": "ok",
+  "files": 219,
+  "first_file": "2023-06-26",
+  "last_file": "2024-10-12",
+  "events": 1233
+ },
+ {
+  "coin": "LTC",
+  "status": "ok",
+  "files": 294,
+  "first_file": "2023-06-26",
+  "last_file": "2024-10-13",
+  "events": 1410
+ },
+ {
+  "coin": "BCH",
+  "status": "ok",
+  "files": 279,
+  "first_file": "2023-06-26",
+  "last_file": "2024-10-10",
+  "events": 1536
+ },
+ {
+  "coin": "ATOM",
+  "status": "ok",
+  "files": 305,
+  "first_file": "2023-06-26",
+  "last_file": "2024-10-14",
+  "events": 1380
+ },
+ {
+  "coin": "ETC",
+  "status": "ok",
+  "files": 280,
+  "first_file": "2023-06-26",
+  "last_file": "2024-10-10",
+  "events": 1441
+ },
+ {
+  "coin": "XLM",
+  "status": "ok",
+  "files": 276,
+  "first_file": "2023-06-27",
+  "last_file": "2024-10-09",
+  "events": 1228
+ },
+ {
+  "coin": "NEAR",
+  "status": "ok",
+  "files": 366,
+  "first_file": "2023-06-26",
+  "last_file": "2024-10-14",
+  "events": 1304
+ },
+ {
+  "coin": "OP",
+  "status": "ok",
+  "files": 370,
+  "first_file": "2023-06-26",
+  "last_file": "2024-10-13",
+  "events": 1542
+ },
+ {
+  "coin": "FIL",
+  "status": "ok",
+  "files": 370,
+  "first_file": "2023-06-26",
+  "last_file": "2024-10-13",
+  "events": 1436
+ },
+ {
+  "coin": "RUNE",
+  "status": "ok",
+  "files": 307,
+  "first_file": "2023-06-26",
+  "last_file": "2024-10-13",
+  "events": 1405
+ },
+ {
+  "coin": "AAVE",
+  "status": "ok",
+  "files": 269,
+  "first_file": "2023-06-26",
+  "last_file": "2024-10-14",
+  "events": 1356
+ },
+ {
+  "coin": "EOS",
+  "status": "ok",
+  "files": 274,
+  "first_file": "2023-06-26",
+  "last_file": "2024-10-13",
+  "events": 633
+ },
+ {
+  "coin": "THETA",
+  "status": "ok",
+  "files": 276,
+  "first_file": "2023-06-26",
+  "last_file": "2024-10-13",
+  "events": 1279
+ },
+ {
+  "coin": "XTZ",
+  "status": "ok",
+  "files": 154,
+  "first_file": "2023-06-26",
+  "last_file": "2024-05-20",
+  "events": 596
+ },
+ {
+  "coin": "ALGO",
+  "status": "ok",
+  "files": 310,
+  "first_file": "2023-06-26",
+  "last_file": "2024-10-10",
+  "events": 990
+ },
+ {
+  "coin": "WLD",
+  "status": "ok",
+  "files": 9,
+  "first_file": "2024-10-05",
+  "last_file": "2024-10-14",
+  "events": 1523
+ }
+]

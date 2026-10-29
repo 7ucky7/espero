@@ -1,6 +1,8 @@
 """`espero daily`: the one command a scheduler runs.
 
-    tsmom mark/rebalance  ->  xs mark/rebalance  ->  mf (#8 forward test)  ->  dashboard  ->  health.json
+    tsmom -> xs -> mf (#8) -> mf-hl -> liqfwd (#22/#23) -> lowsfwd (#24) -> liqbreak (#27)
+          -> fundsplit (#32) -> postclose (#29) -> levpush (#34) -> bidsfwd (#31) -> settlefwd (#38)
+          -> dashboard -> health.json
 
 Rules:
 
@@ -29,9 +31,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Dict, Optional
 
+from . import bidsfwd as bfw
 from . import dashboard as dash
+from . import fundsplit as fsp
+from . import levpush as lpu
+from . import liqbreak as lbk
+from . import liqfwd as lfm
+from . import lowsfwd as lwf
 from . import mf as mfm
 from . import notify as notifier
+from . import postclose as pcl
+from . import settlefwd as sfw
 from . import tsmom as tsm
 from . import xs as xsm
 
@@ -209,7 +219,8 @@ def run_daily(state_dir: Path = Path("."), cash_tsmom: float = 100.0, cash_xs: f
 
     with Lock(state_dir / "daily.lock"):
         if dry_run:
-            for name in ("tsmom", "xs", "mf", "mf-hl"):
+            for name in ("tsmom", "xs", "mf", "mf-hl", "liqfwd", "lowsfwd", "liqbreak", "fundsplit", "postclose",
+                         "levpush", "bidsfwd", "settlefwd"):
                 result.steps[name] = StepResult(True, 0.0, note="skipped (dry run)", skipped=True)
                 log.info("%s skipped (dry run)", name)
         else:
@@ -221,6 +232,26 @@ def run_daily(state_dir: Path = Path("."), cash_tsmom: float = 100.0, cash_xs: f
             # #8 on Hyperliquid prices beside it, information only (FORWARD_MF.md, amendment 2026-10-29)
             _step("mf-hl", lambda: mfm.run(str(state_dir / "mf-hl.db"), cash_mf, fetch=_hl_daily()),
                   result, notify)
+            # #22's forward paper test: record aggr's hourly bars, rebuild the ledger (FORWARD_LIQ.md)
+            _step("liqfwd", lambda: lfm.run(state_dir), result, notify)
+            # #24's forward paper test: record Binance's 5-minute archive, rebuild the ledger (FORWARD_LOWS.md)
+            _step("lowsfwd", lambda: lwf.run(state_dir), result, notify)
+            # #27: #26's rule forward on aggr's 5-minute liquidations (FORWARD_LIQBREAK.md); after
+            # lowsfwd, whose Binance bars it reads
+            _step("liqbreak", lambda: lbk.run(state_dir), result, notify)
+            # #32: #27's forced down-breaks split by Binance funding (FORWARD_FUNDSPLIT.md); reads
+            # the ledger liqbreak just wrote
+            _step("fundsplit", lambda: fsp.run(state_dir), result, notify)
+            # #29: the US session's move after 16:00 ET (FORWARD_POSTCLOSE.md); reads lowsfwd's files,
+            # downloads nothing
+            _step("postclose", lambda: pcl.run(state_dir), result, notify)
+            # #34 part B: SOL and XRP's push into the close, read from the rows postclose just wrote
+            _step("levpush", lambda: lpu.run(state_dir), result, notify)
+            # #31: 2-ATR resting bids under breakdowns (FORWARD_BIDS2.md); reads lowsfwd's files too
+            _step("bidsfwd", lambda: bfw.run(state_dir), result, notify)
+            # #38: the price after settlements where shorts pay hard (FORWARD_SHORTSPAY.md); reads
+            # lowsfwd's bars and the funding archive #32 caches
+            _step("settlefwd", lambda: sfw.run(state_dir), result, notify)
 
         def render():
             out = dash.write(state_dir / "dashboard.html", tsmom_db=tsmom_db, paper_db=paper_db,

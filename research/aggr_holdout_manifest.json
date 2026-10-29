@@ -1,0 +1,10 @@
+{
+ "sealed": "2026-10-29T09:31:55+00:00",
+ "why": "held out from research/aggr_explore.py; read only by a pre-registered test",
+ "files": {
+  "2026-07.csv.gz": "30c4cf1685e916ab4e41a827a3bd6fbf705fe9c8371e2b78555f69d57e02db7f",
+  "2026-08.csv.gz": "b4b9b65b737097e10a6d0911ff3ac86a450a76a289251087475fba0695d260a7",
+  "2026-09.csv.gz": "c7423da1c6e41128b6913da561eec2077b13cdb38951b9e17f32921fe21eb6ef",
+  "2026-10.csv.gz": "a03cf603369b726abeb87bf76c36ece52e9fe6e8e842c927d6cee687e2f3a18e"
+ }
+}

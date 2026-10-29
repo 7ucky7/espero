@@ -1,0 +1,136 @@
+42 coins x 7 months + 27 days of 5-minute bars ...
+  1/42 BTC: ok, 401 events
+  2/42 ETH: ok, 412 events
+  3/42 SOL: ok, 408 events
+  4/42 BNB: ok, 350 events
+  5/42 XRP: ok, 403 events
+  6/42 ADA: ok, 367 events
+  7/42 DOGE: ok, 365 events
+  8/42 AVAX: ok, 373 events
+  9/42 LINK: ok, 345 events
+  10/42 DOT: ok, 298 events
+  11/42 TRX: ok, 313 events
+  12/42 SHIB: ok, 352 events
+  13/42 LTC: ok, 338 events
+  14/42 BCH: ok, 367 events
+  15/42 ATOM: ok, 279 events
+  16/42 ETC: ok, 335 events
+  17/42 XLM: ok, 365 events
+  18/42 NEAR: ok, 337 events
+  19/42 ARB: ok, 337 events
+  20/42 OP: ok, 319 events
+  21/42 FIL: ok, 368 events
+  22/42 INJ: ok, 328 events
+  23/42 SEI: ok, 301 events
+  24/42 TIA: ok, 334 events
+  25/42 RUNE: ok, 259 events
+  26/42 AAVE: ok, 352 events
+  27/42 MKR: ok, 0 events
+  28/42 CRV: ok, 290 events
+  29/42 SNX: ok, 219 events
+  30/42 SUSHI: ok, 295 events
+  31/42 YFI: ok, 307 events
+  32/42 ALGO: ok, 265 events
+  33/42 XTZ: ok, 215 events
+  34/42 EOS: no bars, 0 events
+  35/42 ZEC: ok, 403 events
+  36/42 DASH: ok, 355 events
+  37/42 KSM: ok, 261 events
+  38/42 ICP: ok, 336 events
+  39/42 HBAR: ok, 337 events
+  40/42 VET: ok, 287 events
+  41/42 THETA: ok, 276 events
+  42/42 WLD: ok, 400 events
+-> research/bids_events.csv.gz (13252 events), research/bids_manifest.json
+
+## data
+
+coins with bars: 41 of 42
+  EOS: missing 34: 2026-03, 2026-04, 2026-05, 2026-06, 2026-07, 2026-08, 2026-09, 2026-10-01 ...
+events: 13252 (0 dropped for gaps) on 189 days, 2026-04-03 -> 2026-10-26; fills: 8602
+
+## criteria (each UTC day's mean one observation)
+
+| # | criterion | actual | met |
+|---|---|---|---|
+| 1 | it pays: filled trades' mean net >= 5 bps, t >= 3 | +1.7 bps, t 0.97, 189 days, 8602 fills | **no** |
+| 2 | the bid beats taking: per event, bid minus taker > 0, t >= 2 | +3.9 bps, t 2.52, 189 days, 13252 events | yes |
+| 3 | not one stretch: mean net > 0 in each half | -1.2 bps (Apr-Jun), +3.8 bps (Jul-Oct) | **no** |
+| 4 | not one coin: more than half of coins with >= 20 fills net > 0 | 7 of 40 coins | **no** |
+
+verdict: FAIL
+
+## information only
+
+fill rate 64.9%; exits: 70% at the target, 30% timed out; median depth 30 bps below the trigger close
+filled trades' gross +6.0 bps (t 3.59); fees 4.5 bps a trade on average
+adverse selection, #20's gross 1-hour return from the next open: filled events -21.7 bps (t -8.78), unfilled +63.9 bps (t 27.72)
+per event: the bid -0.3 bps (t -0.29); taking (#20's trade, taker costs) -4.3 bps (t -1.88)
+
+| variant | fills | fill rate | net per fill | t | per event | t |
+|---|---|---|---|---|---|---|
+| **the rule: bid 1 ATR, target the trigger close, 1 hour** | 8602 | 65% | +1.7 bps | 0.97 | -0.3 bps | -0.29 |
+| bid 0.5 ATR | 10547 | 80% | -4.2 bps | -3.31 | -4.0 bps | -3.66 |
+| bid 2 ATR | 5439 | 41% | +12.5 bps | 5.19 | +2.4 bps | 2.32 |
+| fills on a touch | 8733 | 66% | +2.3 bps | 1.35 | +0.1 bps | 0.09 |
+| 4-hour exit | 8602 | 65% | +6.6 bps | 3.41 | +2.9 bps | 2.15 |
+| bid 0.5 ATR, target entry + 1 ATR | 10547 | 80% | +0.0 bps | 0.03 | -0.8 bps | -0.55 |
+| bid 2 ATR, target entry + 1 ATR | 5439 | 41% | +5.9 bps | 3.62 | +0.7 bps | 0.84 |
+
+by month (filled trades):
+
+| month | fills | net | t |
+|---|---|---|---|
+| 2026-04 | 1001 | +2.6 bps | 0.73 |
+| 2026-05 | 1375 | -4.2 bps | -0.92 |
+| 2026-06 | 1385 | -1.7 bps | -0.34 |
+| 2026-07 | 1198 | +1.2 bps | 0.29 |
+| 2026-08 | 1188 | +6.8 bps | 1.55 |
+| 2026-09 | 1115 | +11.8 bps | 3.30 |
+| 2026-10 | 1340 | -5.5 bps | -0.91 |
+
+by coin (filled trades, mean net in bps):
+       size  mean
+coin             
+AVAX    260 -14.2
+RUNE    187 -13.6
+TRX     192 -12.2
+SEI     206 -10.8
+OP      189  -9.4
+BCH     243  -8.5
+BNB     239  -8.3
+SOL     249  -7.8
+ADA     234  -7.5
+THETA   167  -7.5
+LTC     204  -7.1
+YFI     200  -6.9
+DOT     194  -6.8
+VET     191  -6.6
+XLM     235  -6.4
+FIL     227  -5.8
+ETH     281  -5.4
+BTC     269  -4.7
+DOGE    257  -4.7
+CRV     178  -4.1
+SNX     139  -3.8
+INJ     205  -3.7
+LINK    237  -3.5
+TIA     213  -3.5
+SUSHI   191  -3.4
+DASH    226  -2.7
+XTZ     154  -1.9
+ARB     213  -1.8
+SHIB    232  -1.6
+XRP     269  -0.9
+WLD     253  -0.8
+KSM     167  -0.5
+ALGO    166  -0.2
+ETC     232   0.3
+HBAR    219   0.8
+ATOM    182   2.0
+AAVE    230   4.1
+ZEC     254   5.7
+ICP     214   9.8
+NEAR    204  20.3
+BTC: 269 fills, mean net -4.7 bps
+ETH: 281 fills, mean net -5.4 bps

@@ -1,0 +1,123 @@
+42 coins x 76 months of 5-minute bars, cached in data/lows/ ...
+  1/42 BTC: ok, 8744 events
+  2/42 ETH: ok, 8644 events
+  3/42 SOL: ok, 7409 events
+  4/42 BNB: ok, 7781 events
+  5/42 XRP: ok, 7554 events
+  6/42 ADA: ok, 7329 events
+  7/42 DOGE: ok, 6908 events
+  8/42 AVAX: ok, 6863 events
+  9/42 LINK: ok, 7631 events
+  10/42 DOT: ok, 6505 events
+  11/42 TRX: ok, 6599 events
+  12/42 SHIB: ok, 6036 events
+  13/42 LTC: ok, 7382 events
+  14/42 BCH: ok, 7343 events
+  15/42 ATOM: ok, 6722 events
+  16/42 ETC: ok, 7272 events
+  17/42 XLM: ok, 6407 events
+  18/42 NEAR: ok, 6115 events
+  19/42 ARB: ok, 3566 events
+  20/42 OP: ok, 4725 events
+  21/42 FIL: ok, 6351 events
+  22/42 INJ: ok, 4151 events
+  23/42 SEI: ok, 2776 events
+  24/42 TIA: ok, 2882 events
+  25/42 RUNE: ok, 6068 events
+  26/42 AAVE: ok, 6185 events
+  27/42 MKR: ok, 5170 events
+  28/42 CRV: ok, 4220 events
+  29/42 SNX: ok, 5258 events
+  30/42 SUSHI: ok, 5897 events
+  31/42 YFI: ok, 6141 events
+  32/42 ALGO: ok, 5523 events
+  33/42 XTZ: ok, 4490 events
+  34/42 EOS: ok, 4702 events
+  35/42 ZEC: ok, 6259 events
+  36/42 DASH: ok, 5938 events
+  37/42 KSM: ok, 5462 events
+  38/42 ICP: ok, 4952 events
+  39/42 HBAR: ok, 5173 events
+  40/42 VET: ok, 6364 events
+  41/42 THETA: ok, 6135 events
+  42/42 WLD: ok, 3379 events
+-> research/lows_events.csv.gz (251011 events), research/lows_manifest.json
+
+## data
+
+coins with bars: 42 of 42; months missing in all: 451
+breakdowns: 136523 on 2055 days; breakouts (contrast): 114488; days 2020-01-03 -> 2026-03-30, #18's days and their neighbours left out
+
+## criteria (long bought at the next 5-minute open after a new 4-hour low on volume)
+
+| # | criterion | actual | met |
+|---|---|---|---|
+| 1 | the bounce: mean 1h long return > 0, t >= 3 | +14.8 bps, t 9.78, 2055 days | yes |
+| 2 | it starts at once: mean 15-minute return > 0 | +6.7 bps (t 8.08) | yes |
+| 3 | not one era: 1h > 0 in both halves | +20.0 bps (1014 days), +9.6 bps (1041 days) | yes |
+| 4 | it pays: mean 1h > 18 bps, t > 2 | +14.8 bps, t 9.78 | **no** |
+
+verdict: real, not tradable after costs
+
+## information only
+
+| variant | mean | t | days |
+|---|---|---|---|
+| breakdowns, 4h | +37.8 bps | 12.87 | 2055 |
+| breakouts (#10's trigger), 1h long | -6.9 bps | -6.27 | 2057 |
+| breakouts, 15 minutes | -0.9 bps | -1.47 | 2057 |
+| breakdowns 2020, 1h | +25.5 bps | 6.11 | 328 |
+| breakdowns 2021, 1h | +25.0 bps | 6.06 | 329 |
+| breakdowns 2022, 1h | +9.0 bps | 2.63 | 329 |
+| breakdowns 2023, 1h | +10.0 bps | 3.55 | 329 |
+| breakdowns 2024, 1h | +10.0 bps | 2.55 | 330 |
+| breakdowns 2025, 1h | +9.5 bps | 2.64 | 329 |
+| breakdowns 2026, 1h | +12.9 bps | 1.34 | 81 |
+
+breakdowns, 1h: +14.8 bps gross; net Binance.US +10.8 bps, Hyperliquid +5.8 bps
+
+breakdowns' 1h mean by coin (bps):
+       size  mean
+coin             
+TRX    3505  -5.0
+RUNE   3285  -4.9
+WLD    1903   0.2
+ARB    2014   0.6
+MKR    2706   0.9
+ETC    3944   1.5
+ETH    4383   1.6
+BCH    3894   1.7
+AAVE   3326   2.4
+SEI    1536   2.9
+FIL    3622   3.3
+BNB    4021   3.9
+BTC    4395   4.0
+CRV    2341   4.4
+HBAR   2889   5.0
+OP     2536   5.7
+ALGO   3087   5.9
+YFI    3444   6.0
+AVAX   3689   6.0
+INJ    2221   6.6
+XLM    3489   7.0
+LTC    3986   7.0
+LINK   4155   7.3
+SUSHI  3240   7.4
+DOGE   3668   7.5
+SOL    3966   7.5
+EOS    2626   7.7
+THETA  3408   8.0
+SHIB   3351   8.1
+NEAR   3308   8.3
+TIA    1675   8.4
+DASH   3267   8.5
+ATOM   3708   8.6
+XRP    4178   8.7
+SNX    2841   9.3
+DOT    3672   9.5
+KSM    2973   9.8
+ICP    2846   9.9
+ADA    4019  10.2
+VET    3629  10.5
+XTZ    2462  11.6
+ZEC    3315  12.8

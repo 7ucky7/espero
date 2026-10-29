@@ -292,7 +292,98 @@ doubled costs, but its excess return over the sizing was −0.4 bps a week (t �
 collisions in the crypto universe (ARB, TIA, WLD, OP), recorded in [ERRATA](research/ERRATA.md).
 `espero board` shows the rule's trend readings as a scanner, without sizes.
 
-Scoreboard: sixteen tests, three passes. Two are risk construction; the third is income (carry at
+The sixteenth and seventeenth asked why the scan measures every coin against BTC only, and whether
+a coin's own peers, or ETH for Ethereum tokens, would lead it better. On a year of Coinbase hourly
+bars no test here had seen (2024-10 → 2025-10), neither did: a coin's beta to its leave-one-out peer
+basket times the basket's last hour has an out-of-sample IC t of −0.9, and the same with ETH −2.5,
+the wrong sign. Both FAIL on all four criteria: [research/RESULTS_PEERS.md](research/RESULTS_PEERS.md).
+One-hour reversal replicated on the new year (t 10.7, +4 bps per three hours): the bid-ask bounce
+again. The scan keeps BTC as its only leader and says why.
+
+The eighteenth asked whether the liquidations aggr shows can tell a forced breakout from an
+organic one. On the 82 free first-of-month days of Binance and Bybit liquidations (2020–2026, 9,212
+breaks), breaks made mostly of liquidations faded 11 bps more over the next hour than organic ones,
+the predicted direction in every variant, but at t −2.1 against the −3 hurdle, and only in the
+second half of the period. FAIL: [research/RESULTS_LIQ.md](research/RESULTS_LIQ.md). Information only:
+new 4-hour lows bounced about 18 bps in the next hour, while new highs did not continue.
+
+The nineteenth started from a rule rather than a pattern: Binance's perpetuals settle funding every
+8 hours, so when one side pays a high rate, holders who will not pay exit before the instant and
+arbitrageurs who collect it enter. Over 266,964 settlements (2020–2026, 42 coins), a coin whose
+holders paid at least 0.05% swung 15.5 bps against them around the settlement, relative to coins
+with ordinary funding and to the same coin four hours later (t 3.5), in both eras and for both
+signs. It is the repo's first confirmed effect, and it is small: no long-only spot trade earned it
+after costs. "Real, not tradable": [research/RESULTS_SETTLE.md](research/RESULTS_SETTLE.md).
+
+The twenty-first took the pattern an exploration of aggr's hourly liquidation bars had shown
+(April–June 2026: prices came back after a coin's biggest liquidation hours) and tested it once on
+four months sealed unread before the exploration began. It did not hold: the reversal across both
+sides was +4.8 bps (t 0.3), and it went the other way in July–August. Buying after long-liquidation
+spikes made +51 bps a day, in months when the market rose by almost half that anyway. FAIL:
+[research/RESULTS_LIQSPIKE.md](research/RESULTS_LIQSPIKE.md).
+
+The twentieth mirrored 打板: buy the new 4-hour **low** on a volume spike instead of the high. On
+136,523 breakdowns over six years (2020 → March 2026, the days #18 used left out) it earned +14.8 bps
+in the next hour, t 9.8, in every year and on 40 of 42 coins, while buying breakouts lost 6.9 bps. The
+strongest effect measured here, and still under the 18 bps bar for one hour: "real, not tradable".
+At 4 hours it was +37.8 bps (information only), the lead now worth a test of its own:
+[research/RESULTS_LOWS.md](research/RESULTS_LOWS.md).
+
+The twenty-sixth reran #18's rule, unchanged, on Binance's COIN-M liquidation archive: every day from
+June 2023 to October 2024 that #18 had not used, 429 days and 35,906 breaks. Breaks made of
+liquidations faded 23.6 bps more over the next hour than organic ones (t −4.1), in both halves and
+coin by coin, and buying the forced down-breaks earned +23.5 bps an hour (t 7.1). **PASS**: the
+first signal here to clear every pre-registered criterion. It now needs a forward test on a live
+liquidation feed before anything trades: [research/RESULTS_LIQ2.md](research/RESULTS_LIQ2.md).
+
+The twenty-fifth asked the same question with Binance's open interest as a stand-in for liquidations
+(every day 2021 → March 2026): breakdowns where open interest dropped most bounced only 3.2 bps more
+(t 2.4), and the gap has faded to below zero since 2025. FAIL:
+[research/RESULTS_OI.md](research/RESULTS_OI.md). Open interest does not see which closes were forced.
+
+The twenty-eighth looked for a forced flow on a clock. Leveraged and inverse ETFs must buy after up
+days and sell after down days to restore their leverage at the 4 p.m. ET valuation, and the US 2x
+bitcoin and ether funds hold billions. Over 596 NYSE days since June 2024, BTC and ETH did not drift
+with the day's move in the last 15 minutes before 16:00 (−1.5 bps, t −1.4). FAIL:
+[research/RESULTS_LEVETF.md](research/RESULTS_LEVETF.md). The other end of the flow did show, as
+information: after the close the session's move reverses, −6.0 bps in 15 minutes (t −5.6), on
+trading days and not on weekends, larger on bigger days, in every year since 2024. It is under
+costs as a trade and is now a forward test (#29).
+
+The thirtieth changed how a known effect is traded rather than what is predicted. #20's bounce dies
+on taker costs, so it rested a maker bid one ATR under each breakdown and sold back at the breakdown
+price. On 13,252 breakdowns from April to October 2026, months no breakdown test had used, it earned
++1.7 bps net per fill (t 1.0). FAIL: [research/RESULTS_BIDS.md](research/RESULTS_BIDS.md). It
+measured why: the breakdowns that came down to the bid went on to fall 22 bps, while those that
+never did bounced 64. Deeper bids, which fill only on capitulation, earned +12.5 to +20 bps net per
+fill in every month and on most coins, as information. That lead runs forward as #31.
+
+The thirty-fourth checked the running accounts' own fills. XS and #8 book their Monday fills at 00:00
+UTC, a Binance funding settlement. Over 13,089 coin-Mondays (2020–2026) the price drifted +1.1 bps
+in the half hour after the fill when funding was ordinary, which it was 93.5% of the time: no bias.
+FAIL, and the fill time stays: [research/RESULTS_FILLCOST.md](research/RESULTS_FILLCOST.md). The
+bias sits only on coins whose shorts pay hard (1.5%), where the price fell 34 bps after 00:00.
+
+The thirty-sixth tested stop runs: sweeps of yesterday's low that close back above it within 15
+minutes. Over 40,785 sweeps on 42 coins (2020–2026) they bounced +15 bps in the next hour, but
+sweeps that failed to reclaim bounced more (+19.5 bps), so the reclaim says nothing. FAIL:
+[research/RESULTS_SWEEPS.md](research/RESULTS_SWEEPS.md). What is left is #20's mean reversion at
+lows, from a second trigger: +39 to +44 bps over 4 hours.
+
+The thirty-seventh asked whether Ethena's USDe flows forecast funding: minting opens Ethena's
+shorts, redemptions close them. Over 138 weeks (2024–2026) the raw correlation had the predicted sign
+(t −2.2), but it vanished once funding's own level and reversion were controlled (t +0.75). USDe
+is minted when funding is high, and high funding falls back on its own. FAIL:
+[research/RESULTS_ETHENA.md](research/RESULTS_ETHENA.md).
+
+The thirty-eighth set Polymarket's hourly "Bitcoin Up or Down" crowd against a random-walk binary
+option at minute 30. Over 4,297 markets (May–October 2026), betting the model's side when they
+differed earned +0.9 cents a share (t 1.0), and the crowd was the better forecaster (Brier 0.1702
+against 0.1733). FAIL: [research/RESULTS_POLYHOUR.md](research/RESULTS_POLYHOUR.md). As
+information, the same bet at minute 15 earned +4.7 cents (t 4.3).
+
+Scoreboard: thirty-eight tests. Four passes (#4, #8, #12 provisional, #26), two real but not
+tradable (#19, #20), the rest failed (#37 the latest) or are running (#22–#24, #27, #29, #31, #32, #34). Two are risk construction; the third is income (carry at
 maker fees) with a forward test still attached. No predictive edge has been found at any horizon,
 and across #4, #8 and #15 the one effect that survives is volatility sizing.
 
@@ -352,7 +443,8 @@ espero/
     report.py       # the matrix table and the equity chart
     cli.py          # fetch | backtest | matrix | chart | paper | live | tsmom | xs | factors | daily | dashboard
   tests/            # 141 tests
-  deploy/launchd/   # the LaunchAgent template; scripts/install-launchd.sh renders it
+  deploy/launchd/   # the LaunchAgent templates; scripts/install-launchd.sh (daily) and
+                    # scripts/install-carry-launchd.sh (#12's two carry loops) render them
   research/         # one pre-registration and one results file per hypothesis
   data/             # committed BTC/ETH daily candles so the numbers reproduce offline
   docs/AUDIT.md     # the audit that started this

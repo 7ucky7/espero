@@ -1,0 +1,370 @@
+{
+ "months": [
+  "2026-03",
+  "2026-04",
+  "2026-05",
+  "2026-06",
+  "2026-07",
+  "2026-08",
+  "2026-09"
+ ],
+ "days": [
+  "2026-10-01",
+  "2026-10-02",
+  "2026-10-03",
+  "2026-10-04",
+  "2026-10-05",
+  "2026-10-06",
+  "2026-10-07",
+  "2026-10-08",
+  "2026-10-09",
+  "2026-10-10",
+  "2026-10-11",
+  "2026-10-12",
+  "2026-10-13",
+  "2026-10-14",
+  "2026-10-15",
+  "2026-10-16",
+  "2026-10-17",
+  "2026-10-18",
+  "2026-10-19",
+  "2026-10-20",
+  "2026-10-21",
+  "2026-10-22",
+  "2026-10-23",
+  "2026-10-24",
+  "2026-10-25",
+  "2026-10-26",
+  "2026-10-27"
+ ],
+ "coins": [
+  {
+   "coin": "BTC",
+   "symbol": "BTCUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "ETH",
+   "symbol": "ETHUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "SOL",
+   "symbol": "SOLUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "BNB",
+   "symbol": "BNBUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "XRP",
+   "symbol": "XRPUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "ADA",
+   "symbol": "ADAUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "DOGE",
+   "symbol": "DOGEUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "AVAX",
+   "symbol": "AVAXUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "LINK",
+   "symbol": "LINKUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "DOT",
+   "symbol": "DOTUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "TRX",
+   "symbol": "TRXUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "SHIB",
+   "symbol": "1000SHIBUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "LTC",
+   "symbol": "LTCUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "BCH",
+   "symbol": "BCHUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "ATOM",
+   "symbol": "ATOMUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "ETC",
+   "symbol": "ETCUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "XLM",
+   "symbol": "XLMUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "NEAR",
+   "symbol": "NEARUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "ARB",
+   "symbol": "ARBUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "OP",
+   "symbol": "OPUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "FIL",
+   "symbol": "FILUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "INJ",
+   "symbol": "INJUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "SEI",
+   "symbol": "SEIUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "TIA",
+   "symbol": "TIAUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "RUNE",
+   "symbol": "RUNEUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "AAVE",
+   "symbol": "AAVEUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "MKR",
+   "symbol": "MKRUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "CRV",
+   "symbol": "CRVUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "SNX",
+   "symbol": "SNXUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "SUSHI",
+   "symbol": "SUSHIUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "YFI",
+   "symbol": "YFIUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "ALGO",
+   "symbol": "ALGOUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "XTZ",
+   "symbol": "XTZUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "EOS",
+   "symbol": "EOSUSDT",
+   "missing": [
+    "2026-03",
+    "2026-04",
+    "2026-05",
+    "2026-06",
+    "2026-07",
+    "2026-08",
+    "2026-09",
+    "2026-10-01",
+    "2026-10-02",
+    "2026-10-03",
+    "2026-10-04",
+    "2026-10-05",
+    "2026-10-06",
+    "2026-10-07",
+    "2026-10-08",
+    "2026-10-09",
+    "2026-10-10",
+    "2026-10-11",
+    "2026-10-12",
+    "2026-10-13",
+    "2026-10-14",
+    "2026-10-15",
+    "2026-10-16",
+    "2026-10-17",
+    "2026-10-18",
+    "2026-10-19",
+    "2026-10-20",
+    "2026-10-21",
+    "2026-10-22",
+    "2026-10-23",
+    "2026-10-24",
+    "2026-10-25",
+    "2026-10-26",
+    "2026-10-27"
+   ],
+   "status": "no bars"
+  },
+  {
+   "coin": "ZEC",
+   "symbol": "ZECUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "DASH",
+   "symbol": "DASHUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "KSM",
+   "symbol": "KSMUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "ICP",
+   "symbol": "ICPUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "HBAR",
+   "symbol": "HBARUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "VET",
+   "symbol": "VETUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "THETA",
+   "symbol": "THETAUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  },
+  {
+   "coin": "WLD",
+   "symbol": "WLDUSDT",
+   "missing": [],
+   "status": "ok",
+   "bars": 69408
+  }
+ ]
+}

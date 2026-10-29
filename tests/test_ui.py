@@ -77,6 +77,19 @@ class TestRender(unittest.TestCase):
         self.assertIn("2023-11-14", out)      # 1_700_000_000 as a date, not an epoch
         self.assertIn("init", out)
 
+    def test_forward_tests_table_reads_the_daily_notes(self):
+        h = json.loads((self.state / "health.json").read_text())
+        h["steps"]["postclose"] = {"ok": True, "seconds": 0.2, "note": "mark: 3 trading days"}
+        h["steps"]["liqbreak"] = {"ok": False, "seconds": 0.1, "error": "RuntimeError: aggr down"}
+        (self.state / "health.json").write_text(json.dumps(h))
+        buf = io.StringIO()
+        Console(file=buf, width=200, force_terminal=False).print(ui.forward_table(self.state))
+        out = buf.getvalue()
+        for text in ("#22 #23", "#24", "#27", "#29", "#31", "#32", "#34", "#38", "mark: 3 trading days", "aggr down",
+                     "not run yet"):
+            self.assertIn(text, out)
+        self.assertIn(ui.act_forward, [fn for _, fn in ui.MENU])
+
     def test_status_action_does_not_write(self):
         # compare contents, not bytes: SQLite folds a WAL file into the main file
         # whenever the last connection closes, which changes bytes but no data

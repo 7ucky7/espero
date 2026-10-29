@@ -145,10 +145,11 @@ def view(frames: Dict[str, pd.DataFrame], today, alts: bool = False) -> dict:
 
 # --------------------------------------------------------------- context rows
 @contextmanager
-def _copy(path: Path) -> Iterator[Optional[sqlite3.Connection]]:
-    """A connection to a private copy of `path` (and its -wal, so committed rows not yet
-    checkpointed are included). Opening the original, even with mode=ro, would let SQLite
-    create or update its -wal/-shm files beside a database another process owns."""
+def copied(path: Path) -> Iterator[Optional[Path]]:
+    """The path of a private copy of `path` (and its -wal, so committed rows not yet
+    checkpointed are included), deleted on exit; None if there is no such file. Opening
+    the original, even with mode=ro, would let SQLite create or update its -wal/-shm
+    files beside a database another process owns."""
     path = Path(path)
     if not path.exists():
         yield None
@@ -159,6 +160,16 @@ def _copy(path: Path) -> Iterator[Optional[sqlite3.Connection]]:
         wal = path.with_name(path.name + "-wal")
         if wal.exists():
             shutil.copyfile(wal, dst.with_name(dst.name + "-wal"))
+        yield dst
+
+
+@contextmanager
+def _copy(path: Path) -> Iterator[Optional[sqlite3.Connection]]:
+    """A connection to a private copy of `path` (see `copied`)."""
+    with copied(path) as dst:
+        if dst is None:
+            yield None
+            return
         con = sqlite3.connect(dst, timeout=2.0)
         con.row_factory = sqlite3.Row
         try:
