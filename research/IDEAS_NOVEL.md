@@ -164,7 +164,10 @@ extremes and round numbers. A sweep beyond the level that closes back inside sho
 logic. Retail trading lore calls these liquidity sweeps; I know of no proper test. It is testable on
 the cached 5-minute bars: no level-based trigger has been run here.
 
-### 12. Our own fills sit on Binance's settlement
+### 12. Our own fills sit on Binance's settlement (#33: no cost on ordinary fills)
+
+**Tested** ([RESULTS_FILLCOST.md](RESULTS_FILLCOST.md)): the 00:00 fill is unbiased for 93.5% of coin-Mondays (+1.1 bps). The one bias is on coins whose shorts pay hard: the price falls 19–34 bps in the 30 minutes after a settlement. The original note follows.
+
 
 XS and #8 fill at 00:00 UTC, the minute Binance settles funding, where #19 measured swings of about
 15 bps on high-funding coins. Measure what the bot pays at 00:00 against 00:15 or 00:30 on its own

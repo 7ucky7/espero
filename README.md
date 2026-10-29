@@ -358,8 +358,14 @@ measured why: the breakdowns that came down to the bid went on to fall 22 bps, w
 never did bounced 64. Deeper bids, which fill only on capitulation, earned +12.5 to +20 bps net per
 fill in every month and on most coins, as information. That lead runs forward as #31.
 
-Scoreboard: thirty-one tests. Four passes (#4, #8, #12 provisional, #26), two real but not
-tradable (#19, #20), the rest failed (#30 the latest) or are running (#22–#24, #27, #29, #31). Two are risk construction; the third is income (carry at
+The thirty-fourth checked the running accounts' own fills. XS and #8 book their Monday fills at 00:00
+UTC, a Binance funding settlement. Over 13,089 coin-Mondays (2020–2026) the price drifted +1.1 bps
+in the half hour after the fill when funding was ordinary, which it was 93.5% of the time: no bias.
+FAIL, and the fill time stays: [research/RESULTS_FILLCOST.md](research/RESULTS_FILLCOST.md). The
+bias sits only on coins whose shorts pay hard (1.5%), where the price fell 34 bps after 00:00.
+
+Scoreboard: thirty-four tests. Four passes (#4, #8, #12 provisional, #26), two real but not
+tradable (#19, #20), the rest failed (#33 the latest) or are running (#22–#24, #27, #29, #31, #32). Two are risk construction; the third is income (carry at
 maker fees) with a forward test still attached. No predictive edge has been found at any horizon,
 and across #4, #8 and #15 the one effect that survives is volatility sizing.
 
