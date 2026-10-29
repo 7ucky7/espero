@@ -34,6 +34,18 @@ A test checks that it reproduces `research/multifactor.py`'s simulator day by da
 - **A held coin that stops reporting** is marked at its last known price, never dropped from equity.
 - Every late fill, skipped day and data failure is counted in the result.
 
+## Amendment 2026-10-29, before the first fill — the Monday fill price, disclosed
+
+An on-time Monday fills at **Monday's 00:00 UTC open**, as the backtest and the simulator do, but the
+scheduled job runs at 07:30 New York (11:30–12:30 UTC). The decision reads nothing after Sunday's
+close, so no later information enters it, and a job run at 00:00 UTC could have traded that price;
+this schedule cannot. The rule is not changed (the account must stay equal to the simulator, which
+tests/test_mf.py enforces). The sentence above about missed Mondays applies to missed Mondays only.
+
+At the verdict, for every Monday's fills, the result reports the gap between that 00:00 UTC open and
+the price at the 07:30 run (from hourly bars), information only, so the reader can see what the
+timing assumption was worth over the 26 weeks.
+
 ## Pass criteria — all three, over the forward window
 
 Measured on the account's daily equity marks (rf = 0, √365):

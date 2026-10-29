@@ -5,6 +5,12 @@ change its verdict; the code that produced it stays as it ran, marked with a com
 points here. Numbers below were reproduced from cached data during the 2026-10-27 audit
 (docs/AUDIT_2026-10-27.md, section D) unless stated.
 
+## 2026-10-29: #8's forward test books Monday fills at a price its schedule cannot trade
+
+Disclosed before the first fill, rule unchanged: research/FORWARD_MF.md, amendment 2026-10-29. The
+00:00 UTC open is information-equivalent to the decision (nothing after Sunday's close is read), but
+the job runs at 07:30 New York; the verdict will report the open-to-run gap for every Monday.
+
 ## 2026-10-29: Yahoo ticker collisions in `xs.UNIVERSE` (found by #15)
 
 **No verdict changes; two live accounts read wrong series for some coins.**
