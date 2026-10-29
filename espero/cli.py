@@ -864,7 +864,7 @@ def _cmd_daily(args: argparse.Namespace) -> int:
 
     try:
         res = run_daily(state_dir=Path(args.state_dir), cash_tsmom=args.cash_tsmom,
-                        cash_xs=args.cash_xs, force=args.force, dry_run=args.dry_run,
+                        cash_xs=args.cash_xs, cash_mf=args.cash_mf, force=args.force, dry_run=args.dry_run,
                         notify=not args.no_notify)
     except RuntimeError as exc:   # the lock is held by a live run
         print(f"cannot start: {exc}", file=sys.stderr)
@@ -901,6 +901,13 @@ def _cmd_factors(args: argparse.Namespace) -> int:
     if args.out:
         t.to_csv(args.out)
         print(f"\nwrote {args.out}")
+    return 0
+
+
+def _cmd_mf(args: argparse.Namespace) -> int:
+    from . import mf as mfm
+    res = mfm.run(args.state, args.cash)
+    print(mfm.format_report(res))
     return 0
 
 
@@ -997,6 +1004,11 @@ def build_parser() -> argparse.ArgumentParser:
     xs_p.add_argument("--deposit", type=float, default=0.0)
     xs_p.add_argument("--force", action="store_true")
     xs_p.set_defaults(func=_cmd_xs)
+
+    mf_p = sub.add_parser("mf", help="hypothesis #8 forward paper account (multifactor, weekly)")
+    mf_p.add_argument("--state", default="mf.db")
+    mf_p.add_argument("--cash", type=float, default=100.0, help="starting cash, first run only")
+    mf_p.set_defaults(func=_cmd_mf)
 
     fc = sub.add_parser("factors", help="rank-IC evaluation of the factor zoo on the crypto panel")
     fc.add_argument("--panel", default="data/panel", help="CSV panel directory (built if missing)")
@@ -1108,11 +1120,12 @@ def build_parser() -> argparse.ArgumentParser:
     fe_ = sub.add_parser("fees", help="your Coinbase maker/taker rates (Exchange API key, read-only)")
     fe_.set_defaults(func=_cmd_fees)
 
-    dy = sub.add_parser("daily", help="the scheduled run: tsmom -> xs -> dashboard -> health.json")
+    dy = sub.add_parser("daily", help="the scheduled run: tsmom -> xs -> mf -> dashboard -> health.json")
     dy.add_argument("--state-dir", default=".", help="where the .db files, dashboard and health live")
     dy.add_argument("--cash-tsmom", type=float, default=100.0)
     dy.add_argument("--cash-xs", type=float, default=100.0)
-    dy.add_argument("--force", action="store_true", help="rebalance both accounts now")
+    dy.add_argument("--cash-mf", type=float, default=100.0)
+    dy.add_argument("--force", action="store_true", help="rebalance tsmom and xs now (mf keeps its calendar)")
     dy.add_argument("--dry-run", action="store_true", help="preflight: no network, no account changes")
     dy.add_argument("--no-notify", action="store_true")
     dy.set_defaults(func=_cmd_daily)

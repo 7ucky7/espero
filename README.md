@@ -236,6 +236,9 @@ ten coins chosen *alphabetically* with the same construction already beat BTC on
 drawdown, the extra return comes from the low-vol factor, and momentum contributes nothing. The IC
 criterion was met by a composite whose mean quantile spread is *negative*, a flaw in the criterion as
 written that the results file records: [research/RESULTS_MF.md](research/RESULTS_MF.md).
+Its six-month forward paper test runs from 2026-11-02 to 2027-05-03 in `espero mf` (`mf.db`, part of
+`espero daily`), with pass criteria fixed before the account existed:
+[research/FORWARD_MF.md](research/FORWARD_MF.md).
 
 The ninth, BTC lead-lag into altcoins on hourly bars, failed twice: once by construction (the
 unscaled gap has the same ranks as plain reversal, caught before any data was fetched) and once on
@@ -362,7 +365,7 @@ espero/
 - [x] Scheduled run with health file, lock and notifications (launchd; Docker not needed for a Mac)
 - [x] Retrying HTTP with a cached fallback; degraded-universe guard
 - [ ] Dated listing/delisting file, so survivorship can be measured instead of disclosed
-- [ ] Forward paper account for hypothesis #8, if it passed
+- [x] Forward paper account for hypothesis #8 (`espero mf`, 2026-11-02 → 2027-05-03)
 
 The gate for live money is not "it backtests well". It is: two weeks of paper at zero duplicate
 orders, a restart mid-position that reconciles to the cent, and out-of-sample results that survive
