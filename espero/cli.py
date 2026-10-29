@@ -555,6 +555,8 @@ def _cmd_liqfwd(args: argparse.Namespace) -> int:
     print("#27 (FORWARD_LIQBREAK.md): " + lbk.run(sd)["note"] + f" -> {sd / lbk.LEDGER}")
     from . import postclose as pc
     print("#29 (FORWARD_POSTCLOSE.md): " + pc.run(sd)["note"] + f" -> {sd / pc.LEDGER}")
+    from . import bidsfwd as bfw
+    print("#31 (FORWARD_BIDS2.md): " + bfw.run(sd)["note"] + f" -> {sd / bfw.LEDGER}")
     return 0
 
 

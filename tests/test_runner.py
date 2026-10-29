@@ -36,6 +36,9 @@ class RunnerCase(unittest.TestCase):
         pc = mock.patch.object(runner.pcl, "run", return_value={"note": "mark: 3 trading days", "equity": None})
         self.pc_run = pc.start()
         self.addCleanup(pc.stop)
+        bf = mock.patch.object(runner.bfw, "run", return_value={"note": "mark: 0 fills", "equity": None})
+        self.bf_run = bf.start()
+        self.addCleanup(bf.stop)
         # the dashboard's signal board fetches 55 Yahoo series: no network in tests
         board = mock.patch.object(brd, "fetch_frames", return_value=({}, {}))
         board.start()
@@ -63,6 +66,8 @@ class TestDryRun(RunnerCase):
         self.assertTrue(res.steps["lowsfwd"].skipped)
         self.assertTrue(res.steps["postclose"].skipped)
         self.pc_run.assert_not_called()
+        self.assertTrue(res.steps["bidsfwd"].skipped)
+        self.bf_run.assert_not_called()
         self.mf_run.assert_not_called()
         self.lf_run.assert_not_called()
         health = json.loads((self.state / "health.json").read_text())
@@ -126,11 +131,13 @@ class TestIsolation(RunnerCase):
         order = []
         runner.lwf.run.side_effect = lambda *a, **k: order.append("lowsfwd") or {"note": "mark", "equity": None}
         self.pc_run.side_effect = lambda *a, **k: order.append("postclose") or {"note": "mark", "equity": None}
+        self.bf_run.side_effect = lambda *a, **k: order.append("bidsfwd") or {"note": "mark", "equity": None}
         with mock.patch.object(runner.tsm, "run", return_value={"note": "mark", "equity": 1.0}), \
              mock.patch.object(runner.xsm, "run", return_value={"note": "mark", "equity": 1.0}):
             res = self.run_daily()
         self.assertTrue(res.steps["postclose"].ok)
-        self.assertEqual(order, ["lowsfwd", "postclose"])
+        self.assertTrue(res.steps["bidsfwd"].ok)
+        self.assertEqual(order, ["lowsfwd", "postclose", "bidsfwd"])
         self.assertEqual(Path(self.pc_run.call_args.args[0]), self.state)
 
     def test_trade_note_without_equity_does_not_crash_the_run(self):

@@ -36,10 +36,11 @@ COLUMNS = ["ts", "day", "complete", "filled", "exit", "depth", "gross", "net", "
 
 def events(b: pd.DataFrame, skip: Optional[Set[str]] = None, first: str = FIRST_DAY, last: str = LAST_DAY,
            k: float = K_ATR, life: int = LIFE, hold: int = HOLD, eps: float = EPS,
-           target: str = "close") -> pd.DataFrame:
+           target: str = "close", taker_bars: int = lows.HOLD) -> pd.DataFrame:
     """Every #20 breakdown on a day from `first` to `last` not in `skip`, one per coin per hour,
     with the resting bid's fate. `target` is 'close' (sell back at the trigger close) or 'atr'
-    (the entry plus one ATR). An event whose bars after the trigger are not all present is kept
+    (the entry plus one ATR). The taker baseline holds `taker_bars`: #20's hour by default,
+    #24's four hours for #31. An event whose bars after the trigger are not all present is kept
     with complete=False and no numbers."""
     f = liq.triggers(b)
     ts = f.index.to_numpy(dtype="int64")
@@ -59,13 +60,13 @@ def events(b: pd.DataFrame, skip: Optional[Set[str]] = None, first: str = FIRST_
         r = {"ts": int(ts[i]) + BAR_S, "day": day, "complete": False, "filled": False, "exit": "",
              "depth": k * atr[i] / c[i], "gross": np.nan, "net": np.nan, "r60": np.nan,
              "taker_net": np.nan, "value": np.nan}
-        n = max(span, lows.HOLD)
+        n = max(span, taker_bars, lows.HOLD)
         if not (i + n < len(ts) and ts[i + n] == ts[i] + n * BAR_S):
             rows.append(r)
             continue
         r["complete"] = True
         r["r60"] = float(c[i + lows.HOLD] / o[i + 1] - 1)
-        r["taker_net"] = r["r60"] - 2 * (TAKER + SLIP)
+        r["taker_net"] = float(c[i + taker_bars] / o[i + 1] - 1) - 2 * (TAKER + SLIP)
         bid = c[i] - k * atr[i]
         sell = c[i] if target == "close" else bid + atr[i]
         fill = next((j for j in range(i + 1, i + life + 1) if lo[j] < bid * (1 - eps)), None)
@@ -89,13 +90,14 @@ def events(b: pd.DataFrame, skip: Optional[Set[str]] = None, first: str = FIRST_
          "r60": float, "taker_net": float, "value": float})
 
 
-def criteria(ev: pd.DataFrame) -> List[dict]:
-    """The four pre-registered criteria, each with its actual value and whether it is met."""
+def criteria(ev: pd.DataFrame, half: str = HALF, names=("Apr-Jun", "Jul-Oct")) -> List[dict]:
+    """The four pre-registered criteria, each with its actual value and whether it is met.
+    `half` starts the second half, `names` labels the two (#31 passes its own)."""
     ev = ev[ev["complete"].astype(bool)]
     fills = ev[ev["filled"].astype(bool)]
     c1 = clustered(lows.by_day(fills["net"], fills["day"]))
     c2 = clustered(lows.by_day(ev["value"] - ev["taker_net"], ev["day"]))
-    first, second = fills[fills["day"] < HALF], fills[fills["day"] >= HALF]
+    first, second = fills[fills["day"] < half], fills[fills["day"] >= half]
     h1 = clustered(lows.by_day(first["net"], first["day"]))
     h2 = clustered(lows.by_day(second["net"], second["day"]))
     per = fills.groupby("coin")["net"].agg(["size", "mean"])
@@ -110,7 +112,7 @@ def criteria(ev: pd.DataFrame) -> List[dict]:
          "actual": f"{bps(c2['mean'])}, t {c2['t']:.2f}, {c2['n']} days, {len(ev)} events",
          "met": c2["mean"] > 0 and c2["t"] >= D_T},
         {"criterion": "not one stretch: mean net > 0 in each half",
-         "actual": f"{bps(h1['mean'])} (Apr-Jun), {bps(h2['mean'])} (Jul-Oct)",
+         "actual": f"{bps(h1['mean'])} ({names[0]}), {bps(h2['mean'])} ({names[1]})",
          "met": h1["mean"] > 0 and h2["mean"] > 0},
         {"criterion": "not one coin: more than half of coins with >= 20 fills net > 0",
          "actual": f"{int((per['mean'] > 0).sum())} of {len(per)} coins",

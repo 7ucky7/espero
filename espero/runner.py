@@ -1,7 +1,7 @@
 """`espero daily`: the one command a scheduler runs.
 
     tsmom -> xs -> mf (#8) -> mf-hl -> liqfwd (#22/#23) -> lowsfwd (#24) -> liqbreak (#27)
-          -> postclose (#29) -> dashboard -> health.json
+          -> postclose (#29) -> bidsfwd (#31) -> dashboard -> health.json
 
 Rules:
 
@@ -30,6 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Dict, Optional
 
+from . import bidsfwd as bfw
 from . import dashboard as dash
 from . import liqbreak as lbk
 from . import liqfwd as lfm
@@ -214,7 +215,7 @@ def run_daily(state_dir: Path = Path("."), cash_tsmom: float = 100.0, cash_xs: f
 
     with Lock(state_dir / "daily.lock"):
         if dry_run:
-            for name in ("tsmom", "xs", "mf", "mf-hl", "liqfwd", "lowsfwd", "liqbreak", "postclose"):
+            for name in ("tsmom", "xs", "mf", "mf-hl", "liqfwd", "lowsfwd", "liqbreak", "postclose", "bidsfwd"):
                 result.steps[name] = StepResult(True, 0.0, note="skipped (dry run)", skipped=True)
                 log.info("%s skipped (dry run)", name)
         else:
@@ -236,6 +237,8 @@ def run_daily(state_dir: Path = Path("."), cash_tsmom: float = 100.0, cash_xs: f
             # #29: the US session's move after 16:00 ET (FORWARD_POSTCLOSE.md); reads lowsfwd's files,
             # downloads nothing
             _step("postclose", lambda: pcl.run(state_dir), result, notify)
+            # #31: 2-ATR resting bids under breakdowns (FORWARD_BIDS2.md); reads lowsfwd's files too
+            _step("bidsfwd", lambda: bfw.run(state_dir), result, notify)
 
         def render():
             out = dash.write(state_dir / "dashboard.html", tsmom_db=tsmom_db, paper_db=paper_db,

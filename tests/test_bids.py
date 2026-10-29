@@ -106,6 +106,16 @@ class TestFills(unittest.TestCase):
         self.assertAlmostEqual(r["r60"], ref["r60"])
         self.assertAlmostEqual(r["taker_net"], ref["r60"] - 2 * (bd.TAKER + bd.SLIP))
 
+    def test_the_taker_baseline_can_hold_four_hours(self):
+        c, bid = self.c, self.bid
+        b = path(self.b, [(c - 0.2, c, bid - 0.05, bid)] + [(c, c, c, c)] * 40, c + 0.4)
+        f = lq.triggers(b)
+        i = f.index.get_loc(T)
+        r = one(b, taker_bars=48)
+        self.assertAlmostEqual(r["taker_net"], f["close"].iloc[i + 48] / f["open"].iloc[i + 1] - 1
+                               - 2 * (bd.TAKER + bd.SLIP))
+        self.assertAlmostEqual(one(b)["taker_net"], one(b)["r60"] - 2 * (bd.TAKER + bd.SLIP))   # #30's default
+
     def test_a_gap_drops_the_event(self):
         b = self.b.drop(T + 20 * bd.BAR_S)
         r = one(b)
