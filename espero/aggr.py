@@ -16,7 +16,7 @@ from typing import Dict, List
 import numpy as np
 import pandas as pd
 
-API = "https://api.aggr.trade/historical/{start}/{end}/3600000/{markets}"
+API = "https://api.aggr.trade/historical/{start}/{end}/{bar_ms}/{markets}"
 PACE_S = 3.0
 COLUMNS = ["time", "market", "open", "high", "low", "close", "vbuy", "vsell", "cbuy", "csell", "lbuy", "lsell"]
 
@@ -41,12 +41,13 @@ def parse(payload: dict) -> pd.DataFrame:
     return pd.DataFrame({k: [r[cols[k]] for r in rows] if k in cols else np.nan for k in COLUMNS})
 
 
-def fetch(start: pd.Timestamp, end: pd.Timestamp, sleep=time.sleep, opener=urllib.request.urlopen) -> pd.DataFrame:
-    """Hourly bars for every market from `start` (inclusive) to `end` (exclusive)."""
+def fetch(start: pd.Timestamp, end: pd.Timestamp, sleep=time.sleep, opener=urllib.request.urlopen,
+          bar_ms: int = 3_600_000) -> pd.DataFrame:
+    """Bars (hourly by default) for every market from `start` (inclusive) to `end` (exclusive)."""
     out = []
     ms = markets()
     for i in range(0, len(ms), 10):
-        url = API.format(start=int(start.timestamp() * 1000), end=int(end.timestamp() * 1000),
+        url = API.format(start=int(start.timestamp() * 1000), end=int(end.timestamp() * 1000), bar_ms=bar_ms,
                          markets=urllib.parse.quote("+".join(ms[i:i + 10]), safe=""))
         req = urllib.request.Request(url, headers={"User-Agent": "espero (daily hourly bars)"})
         with opener(req, timeout=120) as r:

@@ -551,6 +551,8 @@ def _cmd_liqfwd(args: argparse.Namespace) -> int:
           f"(#23, FORWARD_LIQSHORT.md); each judged once after 2027-03-31")
     from . import lowsfwd as lwf
     print("#24 (FORWARD_LOWS.md): " + lwf.run(sd)["note"] + f" -> {sd / lwf.LEDGER}")
+    from . import liqbreak as lbk
+    print("#27 (FORWARD_LIQBREAK.md): " + lbk.run(sd)["note"] + f" -> {sd / lbk.LEDGER}")
     return 0
 
 

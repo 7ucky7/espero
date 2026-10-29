@@ -29,6 +29,9 @@ class RunnerCase(unittest.TestCase):
         lw = mock.patch.object(runner.lwf, "run", return_value={"note": "mark", "equity": None})
         lw.start()
         self.addCleanup(lw.stop)
+        lb = mock.patch.object(runner.lbk, "run", return_value={"note": "mark", "equity": None})
+        lb.start()
+        self.addCleanup(lb.stop)
         # the dashboard's signal board fetches 55 Yahoo series: no network in tests
         board = mock.patch.object(brd, "fetch_frames", return_value=({}, {}))
         board.start()

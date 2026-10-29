@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Callable, Dict, Optional
 
 from . import dashboard as dash
+from . import liqbreak as lbk
 from . import liqfwd as lfm
 from . import lowsfwd as lwf
 from . import mf as mfm
@@ -211,7 +212,7 @@ def run_daily(state_dir: Path = Path("."), cash_tsmom: float = 100.0, cash_xs: f
 
     with Lock(state_dir / "daily.lock"):
         if dry_run:
-            for name in ("tsmom", "xs", "mf", "mf-hl", "liqfwd", "lowsfwd"):
+            for name in ("tsmom", "xs", "mf", "mf-hl", "liqfwd", "lowsfwd", "liqbreak"):
                 result.steps[name] = StepResult(True, 0.0, note="skipped (dry run)", skipped=True)
                 log.info("%s skipped (dry run)", name)
         else:
@@ -227,6 +228,9 @@ def run_daily(state_dir: Path = Path("."), cash_tsmom: float = 100.0, cash_xs: f
             _step("liqfwd", lambda: lfm.run(state_dir), result, notify)
             # #24's forward paper test: record Binance's 5-minute archive, rebuild the ledger (FORWARD_LOWS.md)
             _step("lowsfwd", lambda: lwf.run(state_dir), result, notify)
+            # #27: #26's rule forward on aggr's 5-minute liquidations (FORWARD_LIQBREAK.md); after
+            # lowsfwd, whose Binance bars it reads
+            _step("liqbreak", lambda: lbk.run(state_dir), result, notify)
 
         def render():
             out = dash.write(state_dir / "dashboard.html", tsmom_db=tsmom_db, paper_db=paper_db,
