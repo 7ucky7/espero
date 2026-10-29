@@ -153,3 +153,49 @@ class TestVenue(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPricesForEspero(unittest.TestCase):
+    NOW = 1_793_250_000 + 1800          # half way through the 06:00 UTC hourly bar
+
+    def candles(self, coin, px=100.0):
+        def fetch(body):
+            r = body["req"]
+            self.assertEqual(r["coin"], coin)
+            step = 3600_000 if r["interval"] == "1h" else 86_400_000
+            first = (r["startTime"] + step - 1) // step * step
+            # the API answers up to endTime; add the forming bar too, as it does
+            return [{"t": t, "o": str(px), "h": str(px), "l": str(px), "c": str(px + t / 1e12), "v": "2"}
+                    for t in range(first, r["endTime"] + 2 * step, step)]
+        return fetch
+
+    def test_closed_bars_drop_the_bar_still_forming(self):
+        df = hl.closed_bars("LTC-USD", 3600, 5, fetch=self.candles("LTC"), now=self.NOW)
+        self.assertEqual(len(df), 5)
+        self.assertLessEqual(int(df["ts"].iloc[-1]) + 3600, self.NOW)
+        self.assertEqual(list(df.columns), ["dt", "ts", "open", "high", "low", "close", "volume"])
+
+    def test_kshib_is_converted_back_to_one_coin(self):
+        df = hl.closed_bars("SHIB-USD", 3600, 3, fetch=self.candles("kSHIB", px=0.005), now=self.NOW)
+        self.assertAlmostEqual(df["open"].iloc[0], 0.005 / 1000)
+        self.assertEqual(df["volume"].iloc[0], 2000.0)
+
+    def test_daily_is_shaped_like_yahoo_adjusted(self):
+        df = hl.daily("BTC-USD", "30d", fetch=self.candles("BTC"), now=self.NOW)
+        self.assertEqual(len(df), 30)
+        self.assertTrue((df["adj_close"] == df["close"]).all())
+
+    def test_book_reads_levels_and_only_new_prints(self):
+        trades = [[{"tid": 1, "time": 1_000, "side": "B", "px": "10", "sz": "1"}],
+                  [{"tid": 1, "time": 1_000, "side": "B", "px": "10", "sz": "1"},
+                   {"tid": 2, "time": 2_000, "side": "A", "px": "9.9", "sz": "3"}]]
+
+        def fetch(body):
+            if body["type"] == "l2Book":
+                return {"levels": [[{"px": "9.9", "sz": "5", "n": 1}], [{"px": "10.1", "sz": "4", "n": 2}]]}
+            return trades.pop(0)
+        book = hl.HyperliquidBook("LTC-USD", fetch=fetch)
+        first = book.read()
+        self.assertEqual((first.best_bid, first.best_ask, first.trades), (9.9, 10.1, []))   # no "since" yet
+        second = book.read()
+        self.assertEqual([(t.id, t.side, t.price, t.size) for t in second.trades], [(2, "sell", 9.9, 3.0)])

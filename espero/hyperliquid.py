@@ -190,3 +190,99 @@ def candles(coin: str, interval: str, start_ms: int, end_ms: Optional[int] = Non
         "open": float(r["o"]), "high": float(r["h"]), "low": float(r["l"]),
         "close": float(r["c"]), "volume": float(r["v"]),
     } for t, r in sorted(rows.items())])
+
+
+# ------------------------------------------------- prices for the rest of espero
+# Market data for the board, the XS account, #8's shadow book, the scan and the fast
+# screen. Always mainnet: the testnet's prices are not the market's. These are perp
+# prices; they track spot closely but are not spot, and a coin Hyperliquid does not
+# list is an error for the caller to record, never a substitute.
+COIN = {"SHIB": "kSHIB"}             # quoted per 1,000 coins
+UNIT = {"kSHIB": 1000.0}
+INTERVALS = {seconds: name for name, seconds in INTERVAL_S.items()}
+SPAN_DAYS = {"1y": 365, "2y": 730, "5y": 1826, "10y": 3652}
+
+
+def hl_coin(symbol: str) -> str:
+    """"BTC-USD" or "BTC" -> Hyperliquid's name for the perp."""
+    base = symbol.upper().split("-")[0]
+    return COIN.get(base, base)
+
+
+_LISTED: Dict[str, object] = {"names": None, "at": 0.0}
+LISTED_TTL_S = 3600
+
+
+def listed(fetch: Optional[Fetch] = None) -> set:
+    """Names of the perps Hyperliquid lists now (delisted ones dropped). The live
+    answer is cached for an hour: a coin it does not list is answered with HTTP 500
+    and four retries, so callers check here first."""
+    if fetch is None and _LISTED["names"] is not None and time.time() - float(_LISTED["at"]) < LISTED_TTL_S:
+        return set(_LISTED["names"])
+    meta = (fetch or post)({"type": "meta"})
+    names = {u["name"] for u in meta["universe"] if not u.get("isDelisted")}
+    if fetch is None:
+        _LISTED.update(names=names, at=time.time())
+    return names
+
+
+def closed_bars(product: str, granularity: int = 3600, limit: int = 300,
+                fetch: Optional[Fetch] = None, now: Optional[float] = None) -> pd.DataFrame:
+    """The most recent completed bars, oldest first, in `data.recent_closed_bars`' frame:
+    dt, ts, open/high/low/close per coin, volume in coins. The bar still forming is
+    dropped. Raises data.FetchError for a coin Hyperliquid does not list."""
+    from .data import FetchError, unix_seconds
+    coin, k = hl_coin(product), UNIT.get(hl_coin(product), 1.0)
+    if fetch is None and coin not in listed():     # delisted perps still serve old candles
+        raise FetchError(f"{product}: Hyperliquid does not list {coin}")
+    now = time.time() if now is None else now
+    end = int(now // granularity * granularity)            # start of the bar still forming
+    raw = candles(coin, INTERVALS[granularity], (end - granularity * limit) * 1000, end * 1000 - 1,
+                  fetch=fetch, sleep=lambda s: None)
+    if raw.empty:
+        raise FetchError(f"{product}: no Hyperliquid perp {coin}")
+    t = pd.to_datetime(raw["time"], utc=True)
+    out = pd.DataFrame({"dt": t, "ts": unix_seconds(t).to_numpy(),
+                        **{c: raw[c].to_numpy() / k for c in ("open", "high", "low", "close")},
+                        "volume": raw["volume"].to_numpy() * k})
+    return out[out["ts"] + granularity <= now].tail(limit).reset_index(drop=True)
+
+
+def daily(symbol: str, span: str = "2y", fetch: Optional[Fetch] = None,
+          now: Optional[float] = None) -> pd.DataFrame:
+    """Daily bars shaped like `data.yahoo_daily(adjusted=True)`, so the board, the XS
+    account and #8's panel can take them unchanged. adj_close is the close: a perp pays
+    no dividends. Hyperliquid serves daily history from August 2020."""
+    days = SPAN_DAYS.get(span) or int(str(span).rstrip("d"))
+    df = closed_bars(symbol, 86400, days, fetch=fetch, now=now)
+    return df.assign(adj_close=df["close"])
+
+
+class HyperliquidBook:
+    """The fast screen's live feed from Hyperliquid mainnet: the top 20 levels a side
+    and the prints since the last read, prices per coin. Same contract as
+    `book.CoinbaseBook.read()`."""
+
+    def __init__(self, product: str, fetch: Optional[Fetch] = None):
+        self.product = product
+        self.coin = hl_coin(product)
+        self.k = UNIT.get(self.coin, 1.0)
+        self.fetch = fetch or post
+        self.seen: Optional[set] = None
+
+    def read(self):
+        from .book import BookSnapshot, Trade
+        book = self.fetch({"type": "l2Book", "coin": self.coin})
+        raw = self.fetch({"type": "recentTrades", "coin": self.coin})
+        k = self.k
+        bids = [(float(lv["px"]) / k, float(lv["sz"]) * k) for lv in book["levels"][0]]
+        asks = [(float(lv["px"]) / k, float(lv["sz"]) * k) for lv in book["levels"][1]]
+        ids = {int(t["tid"]) for t in raw}
+        trades = [] if self.seen is None else [      # the first read has no "since"
+            Trade(int(t["tid"]), t["time"] / 1000, "buy" if t["side"] == "B" else "sell",
+                  float(t["px"]) / k, float(t["sz"]) * k)
+            for t in raw if int(t["tid"]) not in self.seen]
+        self.seen = ((self.seen or set()) | ids) if len(self.seen or ()) < 5000 else ids
+        trades.sort(key=lambda t: (t.ts, t.id))
+        return BookSnapshot(time.time(), self.product, bids, asks, trades)
+

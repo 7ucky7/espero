@@ -804,10 +804,11 @@ def _cmd_tsmom(args: argparse.Namespace) -> int:
 
 def _cmd_fast(args: argparse.Namespace) -> int:
     from .fast import run as fast_run
-    return fast_run(args.product, cash=args.cash, venue=args.venue, record=args.record,
+    venue = args.venue or ("hyperliquid" if args.source == "hyperliquid" else "coinbase")
+    return fast_run(args.product, cash=args.cash, venue=venue, record=args.record,
                     replay_path=Path(args.replay) if args.replay else None, speed=args.speed,
                     interval=args.interval, state_dir=Path(args.state_dir),
-                    threshold=args.threshold / 1e4, order_notional=args.order_notional)
+                    threshold=args.threshold / 1e4, order_notional=args.order_notional, source=args.source)
 
 
 def _cmd_scan(args: argparse.Namespace) -> int:
@@ -817,14 +818,16 @@ def _cmd_scan(args: argparse.Namespace) -> int:
 
     console = Console()
     threshold = args.threshold / 1e4
-    products = [p.strip().upper() for p in args.products.split(",") if p.strip()] or fst.scan_products()
+    bars, _ = fst.source_feed(args.source)
+    venue = args.venue or ("hyperliquid" if args.source == "hyperliquid" else "binanceus")
+    products = [p.strip().upper() for p in args.products.split(",") if p.strip()] or fst.scan_products(args.source)
     products = [p if "-" in p else f"{p}-USD" for p in products]
     while True:
-        with console.status(f"scanning {len(products)} coins against BTC ...", spinner="dots"):
-            rows = fst.scan(products)
+        with console.status(f"scanning {len(products)} coins against BTC on {args.source} ...", spinner="dots"):
+            rows = fst.scan(products, fetch=bars)
         stamp = time.strftime("%H:%M UTC", time.gmtime())
         mins = fst.next_signal_minutes()
-        console.print(fst.scan_table(rows, threshold, title=f"lead-lag signal · {stamp} · "
+        console.print(fst.scan_table(rows, threshold, title=f"lead-lag signal · {args.source} · {stamp} · "
                                      f"acts at ±{args.threshold:.0f} bps · next update in {mins}m"))
         status = [fst.scan_status(r.state, threshold) for r in rows]
         n_buy, n_cold = status.count("BUY candidate"), status.count("BUY (cold)")
@@ -849,8 +852,8 @@ def _cmd_scan(args: argparse.Namespace) -> int:
         if not pick:
             return 0
         from .fast import run as fast_run
-        fast_run(pick, cash=args.cash, venue=args.venue, record=args.record, state_dir=Path(args.state_dir),
-                 threshold=threshold, order_notional=args.order_notional)
+        fast_run(pick, cash=args.cash, venue=venue, record=args.record, state_dir=Path(args.state_dir),
+                 threshold=threshold, order_notional=args.order_notional, source=args.source)
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
@@ -879,7 +882,8 @@ def _cmd_dashboard(args: argparse.Namespace) -> int:
     out = dash.write(args.out, tsmom_db=pathlib.Path(args.tsmom_db),
                      paper_db=pathlib.Path(args.paper_db),
                      live_db=pathlib.Path(args.live_db),
-                     xs_db=pathlib.Path(args.xs_db), mf_db=pathlib.Path(args.mf_db), board=True)
+                     xs_db=pathlib.Path(args.xs_db), mf_db=pathlib.Path(args.mf_db),
+                     mf_hl_db=pathlib.Path(args.mf_db).with_name("mf-hl.db"), board=True)
     print(f"wrote {out}")
     if args.open:
         import subprocess
@@ -1076,8 +1080,10 @@ def build_parser() -> argparse.ArgumentParser:
     fs = sub.add_parser("fast", help="semi-automatic resting-order screen on the live book (paper)")
     fs.add_argument("--product", default="ETH-USD")
     fs.add_argument("--cash", type=float, default=500.0)
-    fs.add_argument("--venue", choices=["binanceus", "kraken", "coinbase"], default="coinbase",
-                    help="whose maker fee to charge; the book is always Coinbase's")
+    fs.add_argument("--source", choices=["hyperliquid", "coinbase"], default="hyperliquid",
+                    help="whose candles and live book to use (Hyperliquid: perp prices, paper only)")
+    fs.add_argument("--venue", choices=["hyperliquid", "binanceus", "kraken", "coinbase"], default=None,
+                    help="whose maker fee to charge (default: the source's own)")
     fs.add_argument("--order-notional", type=float, default=50.0)
     fs.add_argument("--threshold", type=float, default=30.0, help="signal gap in bps that triggers a proposal")
     fs.add_argument("--record", action="store_true", help="record the book to data/book/ for replay")
@@ -1088,9 +1094,14 @@ def build_parser() -> argparse.ArgumentParser:
     fs.set_defaults(func=_cmd_fast)
 
     sc = sub.add_parser("scan", help="the lead-lag signal for every coin, then open the fast screen on one")
-    sc.add_argument("--products", default="", help="comma-separated, e.g. ETH,SOL,LINK (default: the 39 on Coinbase)")
+    sc.add_argument("--products", default="", help="comma-separated, e.g. ETH,SOL,LINK (default: the XS coins "
+                    "the source lists)")
+    sc.add_argument("--source", choices=["hyperliquid", "coinbase"], default="hyperliquid",
+                    help="whose candles (and, once you pick a coin, live book) to use")
     sc.add_argument("--threshold", type=float, default=30.0, help="bps gap that makes a buy candidate")
-    sc.add_argument("--venue", choices=["binanceus", "kraken", "coinbase"], default="binanceus")
+    sc.add_argument("--venue", choices=["hyperliquid", "binanceus", "kraken", "coinbase"], default=None,
+                    help="whose maker fee the fast screen charges (default: hyperliquid, or binanceus "
+                    "with --source coinbase)")
     sc.add_argument("--cash", type=float, default=500.0)
     sc.add_argument("--order-notional", type=float, default=50.0)
     sc.add_argument("--record", action="store_true")
