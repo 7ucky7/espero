@@ -3,8 +3,11 @@ trigger and its mirror, the hour before and after a break, and the within-day
 grouping behind the four criteria."""
 from __future__ import annotations
 
+import datetime as dt
+import gzip
 import importlib.util
 import io
+import tempfile
 import unittest
 import urllib.error
 import zipfile
@@ -273,6 +276,61 @@ class TestDownloads(unittest.TestCase):
             self.assertIsNone(self.r.get("https://example.test/a"))
         with raise_(401), self.assertRaises(urllib.error.HTTPError):
             self.r.get("https://example.test/a")
+
+    def test_tardis_not_recorded_is_no_file_and_other_400s_stop(self):
+        def raise_(code, body):
+            return mock.patch("urllib.request.urlopen", side_effect=urllib.error.HTTPError(
+                "u", code, "Bad Request", {}, io.BytesIO(body)))
+        with raise_(400, b'{"code": 140, "message": "Requested dataset is not available"}'):
+            self.assertIsNone(self.r.get("https://example.test/a"))
+        for body in (b'{"code": 141}', b"<html>bad</html>"):
+            with raise_(400, body), mock.patch("time.sleep"), self.assertRaises(urllib.error.HTTPError):
+                self.r.get("https://example.test/a")
+
+    def minutes(self, bars):
+        """1-minute archive rows whose 5-minute bars are exactly `bars`."""
+        rows = []
+        for t, b in bars.iterrows():
+            for m in range(5):
+                rows.append([(t + 60 * m) * 1000, b["open"] if m == 0 else b["close"], b["high"], b["low"],
+                             b["close"], b["volume"] / 5, (t + 60 * m) * 1000 + 59_999, b["quote_volume"] / 5,
+                             1, 0, b["taker_buy_quote"] / 5, 0])
+        return pd.DataFrame(rows, columns=self.r.KLINE_COLS)
+
+    def coin_day(self, binance_file: bool):
+        t = at(10)
+        k1 = self.minutes(plant_up(quiet(), t))
+        liq_csv = gzip.compress(f"exchange,symbol,timestamp,local_timestamp,id,side,price,amount\n"
+                                f"x,ADAUSDT,{(t + 10) * 1_000_000},0,,buy,100,5\n".encode())
+
+        def fake_get(url):
+            if "binance.vision" in url:
+                day = url.rsplit("-1m-", 1)[1][:10]
+                start = int(dt.datetime.fromisoformat(day).replace(tzinfo=dt.timezone.utc).timestamp()) * 1000
+                part = k1[(k1["open_time"] >= start) & (k1["open_time"] < start + 86_400_000)]
+                return self.zipped(part.to_csv(index=False))
+            if "binance-futures" in url:
+                return liq_csv if binance_file else None
+            return liq_csv                                     # bybit
+
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(self.r, "CACHE", Path(d)), \
+                mock.patch.object(self.r, "get", side_effect=fake_get):
+            ev, meta = self.r.coin_day("ADA", dt.date(2025, 10, 1))
+            again, _ = self.r.coin_day("ADA", dt.date(2025, 10, 1))      # from the cache
+        pd.testing.assert_frame_equal(ev, again)
+        return ev.iloc[0], meta
+
+    def test_a_coin_day_is_measured_from_both_venues(self):
+        e, meta = self.coin_day(binance_file=True)
+        self.assertEqual(meta["venues"]["binance-futures"], "ok, 1 rows")
+        self.assertEqual((e["forced_binance"], e["forced_bybit"]), (500.0, 500.0))
+        self.assertAlmostEqual(e["s"], 1000.0 / 31000.0)
+
+    def test_without_binances_file_a_coin_day_has_no_forced_share(self):
+        e, meta = self.coin_day(binance_file=False)
+        self.assertEqual(meta["venues"]["binance-futures"], "no file")
+        self.assertTrue(np.isnan(e["s"]) and np.isnan(e["s_bybit"]) and np.isnan(e["forced"]))
+        self.assertAlmostEqual(e["y60"], 101.0 / 102.8 - 1)        # the return is still there
 
     def test_the_82_free_days(self):
         self.assertEqual(len(self.r.DAYS), 82)

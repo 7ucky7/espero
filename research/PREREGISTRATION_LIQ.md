@@ -164,3 +164,25 @@ Nineteenth test; three thin passes so far, all risk construction, and no intrada
 passed. Liquidations are a different kind of information (who is forced to trade, not another
 price pattern), which is the reason to test it, not a reason to expect it to pass. The t ≤ −3
 hurdle is kept, and the test is run once.
+
+## Amendment before the run (2026-10-29, after a crash, before any number)
+
+The first run stopped on its first day, before printing anything. Tardis answers **HTTP 400 with
+code 140** ("Requested dataset is not available for '2020-01-01'") for a symbol-day it did not
+record, where this document assumed a 404. Both now mean "no file".
+
+That exposed an ambiguity in the text above, which says both that a venue without a file
+"contributes none" and that "nothing is substituted". Tardis began recording some Binance symbols
+after Binance listed them: ADAUSDT has Binance bars on 2020-01-01, but Tardis's recording starts
+on 2020-01-31. There, a missing file means liquidations happened and were not recorded, and
+counting them as zero would label those breaks organic. Resolved before any result, in favour of
+"nothing is substituted":
+
+- **a coin-day without Binance's liquidation file has no forced share**: its events keep their
+  returns (they count in the information-only mean of all breaks) but their *s* is empty, so they
+  are never grouped
+- a missing **Bybit** file still contributes none: before a symbol's Bybit listing, which is the
+  usual reason, there was nothing to record
+
+Only 2020-01-01 had been reached (30 coin-days cached). The cache was deleted and the run started
+again from the beginning.

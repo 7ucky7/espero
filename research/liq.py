@@ -39,20 +39,24 @@ LIQ_URL = "https://datasets.tardis.dev/v1/{venue}/liquidations/{day:%Y/%m/%d}/{s
 KLINE_COLS = ["open_time", "open", "high", "low", "close", "volume", "close_time", "quote_volume",
               "count", "taker_buy_volume", "taker_buy_quote_volume", "ignore"]
 WORKERS = 6
+UNMEASURED = ["forced", "forced_binance", "forced_bybit", "forced15", "liq_total", "s", "s_binance",
+              "s_bybit", "s15"]
 COST_BINANCE_US = 0.0004
 COST_HL = 0.0009
 
 
 def get(url: str, tries: int = 4) -> Optional[bytes]:
-    """The body, or None for a 404 (no such market that day). Anything else is retried,
-    then raised: the run stops rather than guess."""
+    """The body, or None when there is no file: a 404, or Tardis's 400 with code 140,
+    "Requested dataset is not available" for a symbol-day it did not record (amendment
+    in PREREGISTRATION_LIQ.md). Anything else is retried, then raised: the run stops
+    rather than guess."""
     for k in range(tries):
         try:
             with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "espero"}),
                                         timeout=60) as r:
                 return r.read()
         except urllib.error.HTTPError as exc:
-            if exc.code == 404:
+            if exc.code == 404 or (exc.code == 400 and not_recorded(exc)):
                 return None
             if exc.code in (401, 403) or k == tries - 1:
                 raise
@@ -61,6 +65,13 @@ def get(url: str, tries: int = 4) -> Optional[bytes]:
                 raise
         time.sleep(1.5 * (k + 1))
     return None
+
+
+def not_recorded(exc: urllib.error.HTTPError) -> bool:
+    try:
+        return json.loads(exc.read() or b"{}").get("code") == 140
+    except (ValueError, AttributeError, OSError):
+        return False
 
 
 def read_klines(blob: bytes) -> pd.DataFrame:
@@ -103,7 +114,7 @@ def coin_day(coin: str, day: dt.date) -> Tuple[pd.DataFrame, dict]:
         parts = []
         for venue in lq.VENUES:
             blob = get(LIQ_URL.format(venue=venue, day=day, sym=lq.symbol(venue, coin)))
-            meta["venues"][venue] = "no market" if blob is None else "ok"
+            meta["venues"][venue] = "no file" if blob is None else "ok"
             if blob is not None:
                 text = gzip.decompress(blob) if blob else b""
                 rows = pd.read_csv(io.BytesIO(text)) if text.strip() else \
@@ -116,6 +127,10 @@ def coin_day(coin: str, day: dt.date) -> Tuple[pd.DataFrame, dict]:
         meta_path.write_text(json.dumps(meta))
     start = int(dt.datetime(day.year, day.month, day.day, tzinfo=dt.timezone.utc).timestamp())
     ev = lq.events(bars, liq, start)
+    if not str(meta["venues"].get("binance-futures", "")).startswith("ok"):
+        # Binance's market existed (its bars did) but its liquidations were not recorded:
+        # unknown, not zero (amendment in PREREGISTRATION_LIQ.md)
+        ev[UNMEASURED] = np.nan
     return ev.assign(coin=coin, day=day.isoformat()), meta
 
 
