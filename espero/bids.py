@@ -83,7 +83,10 @@ def events(b: pd.DataFrame, skip: Optional[Set[str]] = None, first: str = FIRST_
         r["net"] = r["gross"] - cost
         r["value"] = r["net"]
         rows.append(r)
-    return pd.DataFrame(rows, columns=COLUMNS)
+    # typed even when empty: an empty object frame turns every number column to object on concat
+    return pd.DataFrame(rows, columns=COLUMNS).astype(
+        {"ts": "int64", "complete": bool, "filled": bool, "depth": float, "gross": float, "net": float,
+         "r60": float, "taker_net": float, "value": float})
 
 
 def criteria(ev: pd.DataFrame) -> List[dict]:

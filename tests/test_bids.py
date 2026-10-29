@@ -115,6 +115,15 @@ class TestFills(unittest.TestCase):
     def test_the_depth_is_one_atr(self):
         self.assertAlmostEqual(one(self.b)["depth"], self.atr / self.c)
 
+    def test_a_coin_without_events_keeps_the_numbers_numeric(self):
+        # the first run crashed here: an empty frame of objects turned `net` into objects on concat
+        empty = bd.events(quiet(day_start=D0), skip=set(), first=DAY, last=DAY)
+        self.assertTrue(empty.empty)
+        ev = pd.concat([one(self.b).to_frame().T.astype(empty.dtypes.to_dict()), empty.assign(coin="X")],
+                       ignore_index=True).assign(coin="A")
+        self.assertEqual(ev["net"].dtype, float)
+        bd.criteria(ev)                                   # no TypeError
+
 
 def frame(fill_net: float, taker: float, coins: int = 10, seed: int = 0) -> pd.DataFrame:
     """Every day of the window, each coin one event: half filled at fill_net, half not."""
